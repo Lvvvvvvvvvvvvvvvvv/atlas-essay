@@ -696,20 +696,21 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241 }) {
 
       <span style={{ flex: 1, height: 1, background: t.ink, opacity: 0.55, margin: '0 8px' }}/>
 
-      <nav style={{ display: 'flex', gap: 26, flexShrink: 0 }}>
+      <nav style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'stretch' }}>
         {NAV_ITEMS.map(n => (
           <span key={n.k}
             onClick={() => setRoute(n.k)}
             style={{
-              cursor: 'pointer', display: 'inline-flex', alignItems: 'baseline', gap: 6,
-              padding: '4px 0',
+              cursor: 'pointer',
+              display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: '0 14px', height: 60,
               borderBottom: route === n.k ? `2px solid ${t.accent}` : '2px solid transparent',
-              fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11,
-              letterSpacing: 1.4, textTransform: 'uppercase',
+              borderTop: '2px solid transparent',
               color: route === n.k ? t.ink : t.mute,
+              userSelect: 'none',
             }}>
-            <span>{n.en}</span>
-            <span style={{ fontFamily: t.fontCN, fontSize: 11, letterSpacing: 0.5, color: route === n.k ? t.ink : t.mute }}>{n.cn}</span>
+            <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase', lineHeight: 1.2 }}>{n.en}</span>
+            <span style={{ fontFamily: t.fontCN, fontSize: 10, letterSpacing: 0.3, marginTop: 1, lineHeight: 1.2, color: route === n.k ? t.ink : t.mute }}>{n.cn}</span>
           </span>
         ))}
       </nav>
@@ -2297,9 +2298,14 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
 请用中文撰写一篇分析报告，严格遵守以下要求：
 1. 写作风格：${toneCN}（全程必须体现这种风格，不得偏离）
 2. ${lengthInstr}
-3. 结构：开头一句导语（一句话总结核心观点），随后视字数分段展开
-4. 引用格式：重要数据用 §1 §2 §3 标注脚注${sourceNote}
-直接输出报告正文，不要输出标题、前言或任何额外说明。`;
+3. 结构要求（必须严格执行）：
+   - 报告必须包含至少 3 个章节，每个章节用「一、」「二、」「三、」「四、」等中文数字序号开头单独成行作为标题
+   - 开头第一章节标题后紧跟一句导语（一句话总结核心观点）
+4. 数据可视化：当某一段分析涉及多个可对比的数据点（如市场份额、增长率、排名等），在该段后插入一个图表数据块，格式为：
+   [CHART:{"type":"bar","title":"图表标题","unit":"单位","data":[{"label":"标签","value":数值},{"label":"标签","value":数值}]}]
+   图表数据须真实反映正文中提到的数字，最多 6 个数据项。每篇报告插入 1-2 个图表即可，不要过度使用。
+5. 引用格式：重要数据用 §1 §2 §3 标注脚注${sourceNote}
+直接输出报告正文，不要输出任何多余的前言、后记或额外说明。`;
 
   // Build user message: prompt + optional attachment context
   const attachText = attachments?.length > 0
@@ -2340,6 +2346,7 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let totalTokens = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -2355,14 +2362,16 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
             const data = JSON.parse(trimmed.slice(6));
             const delta = data.choices?.[0]?.delta;
             // Support both standard content and reasoning-model content fields
-            // (e.g. MiMo/DeepSeek return reasoning_content separately)
             const text = delta?.content || '';
             if (text) onChunk(text);
+            // Capture token usage from final chunk (some providers send usage mid-stream)
+            if (data.usage?.total_tokens) totalTokens = data.usage.total_tokens;
+            else if (data.usage?.completion_tokens) totalTokens = (data.usage.prompt_tokens || 0) + data.usage.completion_tokens;
           } catch {}
         }
       }
     }
-    onDone();
+    onDone(totalTokens);
   } catch (err) {
     onError(err.message || String(err));
   }
@@ -2382,6 +2391,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
   const [liveError, setLiveError] = React.useState('');
   const [liveStartTime] = React.useState(Date.now);
   const [liveElapsed, setLiveElapsed] = React.useState(0);
+  const [liveTokens, setLiveTokens] = React.useState(0);
   const liveTimerRef = React.useRef(null);
 
   // Auto-save generated report when streaming completes
@@ -2393,30 +2403,34 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
       const wordCount = liveText.replace(/\s+/g,' ').trim().length;
       const refs = [...new Set((liveText.match(/§\d+/g) || []))].length;
       const readMins = Math.max(1, Math.ceil(wordCount / 300));
-      const firstSec = sections.find(s => s.en !== '正文' && s.en !== 'Content');
+      const firstSec = sections.find(s => s.en !== '正文' && s.en !== 'Content' && s.en !== s.en?.match(/^[一二三四五六七八九十]+/)?.[0]);
       const now = new Date();
       const DAY_CN = ['日','一','二','三','四','五','六'];
+      const titleText = firstSec?.en || prompt.slice(0, 40);
       onSaveReport({
         id: now.getTime().toString(),
         prompt,
         text: liveText,
         sections,
         meta: {
-          title: { en: firstSec?.en || prompt.slice(0,40), cn: '' },
+          titleEn: titleText,
+          titleCn: '',
+          title: { en: titleText, cn: '' },
           subtitle: prompt.slice(0, 80),
           date: `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`,
           words: wordCount.toLocaleString(),
           sources: refs,
           reading: `${readMins} min`,
           category: `AI · ${selectedModel?.name || '生成'}`,
-          issue: '—',
+          issue: 'AI',
           model: selectedModel?.name || 'AI',
           tone: toolbarConfig?.tone?.cn || '',
+          tokens: liveTokens,
         },
         favorited: false,
       });
     }
-  }, [liveStatus]);
+  }, [liveStatus, liveTokens]);
 
   React.useEffect(() => {
     if (!isLiveMode) return;
@@ -2431,8 +2445,9 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
         setLiveStatus('streaming');
         setLiveText(prev => prev + chunk);
       },
-      onDone: () => {
+      onDone: (tokens) => {
         clearInterval(liveTimerRef.current);
+        setLiveTokens(tokens || 0);
         setLiveStatus('done');
         onTimelineComplete && onTimelineComplete();
       },
@@ -2819,12 +2834,12 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
         <Tag t={t} accent>◆ {rMeta.issue || REPORT_META.issue} · DONE</Tag>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
           {rMeta.words} 字 · {rMeta.sources} 来源 · {rMeta.reading} 阅读
+          {rMeta.tokens > 0 && <span style={{ marginLeft: 8, color: t.accent }}>· {rMeta.tokens.toLocaleString()} tokens</span>}
         </span>
         <span style={{ flex: 1 }}/>
-        {onRerun && <Btn t={t} size="sm" onClick={onRerun}>▸ 重跑</Btn>}
-        {!onRerun && <Btn t={t} size="sm">▸ 重跑</Btn>}
+        <Btn t={t} size="sm" onClick={onRerun || undefined} style={!onRerun ? { opacity: 0.4 } : {}}>▸ 重跑</Btn>
         <Btn t={t} size="sm" onClick={onToggleFavorite || undefined}
-          style={isFavorited ? { background: '#c8a84b', borderColor: '#c8a84b', color: '#fff' } : {}}>
+          style={isFavorited ? { background: '#c8a84b', borderColor: '#c8a84b', color: '#fff' } : (!onToggleFavorite ? { opacity: 0.4 } : {})}>
           {isFavorited ? '★ 已收藏' : '☆ 收藏'}
         </Btn>
         <Btn t={t} size="sm" primary accent onClick={onExport}>↗ 导出 / 分享</Btn>
@@ -2838,18 +2853,27 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
             CONTENTS · 目录
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {rSections.map(s => (
+            {rSections.map(s => {
+              const cnMatch = s.en.match(/^([一二三四五六七八九十]+[、．])\s*/);
+              const prefix = cnMatch?.[1] || '';
+              const label = prefix ? s.en.slice(cnMatch[0].length) : s.en;
+              return (
               <button key={s.id} type="button" onClick={() => scrollTo(s.id)} style={{
                 display: 'block', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
-                padding: '10px 0 10px 10px',
+                padding: '8px 0 8px 10px',
                 borderLeft: activeSec === s.id ? `3px solid ${t.accent}` : `3px solid transparent`,
                 fontFamily: t.fontBody, color: t.ink,
               }}>
-                <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.5 }}>{s.num}</div>
-                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 }}>{s.en}</div>
-                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: activeSec === s.id ? t.ink : t.mute, marginTop: 1 }}>{s.cn}</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  {prefix
+                    ? <span style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: 12, color: activeSec === s.id ? t.accent : t.mute }}>{prefix}</span>
+                    : <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.5 }}>{s.num} ·</span>
+                  }
+                  <span style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 11, color: activeSec === s.id ? t.ink : t.inkSoft, lineHeight: 1.4 }}>{label}</span>
+                </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         </aside>
 
@@ -2880,11 +2904,11 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
               </>
             ) : (
               <>
-                <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: editorial ? 60 : 46, lineHeight: 0.94, letterSpacing: -2, color: t.ink }}>
-                  {rMeta.titleEn || ''}
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: editorial ? 56 : 44, lineHeight: 0.94, letterSpacing: -2, color: t.ink }}>
+                  {rMeta.titleEn || rMeta.title?.en || ''}
                 </div>
-                <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 26 : 20, lineHeight: 1.3, color: t.inkSoft }}>
-                  {rMeta.subtitle || rMeta.titleCn || ''}
+                <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 22 : 18, lineHeight: 1.3, color: t.inkSoft }}>
+                  {rMeta.subtitle || rMeta.titleCn || rMeta.title?.cn || ''}
                 </div>
               </>
             )}
@@ -2898,18 +2922,30 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
             </div>
           </header>
 
-          {rSections.map(s => (
-            <section key={s.id} data-sec={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 24, scrollMarginTop: 80 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, borderTop: `2px solid ${t.ink}`, paddingTop: 10 }}>
-                <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.accent, letterSpacing: 0.5 }}>§ {s.num}</span>
-                <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 16, letterSpacing: 1.4, textTransform: 'uppercase' }}>{s.en}</span>
-                <span style={{ fontFamily: t.fontCN, fontSize: 16, fontWeight: 700, color: t.inkSoft }}>· {s.cn}</span>
+          {rSections.map(s => {
+            // Extract Chinese numeral prefix like "一、" from the section title
+            const cnNumMatch = s.en.match(/^([一二三四五六七八九十]+[、．])\s*/);
+            const cnNumPrefix = cnNumMatch?.[1] || '';
+            const sectionTitle = cnNumPrefix ? s.en.slice(cnNumMatch[0].length) : s.en;
+            return (
+            <section key={s.id} data-sec={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 28, scrollMarginTop: 80 }}>
+              <div style={{ borderTop: `2px solid ${t.ink}`, paddingTop: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  {cnNumPrefix ? (
+                    <span style={{ fontFamily: t.fontCN, fontWeight: 900, fontSize: 22, color: t.accent, letterSpacing: 0 }}>{cnNumPrefix}</span>
+                  ) : (
+                    <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.accent, letterSpacing: 0.5 }}>§ {s.num}</span>
+                  )}
+                  <span style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: editorial ? 18 : 16, letterSpacing: 0.5, color: t.ink }}>{sectionTitle}</span>
+                  {s.cn && <span style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 500, color: t.mute }}>· {s.cn}</span>}
+                </div>
               </div>
               <div style={{ fontFamily: t.fontCN, fontSize: editorial ? 16 : 15, lineHeight: 1.85, color: t.inkSoft, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {s.blocks.map((b, i) => <ReportBlock key={i} block={b} t={t}/>)}
               </div>
             </section>
-          ))}
+            );
+          })}
 
           {/* Follow-up composer */}
           <div style={{
@@ -2970,6 +3006,51 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
   );
 }
 
+// ── Inline data chart (bar) rendered from AI-parsed CHART blocks ─────────
+function DataChart({ t, data }) {
+  if (!data?.data?.length) return null;
+  const { title, unit = '', data: items } = data;
+  const maxVal = Math.max(...items.map(d => d.value), 0.001);
+  const barColors = [t.accent, t.inkSoft, t.ink, t.mute];
+
+  return (
+    <div style={{
+      margin: '6px 0', padding: '16px 20px',
+      border: `1.5px solid ${t.ink}`, background: t.cardOn,
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      {title && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, letterSpacing: 1.2 }}>▪ CHART</span>
+          <span style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 12, color: t.ink }}>{title}</span>
+          {unit && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>（{unit}）</span>}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {items.map((item, i) => {
+          const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
+          return (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 56px', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontFamily: t.fontCN, fontSize: 11, color: t.inkSoft, textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
+              <div style={{ height: 16, background: t.faint, position: 'relative', overflow: 'hidden' }}>
+                <div style={{
+                  position: 'absolute', left: 0, top: 0, height: '100%',
+                  width: `${pct}%`, background: i === 0 ? t.accent : (i % 2 === 0 ? t.ink : t.inkSoft),
+                  opacity: i === 0 ? 1 : 0.65,
+                  transition: 'width 0.4s ease',
+                }}/>
+              </div>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, fontWeight: 700, textAlign: 'right' }}>
+                {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}{unit ? ` ${unit}` : ''}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ReportBlock({ block, t }) {
   if (block.kind === 'lede') {
     return (
@@ -2977,6 +3058,9 @@ function ReportBlock({ block, t }) {
         {renderFootnotes(block.text, t)}
       </p>
     );
+  }
+  if (block.kind === 'chart') {
+    return <DataChart t={t} data={block.data}/>;
   }
   if (block.kind === 'figure') {
     return <Figure t={t} type="chart" label={block.label} caption={block.caption} height={240}/>;
@@ -3022,6 +3106,15 @@ function parseMarkdownReport(rawText) {
   for (const raw of rawText.split('\n')) {
     const line = raw.trim();
     if (!line) { tokens.push({ type: 'blank' }); continue; }
+    // Chart data block: [CHART:{...}]
+    const chartMatch = line.match(/^\[CHART:(\{.*\})\]$/);
+    if (chartMatch) {
+      try {
+        const chartData = JSON.parse(chartMatch[1]);
+        tokens.push({ type: 'chart', data: chartData });
+      } catch { tokens.push({ type: 'text', text: line }); }
+      continue;
+    }
     // Heading patterns
     if (/^[一二三四五六七八九十]+[、．]/.test(line) ||
         /^#{1,3}\s/.test(line) ||
@@ -3072,6 +3165,11 @@ function parseMarkdownReport(rawText) {
   for (const token of tokens) {
     if (token.type === 'heading') { commitSection(); currentTitle = token.text; }
     else if (token.type === 'blank') { flushQuote(); flushText(); }
+    else if (token.type === 'chart') {
+      flushQuote(); flushText();
+      currentBlocks.push({ kind: 'chart', data: token.data });
+      isFirstBlock = false;
+    }
     else if (token.type === 'quote-line') {
       flushText();
       if (!inQuote) { inQuote = true; quoteLines = [token.text]; }
