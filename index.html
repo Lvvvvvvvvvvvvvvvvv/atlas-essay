@@ -2403,20 +2403,29 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
       const wordCount = liveText.replace(/\s+/g,' ').trim().length;
       const refs = [...new Set((liveText.match(/§\d+/g) || []))].length;
       const readMins = Math.max(1, Math.ceil(wordCount / 300));
-      const firstSec = sections.find(s => s.en !== '正文' && s.en !== 'Content' && s.en !== s.en?.match(/^[一二三四五六七八九十]+/)?.[0]);
       const now = new Date();
       const DAY_CN = ['日','一','二','三','四','五','六'];
-      const titleText = firstSec?.en || prompt.slice(0, 40);
+
+      // Title: use first line of prompt (before comma/newline), cleaned up
+      const promptFirstLine = prompt.split(/[\n\r,，。.]/)[0].trim()
+        .replace(/^(请|帮我|调研|分析|写一篇|生成|撰写|输出)\s*/,'')
+        .replace(/[「」【】『』《》""'']/g,' ').trim();
+      const titleEn = promptFirstLine.slice(0, 52) || 'AI 分析报告';
+
+      // Subtitle: remainder of first prompt line or next segment
+      const subtitleRaw = prompt.replace(/^[^\n,，。.]{0,80}[,，。.\n]/, '').trim().split('\n')[0].trim();
+      const subtitle = subtitleRaw.slice(0, 80) || prompt.slice(0, 80);
+
       onSaveReport({
         id: now.getTime().toString(),
         prompt,
         text: liveText,
         sections,
         meta: {
-          titleEn: titleText,
+          titleEn,
           titleCn: '',
-          title: { en: titleText, cn: '' },
-          subtitle: prompt.slice(0, 80),
+          title: { en: titleEn, cn: '' },
+          subtitle,
           date: `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`,
           words: wordCount.toLocaleString(),
           sources: refs,
@@ -2895,6 +2904,23 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
   const rSections    = reportData?.sections || REPORT_SECTIONS;
   const rRefs        = reportData?.refs     || REPORT_REFS;
 
+  // Teaser: first lede block sentence from first section
+  const teaser = React.useMemo(() => {
+    const lede = rSections?.[0]?.blocks?.find(b => b.kind === 'lede');
+    if (!lede?.text) return null;
+    const raw = lede.text.replace(/\*\*/g, '').trim();
+    const sentence = raw.match(/^[^。！？.!?]{6,}[。！？.!?]/)?.[0];
+    return sentence || (raw.length > 90 ? raw.slice(0, 90) + '…' : raw);
+  }, [rSections]);
+
+  // Metrics: use stored for static; derive from meta for AI reports
+  const metricsArr = rMetrics.length > 0 ? rMetrics : [
+    { value: rMeta.words  || '—', en: 'WORDS',  cn: '字数',  accent: false },
+    { value: String(rMeta.sources || '—'), en: 'REFS', cn: '引用', accent: false },
+    { value: rMeta.reading || '—', en: 'READ',  cn: '阅读',  accent: false },
+    { value: rMeta.tokens  ? rMeta.tokens.toLocaleString() : '—', en: 'TOKENS', cn: 'Tokens', accent: rMeta.tokens > 0 },
+  ];
+
   // Scroll-spy
   React.useEffect(() => {
     const root = containerRef.current;
@@ -2941,10 +2967,25 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
       {/* Scrollable body */}
       <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: bodyCols }}>
         {/* Left rail: section index */}
-        <aside style={{ padding: '40px 20px 40px 32px', position: 'sticky', top: 0, alignSelf: 'start' }}>
-          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, marginBottom: 14 }}>
-            CONTENTS · 目录
-          </div>
+        <aside style={{ padding: '32px 16px 40px 28px', position: 'sticky', top: 0, alignSelf: 'start', maxHeight: '100vh', overflowY: 'auto' }}>
+          {/* Cover back-to-top */}
+          <button type="button" onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} style={{
+            display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
+            padding: '8px 0 12px 10px', marginBottom: 6,
+            borderBottom: `1px solid ${t.rule}`,
+          }}>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>CONTENTS · 目录</span>
+          </button>
+
+          {/* Cover entry */}
+          <button type="button" onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} style={{
+            display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
+            padding: '7px 0 7px 10px',
+            borderLeft: activeSec === 's1' ? `3px solid transparent` : `3px solid transparent`,
+          }}>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>00 · COVER</span>
+          </button>
+
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {rSections.map(s => {
               const cnMatch = s.en.match(/^([一二三四五六七八九十]+[、．])\s*/);
@@ -2953,7 +2994,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
               return (
               <button key={s.id} type="button" onClick={() => scrollTo(s.id)} style={{
                 display: 'block', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
-                padding: '8px 0 8px 10px',
+                padding: '7px 0 7px 10px',
                 borderLeft: activeSec === s.id ? `3px solid ${t.accent}` : `3px solid transparent`,
                 fontFamily: t.fontBody, color: t.ink,
               }}>
@@ -2968,6 +3009,14 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
               );
             })}
           </div>
+
+          {/* Tone / model badge */}
+          {!isStatic && rMeta.tone && (
+            <div style={{ marginTop: 20, padding: '8px 10px', border: `1px solid ${t.rule}`, background: t.faint }}>
+              <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 1.2, marginBottom: 4 }}>STYLE</div>
+              <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.inkSoft }}>{rMeta.tone}</div>
+            </div>
+          )}
         </aside>
 
         {/* Outer gutter */}
@@ -2975,45 +3024,94 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
 
         {/* Center body */}
         <article style={{ padding: '32px 0 80px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {/* Title block */}
-          <header style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
-              <Tag t={t}>◆ {rMeta.category || REPORT_META.category}</Tag>
-              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{rMeta.date || REPORT_META.date}</span>
-              <span style={{ flex: 1, height: 1, background: t.rule }}/>
-              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>by ATLAS</span>
+          {/* ═══════════════ COVER ═══════════════ */}
+          <header style={{ display: 'flex', flexDirection: 'column', paddingBottom: 0, marginBottom: 8 }}>
+
+            {/* Row 1 · category / date / byline */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 12, borderBottom: `1px solid ${t.rule}`, marginBottom: 22 }}>
+              <Tag t={t} accent>◆ {rMeta.category || REPORT_META.category}</Tag>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.8 }}>
+                {rMeta.date || REPORT_META.date}
+              </span>
+              <span style={{ flex: 1 }}/>
+              {!isStatic && rMeta.model && (
+                <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.5 }}>
+                  ◈ {rMeta.model}
+                </span>
+              )}
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2, fontWeight: 700 }}>ATLAS</span>
             </div>
 
-            {/* Headline: static version preserves italic word; dynamic version is plain bold */}
+            {/* Row 2 · issue badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+              <div style={{ width: 4, height: 32, background: t.accent, flexShrink: 0 }}/>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, letterSpacing: 2.5, textTransform: 'uppercase', fontWeight: 700 }}>
+                  {isStatic ? `ISSUE ${rMeta.issue || '№ 241'}` : 'AI · GENERATED'}
+                </span>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>
+                  {[rMeta.reading && `${rMeta.reading} READ`, rMeta.words && `${rMeta.words} 字`].filter(Boolean).join('  ·  ')}
+                </span>
+              </div>
+            </div>
+
+            {/* Row 3 · Main headline */}
             {isStatic ? (
-              <>
-                <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: editorial ? 64 : 52, lineHeight: 0.95, letterSpacing: -2, color: t.ink }}>
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: editorial ? 68 : 54, lineHeight: 0.92, letterSpacing: -2.5, color: t.ink }}>
                   Cold brew,<br/>
                   <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>hotter</span> capital.
                 </div>
-                <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 26 : 22, lineHeight: 1.3, color: t.inkSoft }}>
-                  2025 Q1 国内咖啡赛道融资速记。从 Manner 的新一轮，到下沉市场的快速展店。
-                </div>
-              </>
+              </div>
             ) : (
-              <>
-                <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: editorial ? 56 : 44, lineHeight: 0.94, letterSpacing: -2, color: t.ink }}>
-                  {rMeta.titleEn || rMeta.title?.en || ''}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontFamily: t.fontCN, fontWeight: 900, fontSize: editorial ? 52 : 40, lineHeight: 1.05, letterSpacing: -1, color: t.ink }}>
+                  {(rMeta.subtitle || rMeta.title?.cn || rMeta.titleEn || rMeta.title?.en || '').slice(0, 60)}
                 </div>
-                <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 22 : 18, lineHeight: 1.3, color: t.inkSoft }}>
-                  {rMeta.subtitle || rMeta.titleCn || rMeta.title?.cn || ''}
-                </div>
-              </>
+              </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, borderTop: `2px solid ${t.ink}`, borderBottom: `1px solid ${t.ink}`, paddingTop: 16, paddingBottom: 16, marginTop: 4 }}>
-              {rMetrics.map((m, i) => (
+            {/* Row 4 · Subtitle / Chinese secondary title */}
+            {isStatic ? (
+              <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 18 : 15, lineHeight: 1.5, color: t.inkSoft, marginBottom: 24 }}>
+                2025 Q1 国内咖啡赛道融资速记——从 Manner 的新一轮，到下沉市场的快速展店。
+              </div>
+            ) : (
+              (rMeta.titleEn || rMeta.title?.en) && (
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: editorial ? 16 : 14, lineHeight: 1.5, color: t.mute, marginBottom: 22, letterSpacing: 0.5 }}>
+                  {(rMeta.titleEn || rMeta.title?.en || '').slice(0, 80)}
+                </div>
+              )
+            )}
+
+            {/* Row 5 · Teaser lede (italic pullout) */}
+            {teaser && (
+              <div style={{
+                fontFamily: t.fontSerif, fontStyle: 'italic',
+                fontSize: editorial ? 16 : 14, lineHeight: 1.8,
+                color: t.ink,
+                borderLeft: `3px solid ${t.accent}`, paddingLeft: 18,
+                marginBottom: 28,
+              }}>
+                {teaser}
+              </div>
+            )}
+
+            {/* Row 6 · Metrics bar */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${metricsArr.length}, 1fr)`,
+              borderTop: `2px solid ${t.ink}`, borderBottom: `1px solid ${t.rule}`,
+              paddingTop: 16, paddingBottom: 16,
+            }}>
+              {metricsArr.map((m, i) => (
                 <div key={m.en} style={{ paddingLeft: i === 0 ? 0 : 18, borderLeft: i === 0 ? 'none' : `1px solid ${t.rule}` }}>
                   <Metric {...m} t={t}/>
                 </div>
               ))}
             </div>
           </header>
+          {/* ════════════════════════════════════ */}
 
           {rSections.map(s => {
             // Extract Chinese numeral prefix like "一、" from the section title
