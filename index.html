@@ -1055,7 +1055,7 @@ const STARTERS = [
   },
 ];
 
-function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore }) {
+function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
   const editorial = density === 'editorial';
   const headSize = editorial ? 'xxl' : 'xl';
 
@@ -1109,7 +1109,7 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
         </div>
 
         {/* Prompt input */}
-        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} modelStore={modelStore}/>
+        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} modelStore={modelStore} toolbarStore={toolbarStore} onNavigateSources={onNavigateSources}/>
 
         {/* Editor's note callout */}
         <div style={{
@@ -1581,9 +1581,368 @@ function AddModelForm({ t, form, setForm, showKey, setShowKey, onAdd, onCancel }
   );
 }
 
+// ── Toolbar constants ─────────────────────────────────────────────────────
+const BUILTIN_TONES = [
+  { id: 'analytical', cn: '分析性', en: 'Analytical' },
+  { id: 'narrative',  cn: '叙述性', en: 'Narrative' },
+  { id: 'formal',     cn: '正式',   en: 'Formal' },
+  { id: 'concise',    cn: '简洁',   en: 'Concise' },
+  { id: 'persuasive', cn: '说服性', en: 'Persuasive' },
+];
+
+const LENGTH_PRESETS = [
+  { id: 'brief',    cn: '简报', chars: 800 },
+  { id: 'standard', cn: '标准', chars: 1500 },
+  { id: 'deep',     cn: '深度', chars: 2500 },
+  { id: 'long',     cn: '长文', chars: 4000 },
+];
+
+// ── Toolbar store ─────────────────────────────────────────────────────────
+function useToolbarStore() {
+  const [selectedSources, setSelectedSources] = React.useState(
+    () => new Set(['乘联会 · 销量月报', 'IT 桔子 · 一级市场数据库', '36 氪报道精选'])
+  );
+  const [attachments, setAttachments] = React.useState([]);
+  const [toneId, setToneId] = React.useState('analytical');
+  const [customTones, setCustomTones] = React.useState(
+    () => { try { return JSON.parse(localStorage.getItem('atlas_custom_tones') || '[]'); } catch { return []; } }
+  );
+  const [lengthId, setLengthId] = React.useState('deep');
+  const [customLength, setCustomLength] = React.useState('');
+
+  const allTones = [...BUILTIN_TONES, ...customTones];
+  const currentTone = allTones.find(to => to.id === toneId) || allTones[0];
+  const effectiveLength = lengthId === 'custom'
+    ? (parseInt(customLength) || 2500)
+    : (LENGTH_PRESETS.find(p => p.id === lengthId)?.chars || 2500);
+
+  const addTone = (cn) => {
+    const id = 'custom_' + Date.now();
+    const updated = [...customTones, { id, cn, en: cn, custom: true }];
+    setCustomTones(updated);
+    try { localStorage.setItem('atlas_custom_tones', JSON.stringify(updated)); } catch {}
+    setToneId(id);
+  };
+
+  const removeTone = (id) => {
+    const updated = customTones.filter(to => to.id !== id);
+    setCustomTones(updated);
+    try { localStorage.setItem('atlas_custom_tones', JSON.stringify(updated)); } catch {}
+    if (toneId === id) setToneId('analytical');
+  };
+
+  const toggleSource = (name) => {
+    setSelectedSources(prev => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  };
+
+  const addAttachment = (file) => {
+    const reader = new FileReader();
+    const isText = file.type.startsWith('text') || /\.(txt|md|csv|json|docx)$/i.test(file.name);
+    reader.onload = (e) => {
+      setAttachments(prev => [...prev, {
+        id: Date.now() + '_' + file.name,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        content: typeof e.target.result === 'string' ? e.target.result.slice(0, 8000) : '[binary]',
+      }]);
+    };
+    isText ? reader.readAsText(file) : reader.readAsDataURL(file);
+  };
+
+  const removeAttachment = (id) => setAttachments(prev => prev.filter(a => a.id !== id));
+
+  return {
+    selectedSources, toggleSource,
+    attachments, addAttachment, removeAttachment,
+    toneId, setToneId, allTones, currentTone, addTone, removeTone,
+    lengthId, setLengthId, customLength, setCustomLength, effectiveLength,
+  };
+}
+
+// ── ToolPopover (shared popover container) ────────────────────────────────
+function ToolPopover({ t, label, open, onOpen, onClose, children, width = 280 }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open, onClose]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div onClick={open ? onClose : onOpen} style={{
+        display: 'inline-flex', alignItems: 'center',
+        fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase',
+        padding: '3px 8px', border: `1px solid ${open ? t.ink : t.rule}`,
+        background: open ? t.ink : 'transparent',
+        color: open ? t.paper : t.ink,
+        cursor: 'pointer', userSelect: 'none', transition: 'all 0.12s',
+        whiteSpace: 'nowrap',
+      }}>
+        {label}
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, zIndex: 200,
+          width, background: t.cardOn, border: `1px solid ${t.ink}`,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+        }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SourcesPopover ────────────────────────────────────────────────────────
+function SourcesPopover({ t, store, onNavigateSources }) {
+  const [open, setOpen] = React.useState(false);
+  const [catFilter, setCatFilter] = React.useState('all');
+  const allSources = typeof SOURCES !== 'undefined' ? SOURCES : [];
+  const allCats = typeof SOURCE_CATEGORIES !== 'undefined' ? SOURCE_CATEGORIES : [];
+  const filtered = catFilter === 'all' ? allSources : allSources.filter(s => s.type === catFilter);
+  const count = store.selectedSources.size;
+
+  return (
+    <ToolPopover t={t} label={`＋ 数据源${count > 0 ? ` (${count})` : ''}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={320}>
+      <div style={{ padding: '6px 10px 6px', borderBottom: `1px solid ${t.rule}`, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {allCats.map(c => (
+          <button key={c.k} onClick={() => setCatFilter(c.k)} style={{
+            fontFamily: t.fontMono, fontSize: 8, letterSpacing: 0.8,
+            padding: '3px 7px', border: `1px solid ${catFilter === c.k ? t.ink : t.rule}`,
+            background: catFilter === c.k ? t.ink : 'transparent',
+            color: catFilter === c.k ? t.paper : t.mute,
+            cursor: 'pointer', transition: 'all 0.1s',
+          }}>{c.cn}</button>
+        ))}
+      </div>
+      <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+        {filtered.map(s => {
+          const checked = store.selectedSources.has(s.name);
+          return (
+            <div key={s.name} onClick={() => store.toggleSource(s.name)} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+              cursor: 'pointer', background: checked ? t.paperAlt : 'transparent',
+              borderBottom: `1px solid ${t.rule}`,
+            }}>
+              <div style={{
+                width: 11, height: 11, flexShrink: 0,
+                border: `1px solid ${checked ? t.accent : t.rule}`,
+                background: checked ? t.accent : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {checked && <span style={{ color: t.paper, fontSize: 8, lineHeight: 1 }}>✓</span>}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.name}
+                </div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 1 }}>{s.kind}</div>
+              </div>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: s.status === 'ok' ? '#5B8A6A' : '#C4844A' }}/>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ padding: '8px 12px' }}>
+        <button onClick={() => { setOpen(false); onNavigateSources?.(); }} style={{
+          width: '100%', padding: '6px 0', background: 'transparent',
+          border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9,
+          letterSpacing: 0.8, color: t.mute, cursor: 'pointer',
+        }}>管理全部数据源 →</button>
+      </div>
+    </ToolPopover>
+  );
+}
+
+// ── AttachmentsPopover ────────────────────────────────────────────────────
+function AttachmentsPopover({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const [dragOver, setDragOver] = React.useState(false);
+  const fileRef = React.useRef(null);
+  const count = store.attachments.length;
+  const handleFiles = (files) => Array.from(files).forEach(f => store.addAttachment(f));
+  const fmt = (b) => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB';
+
+  return (
+    <ToolPopover t={t} label={count > 0 ? `＋ 附件 (${count})` : '＋ 附件'}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={280}>
+      {count > 0 && (
+        <div style={{ borderBottom: `1px solid ${t.rule}` }}>
+          {store.attachments.map(a => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderBottom: `1px solid ${t.rule}` }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.paper, background: t.mute, padding: '1px 4px', flexShrink: 0 }}>
+                {a.name.split('.').pop().toUpperCase()}
+              </span>
+              <span style={{ flex: 1, fontFamily: t.fontCN, fontSize: 12, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {a.name}
+              </span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>{fmt(a.size)}</span>
+              <button onClick={(e) => { e.stopPropagation(); store.removeAttachment(a.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
+        onClick={() => fileRef.current?.click()}
+        style={{
+          margin: '10px 12px', padding: '18px 12px', textAlign: 'center', cursor: 'pointer',
+          border: `1px dashed ${dragOver ? t.ink : t.rule}`,
+          background: dragOver ? t.paperAlt : 'transparent', transition: 'all 0.15s',
+        }}
+      >
+        <input ref={fileRef} type="file" multiple accept=".pdf,.txt,.md,.csv,.docx,.json"
+          style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)}/>
+        <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.8 }}>拖拽文件或点击上传</div>
+        <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 4, opacity: 0.7 }}>PDF · TXT · CSV · DOCX · JSON</div>
+      </div>
+    </ToolPopover>
+  );
+}
+
+// ── TonePopover ───────────────────────────────────────────────────────────
+function TonePopover({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => { if (adding && inputRef.current) inputRef.current.focus(); }, [adding]);
+
+  const submit = () => {
+    if (draft.trim()) { store.addTone(draft.trim()); setDraft(''); setAdding(false); }
+  };
+
+  return (
+    <ToolPopover t={t} label={`语气 · ${store.currentTone?.cn || '分析性'}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => { setOpen(false); setAdding(false); setDraft(''); }} width={220}>
+      <div style={{ padding: '6px 0' }}>
+        {store.allTones.map(tone => {
+          const active = tone.id === store.toneId;
+          return (
+            <div key={tone.id} style={{
+              display: 'flex', alignItems: 'center', padding: '7px 12px',
+              cursor: 'pointer', background: active ? t.paperAlt : 'transparent',
+              borderBottom: `1px solid ${t.rule}`,
+            }}>
+              <div onClick={() => store.setToneId(tone.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                  border: `1px solid ${active ? t.ink : t.rule}`,
+                  background: active ? t.ink : 'transparent',
+                }}/>
+                <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{tone.cn}</span>
+                {!tone.custom && (
+                  <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginLeft: 'auto' }}>{tone.en}</span>
+                )}
+              </div>
+              {tone.custom && (
+                <button onClick={(e) => { e.stopPropagation(); store.removeTone(tone.id); }} style={{
+                  background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 12, padding: '0 2px', lineHeight: 1,
+                }}>×</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ padding: '8px 10px', borderTop: `1px solid ${t.rule}` }}>
+        {!adding ? (
+          <button onClick={() => setAdding(true)} style={{
+            width: '100%', padding: '5px 0', background: 'transparent',
+            border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9,
+            letterSpacing: 0.8, color: t.mute, cursor: 'pointer',
+          }}>＋ 新增语气</button>
+        ) : (
+          <div style={{ display: 'flex', gap: 5 }}>
+            <input ref={inputRef} value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { setAdding(false); setDraft(''); }}}
+              placeholder="如：批判性"
+              style={{ flex: 1, padding: '4px 7px', fontFamily: t.fontCN, fontSize: 12, border: `1px solid ${t.ink}`, background: t.cardOn, color: t.ink, outline: 'none' }}
+            />
+            <button disabled={!draft.trim()} onClick={submit} style={{
+              padding: '4px 10px', background: draft.trim() ? t.ink : t.rule, border: 'none',
+              fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.5, color: t.paper,
+              cursor: draft.trim() ? 'pointer' : 'not-allowed',
+            }}>确认</button>
+          </div>
+        )}
+      </div>
+    </ToolPopover>
+  );
+}
+
+// ── LengthPopover ─────────────────────────────────────────────────────────
+function LengthPopover({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const preset = LENGTH_PRESETS.find(p => p.id === store.lengthId);
+  const displayLen = store.lengthId === 'custom'
+    ? `${store.customLength || '?'} 字`
+    : `${(preset?.chars || 2500).toLocaleString()} 字`;
+
+  return (
+    <ToolPopover t={t} label={`长度 · ${displayLen}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={220}>
+      <div style={{ padding: '6px 0' }}>
+        {LENGTH_PRESETS.map(p => {
+          const active = store.lengthId === p.id;
+          return (
+            <div key={p.id} onClick={() => store.setLengthId(p.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px',
+              cursor: 'pointer', background: active ? t.paperAlt : 'transparent',
+              borderBottom: `1px solid ${t.rule}`,
+            }}>
+              <div style={{
+                width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                border: `1px solid ${active ? t.ink : t.rule}`,
+                background: active ? t.ink : 'transparent',
+              }}/>
+              <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{p.cn}</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 'auto' }}>
+                {p.chars.toLocaleString()} 字
+              </span>
+            </div>
+          );
+        })}
+        <div style={{ padding: '8px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <div onClick={() => store.setLengthId('custom')} style={{
+              width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+              border: `1px solid ${store.lengthId === 'custom' ? t.ink : t.rule}`,
+              background: store.lengthId === 'custom' ? t.ink : 'transparent',
+              cursor: 'pointer',
+            }}/>
+            <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>自定义</span>
+            <input type="number" min={100} max={10000}
+              value={store.customLength}
+              onChange={e => { store.setCustomLength(e.target.value); store.setLengthId('custom'); }}
+              placeholder="100–10000"
+              style={{
+                flex: 1, padding: '3px 6px', fontFamily: t.fontMono, fontSize: 11,
+                border: `1px solid ${t.rule}`, background: t.cardOn, color: t.ink, outline: 'none', minWidth: 0,
+              }}
+            />
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>字</span>
+          </div>
+        </div>
+      </div>
+    </ToolPopover>
+  );
+}
+
 // ── PromptComposer ──────────────────────────────────────────────────────
 
-function PromptComposer({ t, prompt, setPrompt, onStart, modelStore }) {
+function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStore, onNavigateSources }) {
   const charCount = prompt.length;
   const placeholder = '比如，"梳理一下 2025 年 Q1 咖啡赛道的融资动态…"';
   const taRef = React.useRef(null);
@@ -1635,10 +1994,21 @@ function PromptComposer({ t, prompt, setPrompt, onStart, modelStore }) {
         display: 'flex', alignItems: 'center', gap: 8, background: t.paperAlt,
         flexWrap: 'wrap',
       }}>
-        <Tag t={t}>＋ 数据源 (3)</Tag>
-        <Tag t={t}>＋ 附件</Tag>
-        <Tag t={t}>语气 · 分析</Tag>
-        <Tag t={t}>长度 · 2,500 字</Tag>
+        {toolbarStore ? (
+          <>
+            <SourcesPopover t={t} store={toolbarStore} onNavigateSources={onNavigateSources}/>
+            <AttachmentsPopover t={t} store={toolbarStore}/>
+            <TonePopover t={t} store={toolbarStore}/>
+            <LengthPopover t={t} store={toolbarStore}/>
+          </>
+        ) : (
+          <>
+            <Tag t={t}>＋ 数据源 (3)</Tag>
+            <Tag t={t}>＋ 附件</Tag>
+            <Tag t={t}>语气 · 分析性</Tag>
+            <Tag t={t}>长度 · 2,500 字</Tag>
+          </>
+        )}
         {modelStore && <ModelSelector t={t} store={modelStore}/>}
         <span style={{ flex: 1 }}/>
         <Btn t={t} size="sm"
@@ -1767,9 +2137,25 @@ async function streamReport({ model, prompt, onChunk, onDone, onError }) {
 }
 
 // ── Component -----------------------------------------------------------
-function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, density = 'editorial', modelStore }) {
+function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, density = 'editorial', modelStore, toolbarConfig }) {
   const selectedModel = modelStore?.selected;
   const isLiveMode = !!(selectedModel?.apiKey);
+
+  // Build enriched prompt for live mode (prepend tone/length/sources/attachments)
+  const effectivePrompt = React.useMemo(() => {
+    if (!toolbarConfig || !isLiveMode) return prompt;
+    const { tone, length, selectedSources, attachments } = toolbarConfig;
+    const directives = [];
+    if (tone?.cn) directives.push(`请以「${tone.cn}」风格撰写。`);
+    if (length) directives.push(`目标字数约 ${length} 字。`);
+    if (selectedSources?.size > 0) directives.push(`参考数据源：${[...selectedSources].join('、')}。`);
+    const attachText = attachments?.length > 0
+      ? '\n\n附件内容：\n' + attachments.map(a => `【${a.name}】\n${a.content}`).join('\n\n')
+      : '';
+    return directives.length > 0
+      ? directives.join(' ') + '\n\n' + prompt + attachText
+      : prompt + attachText;
+  }, [prompt, toolbarConfig, isLiveMode]);
 
   // ── LIVE MODE state ──────────────────────────────────────────────────
   const [liveText, setLiveText] = React.useState('');
@@ -1786,7 +2172,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
     }, 200);
     streamReport({
       model: selectedModel,
-      prompt,
+      prompt: effectivePrompt,
       onChunk: (chunk) => {
         setLiveStatus('streaming');
         setLiveText(prev => prev + chunk);
@@ -3146,6 +3532,7 @@ function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const t = essayTokens({ theme: tweaks.theme, accent: tweaks.accent });
   const modelStore = useModelStore();
+  const toolbarStore = useToolbarStore();
 
   const [route, setRoute] = React.useState('home');
   const [prompt, setPrompt] = React.useState(SAMPLE_FIRST_PROMPT);
@@ -3176,14 +3563,20 @@ function App() {
       <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
         {route === 'home' && (
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
-            onStart={goRun} density={tweaks.density} modelStore={modelStore}/>
+            onStart={goRun} density={tweaks.density} modelStore={modelStore}
+            toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}/>
         )}
         {route === 'running' && (
           <Running key={runKey} t={t} prompt={prompt}
             onDone={() => setRoute('report')}
             onTimelineComplete={() => setRunDone(true)}
             marginaliaOn={tweaks.marginalia} density={tweaks.density}
-            modelStore={modelStore}/>
+            modelStore={modelStore} toolbarConfig={{
+              tone: toolbarStore.currentTone,
+              length: toolbarStore.effectiveLength,
+              selectedSources: toolbarStore.selectedSources,
+              attachments: toolbarStore.attachments,
+            }}/>
         )}
         {route === 'report' && (
           <Report t={t} onExport={() => setShowExport(true)}
