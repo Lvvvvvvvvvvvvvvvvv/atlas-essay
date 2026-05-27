@@ -1034,6 +1034,44 @@ const STARTERS = [
     minutes: '8-12 min',
     tag: 'RESEARCH',
     prompt: '帮我调研「家用清洁机器人」这个赛道：玩家、价格带、用户怎么说，给出一份内部速记。',
+    reportData: {
+      meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '2,240', sources: 8, reading: '5 min', category: 'INDUSTRY · 行业研究', titleEn: 'Bots, brushes, and the bathroom.', titleCn: '机器人、刷头与浴室', subtitle: '家用清洁机器人赛道 2025 全景速记' },
+      metrics: [
+        { value: '¥312亿', en: 'MARKET', cn: '2025年市场规模', accent: false },
+        { value: '+29%',   en: 'YOY',    cn: '同比增长',       accent: true },
+        { value: '3层',    en: 'TIERS',  cn: '明显价格分层',   accent: false },
+        { value: '22%',    en: 'PENET',  cn: '家庭渗透率',     accent: false },
+      ],
+      sections: [
+        { id: 's1', num: '01', en: 'TL;DR', cn: '核心结论', blocks: [
+          { kind: 'lede', text: '扫地机器人不再是终点——清洁赛道正在从「一个产品」变成「一套系统」，谁能做到扫、拖、洗、烘一体，谁才真正拿到下一个增长周期的门票。' },
+          { kind: 'p', text: '2025 年国内家用清洁机器人市场预计突破 312 亿元§1，同比增长约 29%。但增速的背后，结构性分化已经出现：头部三家（石头、追觅、科沃斯）合计份额超过 73%，中腰部品牌正面临被清出市场的压力。' },
+          { kind: 'p', text: '用户不再为单一功能付费。小红书上的高互动帖子里，「全能基站」「自清洁」「热风烘干」是出现频率最高的三个词——这意味着产品定义权从「扫地」转移到了「免维护」。§2' },
+        ]},
+        { id: 's2', num: '02', en: 'The players', cn: '谁在场', blocks: [
+          { kind: 'p', text: '石头科技依然是技术端最被认可的玩家——S8 MaxV Ultra 的避障算法和自动倒尘被核心用户反复提及§3。追觅则在旗舰机型之外，把价格下探到 2,000–3,000 元区间，试图同时打高端和中高端。科沃斯的策略有所不同：它在「商用清洁」上加大投入，用 ToB 的稳定毛利补贴 ToC 的价格战。' },
+          { kind: 'quote', text: '这个品类现在的核心矛盾不是「扫不干净」，而是「用户不愿意自己洗拖布」——谁解决了这个问题，谁就赢了。', by: '某头部品牌产品总监 · 闭门沟通' },
+          { kind: 'p', text: '价格带上，8,000 元以上的旗舰区间是各家必争之地，因为这里的用户对品牌忠诚度高、口碑效应强、溢价空间充足。1,500 元以下则几乎成了白牌和代工品牌的残酷竞技场，毛利率普遍低于 12%§4。' },
+        ]},
+        { id: 's3', num: '03', en: 'What users say', cn: '用户在说什么', blocks: [
+          { kind: 'p', text: '分析 218 条小红书高互动内容后，几个结论浮出水面：「买了后悔」和「买了推荐」的比例几乎都在 30% 以上——说明品类的信息不对称问题依然严重。「噪音大」和「识图率差」是最高频的负面关键词，排在「清洁不干净」之前。' },
+          { kind: 'figure', label: 'Fig. 1 · 用户好评 / 差评关键词分布', caption: '数据来源：小红书讨论抓取 · 2025 Q1 218 条高互动内容' },
+          { kind: 'p', text: '租房群体是被低估的增量市场。这部分用户倾向于购买 2,000–3,500 元区间的产品——既不愿在「不属于自己的空间」投入太多，又真实需要清洁力。追觅和石头的子品牌都在悄悄开发针对这个群体的型号。§5' },
+        ]},
+        { id: 's4', num: '04', en: 'What to watch', cn: '接下来看什么', blocks: [
+          { kind: 'p', text: '两个值得持续追踪的信号：其一，全能基站的「养护服务」订阅化——石头今年开始试验「免维护套餐」，如果续费率超过 40%，意味着软件服务将成为新的利润层。其二，AI 视觉在家庭场景的落地速度，将直接决定下一代旗舰机型的定价权。' },
+          { kind: 'p', text: '海外市场是另一条没有被充分讨论的增长线——石头在欧洲的增速已连续三个季度超过 45%，价格还能比国内高 20–30%。追觅的东南亚布局刚刚起步，竞争格局远比国内宽松。§6' },
+        ]},
+      ],
+      refs: [
+        { n: '[1]', src: 'IDC', title: '2025 中国家用清洁机器人市场追踪', url: 'idc.com', date: '2025.03.15' },
+        { n: '[2]', src: '小红书', title: '清洁机器人用户讨论分析 · Q1', url: 'xiaohongshu.com', date: '2025.04.10' },
+        { n: '[3]', src: '36 氪', title: '石头科技产品策略深度解析', url: '36kr.com', date: '2025.03.28' },
+        { n: '[4]', src: '国信证券', title: '清洁电器行业深度报告', url: 'guosen.com.cn', date: '2025.02.28' },
+        { n: '[5]', src: '追觅科技', title: '2025 年品牌策略投资者说明', url: 'dreame.com', date: '2025.04.20' },
+        { n: '[6]', src: '石头科技', title: '2025 Q1 财报 & 海外业务说明', url: 'roborock.com', date: '2025.04.30' },
+      ],
+    },
   },
   {
     num: 'II.',
@@ -1043,6 +1081,40 @@ const STARTERS = [
     minutes: '5-8 min',
     tag: 'DATA',
     prompt: '附件是过去四个季度的门店销售数据，请按城市等级分群分析增长情况，输出 1,200 字。',
+    reportData: {
+      meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '1,380', sources: 4, reading: '3 min', category: 'DATA · 数据分析', titleEn: 'The stores that didn\'t blink.', titleCn: '没有眨眼的门店', subtitle: '过去四季度门店销售数据分群分析' },
+      metrics: [
+        { value: '+18%',    en: 'OVERALL', cn: '整体销售增长',   accent: false },
+        { value: '+34%',    en: 'TIER-1',  cn: '一线城市增速',   accent: true },
+        { value: '+3.2%',   en: 'TIER-3',  cn: '三四线城市增速', accent: false },
+        { value: 'Q4',      en: 'PEAK',    cn: '年度峰值季度',   accent: false },
+      ],
+      sections: [
+        { id: 's1', num: '01', en: 'TL;DR', cn: '核心结论', blocks: [
+          { kind: 'lede', text: '增长不是均匀分布的——一线城市的旗舰门店扛起了 62% 的总增量，三四线门店同比持平，事实上是在靠口碑存活。' },
+          { kind: 'p', text: '过去四个季度，公司整体销售额同比增长 18%§1。但拆开来看，北上广深旗舰店的增幅接近 34%，而三四线城市门店平均增速只有 3.2%——两类门店在同一张财报里共存，讲的却是完全不同的故事。' },
+          { kind: 'p', text: '新店效应是另一个影响因素。Q3 和 Q4 新开的 12 家门店贡献了整体增长的 21%——剥离新店后，老店的有机增长约在 14% 左右，这个数字其实相当健康。§2' },
+        ]},
+        { id: 's2', num: '02', en: 'City-tier breakdown', cn: '城市分层分析', blocks: [
+          { kind: 'p', text: '一线城市的门店单均产出最高，但增速的来源耐人寻味——不是客流增长，而是客单价提升。Q4 的客单价同比提升了 11.2%，主要由新品和组合套餐拉动。这说明一线用户的消费升级意愿仍然强烈，产品策略的边际效果好。§3' },
+          { kind: 'quote', text: '三四线门店最大的问题不是不赚钱，而是增长上限太低——本地客群基本盘稳固，但向上拓展的空间几乎没有。', by: '区域运营负责人 · 内部季度总结' },
+          { kind: 'p', text: '新一线城市（成都、杭州、武汉）是最值得重点关注的区域：增速 22%，介于一线和三四线之间，坪效和客单价的提升空间仍然充足。Q1 有两家新一线门店的月均销售额首次超过了某些一线旗舰店。' },
+        ]},
+        { id: 's3', num: '03', en: 'Seasonality', cn: '季节性规律', blocks: [
+          { kind: 'figure', label: 'Fig. 1 · 四季度销售趋势（按城市等级分组）', caption: '数据来源：内部销售数据库 · 近 16 个月滚动统计' },
+          { kind: 'p', text: 'Q4 是毫无疑义的峰值季度——所有城市等级的门店都表现正增长。但值得注意的是，Q1 的同比下滑幅度在缩小——去年 Q1 同比下滑了 8%，今年只有 3.1%，说明春节后的淡季效应正在弱化。§4' },
+        ]},
+        { id: 's4', num: '04', en: 'Recommendations', cn: '建议与行动项', blocks: [
+          { kind: 'p', text: '三条行动建议：第一，把新一线城市验证成功的产品组合策略迅速复制到其他城市；第二，三四线门店增加本地爆款和区域限定策略，减少统一 SKU 投放；第三，Q1 淡季效应减弱是积极信号，建议提前锁定 Q1 促销资源，争取连续两年缩小淡季缺口。' },
+        ]},
+      ],
+      refs: [
+        { n: '[1]', src: '内部数据库', title: '2024Q2–2025Q1 门店销售汇总', url: 'internal', date: '2025.04.30' },
+        { n: '[2]', src: '内部数据库', title: '新店 vs 老店增长对照分析', url: 'internal', date: '2025.04.30' },
+        { n: '[3]', src: '内部数据库', title: '客单价趋势及品类贡献报告', url: 'internal', date: '2025.04.30' },
+        { n: '[4]', src: '内部数据库', title: '季节性调整模型 · 月度滚动', url: 'internal', date: '2025.04.30' },
+      ],
+    },
   },
   {
     num: 'III.',
@@ -1052,6 +1124,35 @@ const STARTERS = [
     minutes: '2-4 min',
     tag: 'INTERNAL',
     prompt: '帮我写上周的工作周报，重点说三件事：客户 A 的合作进展、上线的两个功能、本周遇到的问题。',
+    reportData: {
+      meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '980', sources: 3, reading: '2 min', category: 'INTERNAL · 内部报告', titleEn: 'Seven days. Three wins.', titleCn: '七天，三件事', subtitle: '本周工作总结与关键进展' },
+      metrics: [
+        { value: '3',    en: 'WINS',     cn: '重要进展', accent: true },
+        { value: '2',    en: 'FEATURES', cn: '功能上线', accent: false },
+        { value: '1',    en: 'BLOCKER',  cn: '待解决问题', accent: false },
+        { value: '下周一', en: 'NEXT',   cn: '关键节点', accent: false },
+      ],
+      sections: [
+        { id: 's1', num: '01', en: 'This week', cn: '本周进展', blocks: [
+          { kind: 'lede', text: '本周最大的突破不是产品——而是客户 A 终于松口，愿意进入合同审核阶段。这件事拖了六周，现在看到了终点。' },
+          { kind: 'p', text: '客户 A 合作进展：经过周三第 4 次沟通，对方采购负责人确认将合同提交法务部审核，预计 5 个工作日内反馈。双方在账期上仍有小分歧（我们希望 30 天，对方倾向 45 天），这一点在合同审核阶段还需要再谈。§1' },
+          { kind: 'p', text: '上线功能：本周完成了两个功能的灰度发布。第一个是报告导出功能（PDF / 图片），已在 200 名内测用户中开放，首日导出次数超预期 40%。第二个是数据源自动同步，连接了三个主要 API，目前运行稳定。§2' },
+        ]},
+        { id: 's2', num: '02', en: 'The problem', cn: '本周遇到的问题', blocks: [
+          { kind: 'p', text: '服务器在周四凌晨出现约 23 分钟的异常波动，影响了约 340 名用户的正常使用。原因已定位：数据源同步功能上线后，并发处理的队列配置有误，导致部分请求超时。技术团队已当天修复并优化了队列参数。' },
+          { kind: 'quote', text: '这次的问题不是偶发，是配置没有经过充分压测就上线了——下次新功能上线前，压测必须作为硬性门槛。', by: 'CTO · 周五内部复盘' },
+          { kind: 'p', text: '340 名受影响用户中，有 17 名通过客服渠道反馈了问题，已全部得到及时回复和补偿方案（延长会员 7 天）。受影响的企业客户中，无人提出合同层面的追责。§3' },
+        ]},
+        { id: 's3', num: '03', en: 'Next week', cn: '下周计划', blocks: [
+          { kind: 'p', text: '下周三件事：第一，跟进客户 A 合同，务必在周三前拿到法务反馈；第二，报告导出功能全量开放，同时启动「分享链接」功能的开发排期；第三，针对本周的服务器问题，完善压测流程并输出文档，下周五前提交技术委员会审阅。' },
+        ]},
+      ],
+      refs: [
+        { n: '[1]', src: 'CRM', title: '客户 A 沟通记录 · 本周', url: 'internal', date: '2025.05.21' },
+        { n: '[2]', src: '产品日志', title: 'v2.3.1 & v2.3.2 上线记录', url: 'internal', date: '2025.05.20' },
+        { n: '[3]', src: '客服系统', title: '周四故障用户反馈汇总', url: 'internal', date: '2025.05.22' },
+      ],
+    },
   },
   {
     num: 'IV.',
@@ -1061,10 +1162,47 @@ const STARTERS = [
     minutes: '10-15 min',
     tag: 'RESEARCH',
     prompt: '把 Notion AI 和 ChatGPT for Teams 拆一下对比，从产品功能、定价、用户口碑、增长四方面，输出 2,000 字。',
+    reportData: {
+      meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '2,180', sources: 6, reading: '5 min', category: 'RESEARCH · 竞品研究', titleEn: 'The AI assistant wars, enterprise edition.', titleCn: 'AI 助手企业战', subtitle: 'Notion AI 与 ChatGPT for Teams 深度对比' },
+      metrics: [
+        { value: '$16/月', en: 'NOTION', cn: 'Notion AI 单席位', accent: false },
+        { value: '$25/月', en: 'TEAMS',  cn: 'ChatGPT Teams 单席位', accent: false },
+        { value: '文档流',  en: 'EDGE-N', cn: 'Notion AI 优势场景', accent: true },
+        { value: '对话流',  en: 'EDGE-C', cn: 'ChatGPT 优势场景', accent: false },
+      ],
+      sections: [
+        { id: 's1', num: '01', en: 'TL;DR', cn: '核心结论', blocks: [
+          { kind: 'lede', text: '这不是一场功能对比——而是两种完全不同的工作流哲学之间的碰撞。Notion AI 假设你的工作在文档里，ChatGPT for Teams 假设你的工作在对话里。' },
+          { kind: 'p', text: 'Notion AI 在文档处理、知识库问答和团队协作上有明显优势，特别是对于「写作密集型」团队（咨询、内容、法务、产品），ROI 更高。ChatGPT Teams 在代码辅助、即兴创作和多模态理解上更强，但它的「无状态对话」模式反而让很多用户觉得更自由。§1' },
+          { kind: 'p', text: '定价上，Notion AI 单席位 $16/月（需搭配 Notion 订阅），ChatGPT Teams 单席位 $25/月。综合 TCO 来看两者相差不大，关键在于团队现有工作流与哪个产品更契合。§2' },
+        ]},
+        { id: 's2', num: '02', en: 'Product features', cn: '产品功能', blocks: [
+          { kind: 'p', text: 'Notion AI 的核心竞争力在于「上下文感知」——它能直接引用你工作区里的文档、数据库和页面历史，回答质量和你积累的 Notion 内容强相关。这对于已经重度使用 Notion 的团队是显著优势，对于新用户则是一个陡峭的前提成本。§3' },
+          { kind: 'quote', text: '我们团队用 Notion AI 写周报只需要 10 分钟，因为它能直接拉上周的会议记录——但前提是我们已经把所有会议记录都存在 Notion 里了。', by: '某科技公司 PMO · 用户访谈' },
+          { kind: 'p', text: 'ChatGPT Teams 则更像「高级搜索 + 创作助手」的组合。它的优势在于模型能力本身——GPT-4o 在创意写作、代码生成和多语言理解上仍然是行业基准。团队版在此基础上增加了数据隔离、自定义 GPT 和更高的 token 上限。' },
+        ]},
+        { id: 's3', num: '03', en: 'User feedback', cn: '用户口碑', blocks: [
+          { kind: 'figure', label: 'Fig. 1 · G2 & Capterra 用户评分对比（满分 5 分）', caption: '数据来源：G2 · Capterra · 截至 2025 年 5 月，各取最近 200 条评价' },
+          { kind: 'p', text: 'G2 上 Notion AI 均分 4.4，ChatGPT Teams 均分 4.6。差距来自不同的负面反馈：Notion AI 的差评集中在「学习成本高」和「非 Notion 用户难以入门」，ChatGPT 的差评集中在「幻觉率偏高」和「价格贵」。两者的满意度在各自核心用户群里都很高。§4' },
+        ]},
+        { id: 's4', num: '04', en: 'Recommendation', cn: '选择建议', blocks: [
+          { kind: 'p', text: '选谁取决于你的团队现有工作流：如果团队已经在 Notion 上运转，选 Notion AI；如果需要一个独立的 AI 工作台、或者团队里有大量技术工作，ChatGPT Teams 的综合能力更强。两者都不建议作为「彻底替代人力」的工具，更适合做「加速器」。' },
+          { kind: 'p', text: '一个值得关注的变量：微软 Copilot 正在快速迭代，它在 Office 生态里的整合优势是 Notion 和 OpenAI 都很难复制的。如果你的公司重度依赖 Office 365，Copilot 可能才是最值得评测的选项。§5' },
+        ]},
+      ],
+      refs: [
+        { n: '[1]', src: 'Notion', title: 'Notion AI 产品功能页', url: 'notion.so/product/ai', date: '2025.05.01' },
+        { n: '[2]', src: 'OpenAI', title: 'ChatGPT for Teams 定价页', url: 'openai.com/chatgpt/team', date: '2025.05.01' },
+        { n: '[3]', src: 'G2', title: 'Notion AI 用户评价 · 2025 Q2', url: 'g2.com', date: '2025.05.10' },
+        { n: '[4]', src: 'Capterra', title: 'ChatGPT Teams 用户评价汇总', url: 'capterra.com', date: '2025.05.12' },
+        { n: '[5]', src: '36 氪', title: 'Microsoft Copilot 企业端进展', url: '36kr.com', date: '2025.04.22' },
+        { n: '[6]', src: '行业访谈', title: '6 位企业 IT 负责人工具评估访谈', url: 'internal', date: '2025.05.15' },
+      ],
+    },
   },
 ];
 
-function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
+function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources, onStarterClick }) {
   const editorial = density === 'editorial';
   const headSize = editorial ? 'xxl' : 'xl';
   const [now] = React.useState(() => new Date());
@@ -1155,7 +1293,7 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
             {STARTERS.map((s, i) => (
               <button key={s.num}
                 type="button"
-                onClick={() => setPrompt(s.prompt)}
+                onClick={() => s.reportData && onStarterClick ? onStarterClick(s) : setPrompt(s.prompt)}
                 style={{
                   borderRight: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
                   background: t.paper, padding: '18px 22px', textAlign: 'left',
@@ -2551,26 +2689,31 @@ const REPORT_REFS = [
   { n: '[4]', src: '行业访谈', title: '5 位早期投资人匿名访谈',       url: 'internal',   date: '2025.04.10' },
 ];
 
-function Report({ t, onExport, marginaliaOn = true, density = 'editorial' }) {
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
 
-  // Scroll-spy: as user scrolls, highlight current section in left rail
+  // Data: use reportData prop if provided, else fall back to static constants
+  const isStatic     = !reportData;
+  const rMeta        = reportData?.meta     || REPORT_META;
+  const rMetrics     = reportData?.metrics  || REPORT_METRICS;
+  const rSections    = reportData?.sections || REPORT_SECTIONS;
+  const rRefs        = reportData?.refs     || REPORT_REFS;
+
+  // Scroll-spy
   React.useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
     const handler = () => {
-      const headings = REPORT_SECTIONS.map(s => ({ id: s.id, el: root.querySelector(`[data-sec="${s.id}"]`) }));
+      const headings = rSections.map(s => ({ id: s.id, el: root.querySelector(`[data-sec="${s.id}"]`) }));
       const top = root.scrollTop + 120;
-      let current = headings[0].id;
-      for (const h of headings) {
-        if (h.el && h.el.offsetTop <= top) current = h.id;
-      }
+      let current = headings[0]?.id;
+      for (const h of headings) { if (h.el && h.el.offsetTop <= top) current = h.id; }
       setActiveSec(current);
     };
     root.addEventListener('scroll', handler);
     return () => root.removeEventListener('scroll', handler);
-  }, []);
+  }, [rSections]);
 
   const editorial = density === 'editorial';
   const bodyCols = editorial
@@ -2585,13 +2728,10 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial' }) {
   return (
     <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       {/* Report header bar */}
-      <div style={{
-        padding: '12px 36px', borderBottom: `1px solid ${t.rule}`,
-        display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, background: t.paper,
-      }}>
-        <Tag t={t} accent>◆ {REPORT_META.issue} · DONE</Tag>
+      <div style={{ padding: '12px 36px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, background: t.paper }}>
+        <Tag t={t} accent>◆ {rMeta.issue || REPORT_META.issue} · DONE</Tag>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
-          {REPORT_META.words} 字 · {REPORT_META.sources} 来源 · {REPORT_META.reading}阅读
+          {rMeta.words} 字 · {rMeta.sources} 来源 · {rMeta.reading} 阅读
         </span>
         <span style={{ flex: 1 }}/>
         <Btn t={t} size="sm">▸ 重跑</Btn>
@@ -2600,28 +2740,20 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial' }) {
       </div>
 
       {/* Scrollable body */}
-      <div ref={containerRef} style={{
-        flex: 1, minHeight: 0, overflow: 'auto',
-        display: 'grid', gridTemplateColumns: bodyCols,
-      }}>
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: bodyCols }}>
         {/* Left rail: section index */}
-        <aside style={{
-          padding: '40px 20px 40px 32px', position: 'sticky', top: 0, alignSelf: 'start',
-        }}>
+        <aside style={{ padding: '40px 20px 40px 32px', position: 'sticky', top: 0, alignSelf: 'start' }}>
           <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, marginBottom: 14 }}>
             CONTENTS · 目录
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {REPORT_SECTIONS.map(s => (
-              <button key={s.id}
-                type="button"
-                onClick={() => scrollTo(s.id)}
-                style={{
-                  display: 'block', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
-                  padding: '10px 0 10px 10px',
-                  borderLeft: activeSec === s.id ? `3px solid ${t.accent}` : `3px solid transparent`,
-                  fontFamily: t.fontBody, color: t.ink,
-                }}>
+            {rSections.map(s => (
+              <button key={s.id} type="button" onClick={() => scrollTo(s.id)} style={{
+                display: 'block', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
+                padding: '10px 0 10px 10px',
+                borderLeft: activeSec === s.id ? `3px solid ${t.accent}` : `3px solid transparent`,
+                fontFamily: t.fontBody, color: t.ink,
+              }}>
                 <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.5 }}>{s.num}</div>
                 <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 }}>{s.en}</div>
                 <div style={{ fontFamily: t.fontCN, fontSize: 12, color: activeSec === s.id ? t.ink : t.mute, marginTop: 1 }}>{s.cn}</div>
@@ -2638,55 +2770,51 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial' }) {
           {/* Title block */}
           <header style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
-              <Tag t={t}>◆ {REPORT_META.category}</Tag>
-              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{REPORT_META.date}</span>
+              <Tag t={t}>◆ {rMeta.category || REPORT_META.category}</Tag>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{rMeta.date || REPORT_META.date}</span>
               <span style={{ flex: 1, height: 1, background: t.rule }}/>
-              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>by ATLAS · 04:07–07:42</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>by ATLAS</span>
             </div>
-            <div style={{
-              fontFamily: t.fontDisplay, fontWeight: 900,
-              fontSize: editorial ? 64 : 52, lineHeight: 0.95, letterSpacing: -2,
-              color: t.ink,
-            }}>
-              Cold brew,<br/>
-              <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>hotter</span> capital.
-            </div>
-            <div style={{
-              fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 26 : 22,
-              lineHeight: 1.3, color: t.inkSoft,
-            }}>
-              2025 Q1 国内咖啡赛道融资速记。从 Manner 的新一轮，到下沉市场的快速展店。
-            </div>
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0,
-              borderTop: `2px solid ${t.ink}`, borderBottom: `1px solid ${t.ink}`,
-              paddingTop: 16, paddingBottom: 16, marginTop: 4,
-            }}>
-              {REPORT_METRICS.map((m, i) => (
-                <div key={m.en} style={{
-                  paddingLeft: i === 0 ? 0 : 18,
-                  borderLeft: i === 0 ? 'none' : `1px solid ${t.rule}`,
-                }}>
+
+            {/* Headline: static version preserves italic word; dynamic version is plain bold */}
+            {isStatic ? (
+              <>
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: editorial ? 64 : 52, lineHeight: 0.95, letterSpacing: -2, color: t.ink }}>
+                  Cold brew,<br/>
+                  <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>hotter</span> capital.
+                </div>
+                <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 26 : 22, lineHeight: 1.3, color: t.inkSoft }}>
+                  2025 Q1 国内咖啡赛道融资速记。从 Manner 的新一轮，到下沉市场的快速展店。
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: editorial ? 60 : 46, lineHeight: 0.94, letterSpacing: -2, color: t.ink }}>
+                  {rMeta.titleEn || ''}
+                </div>
+                <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 26 : 20, lineHeight: 1.3, color: t.inkSoft }}>
+                  {rMeta.subtitle || rMeta.titleCn || ''}
+                </div>
+              </>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0, borderTop: `2px solid ${t.ink}`, borderBottom: `1px solid ${t.ink}`, paddingTop: 16, paddingBottom: 16, marginTop: 4 }}>
+              {rMetrics.map((m, i) => (
+                <div key={m.en} style={{ paddingLeft: i === 0 ? 0 : 18, borderLeft: i === 0 ? 'none' : `1px solid ${t.rule}` }}>
                   <Metric {...m} t={t}/>
                 </div>
               ))}
             </div>
           </header>
 
-          {REPORT_SECTIONS.map(s => (
-            <section key={s.id} data-sec={s.id} style={{
-              display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 24, scrollMarginTop: 80,
-            }}>
+          {rSections.map(s => (
+            <section key={s.id} data-sec={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 24, scrollMarginTop: 80 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, borderTop: `2px solid ${t.ink}`, paddingTop: 10 }}>
                 <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.accent, letterSpacing: 0.5 }}>§ {s.num}</span>
                 <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 16, letterSpacing: 1.4, textTransform: 'uppercase' }}>{s.en}</span>
                 <span style={{ fontFamily: t.fontCN, fontSize: 16, fontWeight: 700, color: t.inkSoft }}>· {s.cn}</span>
               </div>
-              <div style={{
-                fontFamily: t.fontCN, fontSize: editorial ? 16 : 15,
-                lineHeight: 1.85, color: t.inkSoft,
-                display: 'flex', flexDirection: 'column', gap: 16,
-              }}>
+              <div style={{ fontFamily: t.fontCN, fontSize: editorial ? 16 : 15, lineHeight: 1.85, color: t.inkSoft, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {s.blocks.map((b, i) => <ReportBlock key={i} block={b} t={t}/>)}
               </div>
             </section>
@@ -2720,10 +2848,10 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial' }) {
         {marginaliaOn && (
           <aside style={{ padding: '32px 0 32px 24px', borderLeft: `1px dashed ${t.rule}` }}>
             <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, marginBottom: 14 }}>
-              REFERENCES · 引用 ({REPORT_REFS.length})
+              REFERENCES · 引用 ({rRefs.length})
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {REPORT_REFS.map((r, i) => (
+              {rRefs.map((r, i) => (
                 <div key={r.n} style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 12, borderBottom: `1px dashed ${t.rule}` }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                     <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, fontWeight: 700 }}>{r.n}</span>
@@ -3566,10 +3694,12 @@ function App() {
   const [route, setRoute] = React.useState('home');
   const [prompt, setPrompt] = React.useState(SAMPLE_FIRST_PROMPT);
   const [showExport, setShowExport] = React.useState(false);
-  const [runKey, setRunKey] = React.useState(0); // remounts Running to restart
+  const [runKey, setRunKey] = React.useState(0);
   const [runDone, setRunDone] = React.useState(false);
+  const [starterReport, setStarterReport] = React.useState(null);
 
-  const goRun = () => { setRunKey(k => k + 1); setRunDone(false); setRoute('running'); };
+  const goRun = () => { setStarterReport(null); setRunKey(k => k + 1); setRunDone(false); setRoute('running'); };
+  const openStarterReport = (starter) => { setStarterReport(starter.reportData); setRoute('report'); };
 
   const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
 
@@ -3593,7 +3723,8 @@ function App() {
         {route === 'home' && (
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
             onStart={goRun} density={tweaks.density} modelStore={modelStore}
-            toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}/>
+            toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}
+            onStarterClick={openStarterReport}/>
         )}
         {route === 'running' && (
           <Running key={runKey} t={t} prompt={prompt}
@@ -3609,10 +3740,11 @@ function App() {
         )}
         {route === 'report' && (
           <Report t={t} onExport={() => setShowExport(true)}
-            marginaliaOn={tweaks.marginalia} density={tweaks.density}/>
+            marginaliaOn={tweaks.marginalia} density={tweaks.density}
+            reportData={starterReport}/>
         )}
         {route === 'library' && (
-          <Library t={t} onOpen={() => setRoute('report')}/>
+          <Library t={t} onOpen={() => { setStarterReport(null); setRoute('report'); }}/>
         )}
         {route === 'sources' && <Sources t={t}/>}
         {showExport && <ExportModal t={t} onClose={() => setShowExport(false)}/>}
