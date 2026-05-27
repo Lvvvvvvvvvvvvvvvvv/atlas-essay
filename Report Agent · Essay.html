@@ -735,7 +735,7 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks,
 }
 
 // ── UserMenu helpers ────────────────────────────────────────────────────────
-function _MenuRow({ t, icon, label, sub, open, onClick, danger }) {
+function MenuRowItem({ t, icon, label, sub, open, onClick, danger }) {
   return (
     <div onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px',
@@ -757,7 +757,7 @@ function _MenuRow({ t, icon, label, sub, open, onClick, danger }) {
   );
 }
 
-function _ProfilePanel({ t, profile, onSave }) {
+function ProfilePanel({ t, profile, onSave }) {
   const [name, setName] = React.useState(profile.displayName || '');
   const [email, setEmail] = React.useState(profile.email || '');
   const fileRef = React.useRef(null);
@@ -806,7 +806,7 @@ function _ProfilePanel({ t, profile, onSave }) {
   );
 }
 
-function _ModelAdvancedPanel({ t, modelStore }) {
+function ModelAdvPanel({ t, modelStore }) {
   const [temp, setTemp] = React.useState(modelStore.temperature ?? 0.7);
   const [sysExtra, setSysExtra] = React.useState(modelStore.systemPromptExtra || '');
 
@@ -923,7 +923,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
           {/* Menu body */}
           <div style={{ padding: '4px 0' }}>
             {/* 外观偏好 */}
-            <_MenuRow t={t} icon="🎨" label="外观偏好"
+            <MenuRowItem t={t} icon="🎨" label="外观偏好"
               sub={`${tweaks.theme === 'cream' ? '浅色' : '深色'} · ${tweaks.accent}`}
               open={section === 'appearance'}
               onClick={() => toggleSection('appearance')}/>
@@ -974,29 +974,29 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
             )}
 
             {/* 模型高级设置 */}
-            <_MenuRow t={t} icon="🤖" label="模型高级设置"
+            <MenuRowItem t={t} icon="🤖" label="模型高级设置"
               sub={`Temp ${(modelStore?.temperature ?? 0.7).toFixed(1)} · ${modelStore?.selected?.name || '未选择'}`}
               open={section === 'model'}
               onClick={() => toggleSection('model')}/>
             {section === 'model' && modelStore && (
-              <_ModelAdvancedPanel t={t} modelStore={modelStore}/>
+              <ModelAdvPanel t={t} modelStore={modelStore}/>
             )}
 
             <div style={{ height: 1, background: t.rule, margin: '4px 0' }}/>
 
             {/* 编辑资料 */}
-            <_MenuRow t={t} icon="✏️" label="编辑资料"
+            <MenuRowItem t={t} icon="✏️" label="编辑资料"
               sub={profile.displayName || 'Atlas User'}
               open={section === 'profile'}
               onClick={() => toggleSection('profile')}/>
             {section === 'profile' && (
-              <_ProfilePanel t={t} profile={profile} onSave={saveProfile}/>
+              <ProfilePanel t={t} profile={profile} onSave={saveProfile}/>
             )}
 
             <div style={{ height: 1, background: t.rule, margin: '4px 0' }}/>
 
             {/* 导出全部报告 */}
-            <_MenuRow t={t} icon="📦" label="导出全部报告" sub="JSON 格式打包下载"
+            <MenuRowItem t={t} icon="📦" label="导出全部报告" sub="JSON 格式打包下载"
               onClick={() => {
                 const data = localStorage.getItem('atlas_saved_reports') || '[]';
                 const blob = new Blob([data], { type: 'application/json' });
@@ -1008,7 +1008,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
               }}/>
 
             {/* 清除本地数据 */}
-            <_MenuRow t={t} icon="🗑️" label="清除本地数据" sub="清空报告库、设置和缓存" danger
+            <MenuRowItem t={t} icon="🗑️" label="清除本地数据" sub="清空报告库、设置和缓存" danger
               onClick={() => {
                 if (window.confirm('确认清除所有本地数据？此操作不可撤销。')) {
                   ['atlas_saved_reports','atlas_custom_models','atlas_builtin_keys','atlas_builtin_urls',
