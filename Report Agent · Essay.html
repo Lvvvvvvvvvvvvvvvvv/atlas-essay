@@ -1197,16 +1197,21 @@ function useModelStore() {
   const [selectedId, setSelectedId] = React.useState(
     () => localStorage.getItem('atlas_selected_model') || 'claude-sonnet-4-6'
   );
-  // API keys for builtin models that need them (keyed by model id)
+  // API keys + custom URLs for builtin models (keyed by model id)
   const [builtinKeys, setBuiltinKeys] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('atlas_builtin_keys') || '{}'); } catch { return {}; }
+  });
+  const [builtinUrls, setBuiltinUrls] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_builtin_urls') || '{}'); } catch { return {}; }
   });
   const [effort, setEffort] = React.useState('High');
   const [fastMode, setFastMode] = React.useState(false);
 
-  // Merge builtin keys into allModels
+  // Merge builtin keys + custom URLs into allModels
   const allModels = [
-    ...BUILTIN_MODELS.map(m => m.needsKey ? { ...m, apiKey: builtinKeys[m.id] || '' } : m),
+    ...BUILTIN_MODELS.map(m => m.needsKey
+      ? { ...m, apiKey: builtinKeys[m.id] || '', apiUrl: builtinUrls[m.id] || m.apiUrl }
+      : m),
     ...customModels,
   ];
   const selected = allModels.find(m => m.id === selectedId) || allModels[1];
@@ -1215,10 +1220,15 @@ function useModelStore() {
     setSelectedId(id);
     try { localStorage.setItem('atlas_selected_model', id); } catch {}
   };
-  const setBuiltinKey = (id, key) => {
-    const updated = { ...builtinKeys, [id]: key };
-    setBuiltinKeys(updated);
-    try { localStorage.setItem('atlas_builtin_keys', JSON.stringify(updated)); } catch {}
+  const setBuiltinKey = (id, key, url) => {
+    const updatedKeys = { ...builtinKeys, [id]: key };
+    setBuiltinKeys(updatedKeys);
+    try { localStorage.setItem('atlas_builtin_keys', JSON.stringify(updatedKeys)); } catch {}
+    if (url !== undefined) {
+      const updatedUrls = { ...builtinUrls, [id]: url };
+      setBuiltinUrls(updatedUrls);
+      try { localStorage.setItem('atlas_builtin_urls', JSON.stringify(updatedUrls)); } catch {}
+    }
   };
   const addModel = (model) => {
     const updated = [...customModels, model];
@@ -1367,16 +1377,44 @@ function ModelSelector({ t, store }) {
   );
 }
 
+const MIMO_ENDPOINTS = [
+  { label: '国际（按量付费）', url: 'https://api.xiaomimimo.com/v1' },
+  { label: '中国区（Token 套餐）', url: 'https://token-plan-cn.xiaomimimo.com/v1' },
+];
+
 function ModelRow({ model, t, selected, onSelect, onRemove, onSetKey }) {
   const [hover, setHover] = React.useState(false);
   const [editingKey, setEditingKey] = React.useState(false);
   const [keyDraft, setKeyDraft] = React.useState(model.apiKey || '');
+  const [urlDraft, setUrlDraft] = React.useState(model.apiUrl || '');
+  const [showKey, setShowKey] = React.useState(false);
   const hasKey = !!(model.apiKey);
   const needsKey = model.needsKey;
+  const isMimo = model.id && model.id.startsWith('mimo');
+
+  const openEdit = (e) => {
+    e.stopPropagation();
+    setEditingKey(v => !v);
+    setKeyDraft(model.apiKey || '');
+    setUrlDraft(model.apiUrl || '');
+    setShowKey(false);
+  };
+
+  const save = () => {
+    onSetKey(model.id, keyDraft, urlDraft);
+    setEditingKey(false);
+  };
+
+  const inputStyle = {
+    flex: 1, padding: '5px 8px', border: `1px solid ${t.rule}`,
+    background: t.paper, color: t.ink, fontFamily: t.fontMono, fontSize: 11, outline: 'none',
+    width: '100%', boxSizing: 'border-box',
+  };
 
   return (
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{ borderBottom: `1px solid ${t.faint}` }}>
+      {/* Row */}
       <div onClick={onSelect} style={{
         display: 'flex', alignItems: 'center', padding: '7px 14px',
         cursor: 'pointer', background: hover ? t.faint : 'transparent',
@@ -1386,9 +1424,11 @@ function ModelRow({ model, t, selected, onSelect, onRemove, onSetKey }) {
         </span>
         <span style={{ flex: 1, fontFamily: t.fontBody, fontSize: 13, color: t.ink }}>{model.name}</span>
         {needsKey && (
-          <span onClick={e => { e.stopPropagation(); setEditingKey(v => !v); setKeyDraft(model.apiKey || ''); }}
-            style={{ fontFamily: t.fontMono, fontSize: 9, color: hasKey ? '#10b981' : t.accent,
-              letterSpacing: 0.8, cursor: 'pointer', marginRight: 6, textDecoration: 'underline' }}>
+          <span onClick={openEdit} style={{
+            fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, cursor: 'pointer',
+            marginRight: 6, textDecoration: 'underline',
+            color: hasKey ? '#10b981' : t.accent,
+          }}>
             {hasKey ? 'KEY ✓' : 'SET KEY'}
           </span>
         )}
@@ -1400,22 +1440,70 @@ function ModelRow({ model, t, selected, onSelect, onRemove, onSetKey }) {
           }}>✕</button>
         )}
       </div>
+
+      {/* Edit panel */}
       {editingKey && needsKey && (
         <div onClick={e => e.stopPropagation()} style={{
-          padding: '6px 14px 10px 30px', background: t.paperAlt,
-          display: 'flex', flexDirection: 'column', gap: 6,
+          padding: '8px 14px 12px 14px', background: t.paperAlt,
+          display: 'flex', flexDirection: 'column', gap: 8,
+          borderTop: `1px dashed ${t.rule}`,
         }}>
-          <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>
-            API KEY · {model.apiUrl}
-          </span>
+          {/* API URL */}
+          <div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1, marginBottom: 4 }}>
+              API BASE URL
+            </div>
+            {/* MiMo quick-select */}
+            {isMimo && (
+              <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                {MIMO_ENDPOINTS.map(ep => (
+                  <button key={ep.url} type="button" onClick={() => setUrlDraft(ep.url)} style={{
+                    padding: '3px 8px', fontSize: 9, fontFamily: t.fontMono,
+                    border: `1px solid ${urlDraft === ep.url ? t.ink : t.rule}`,
+                    background: urlDraft === ep.url ? t.ink : 'transparent',
+                    color: urlDraft === ep.url ? t.paper : t.mute,
+                    cursor: 'pointer', letterSpacing: 0.5, whiteSpace: 'nowrap',
+                  }}>{ep.label}</button>
+                ))}
+              </div>
+            )}
+            <input value={urlDraft} onChange={e => setUrlDraft(e.target.value)}
+              style={inputStyle} placeholder="https://api.example.com/v1"/>
+          </div>
+
+          {/* API Key */}
+          <div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1, marginBottom: 4 }}>
+              API KEY
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <input type={showKey ? 'text' : 'password'} value={keyDraft}
+                  onChange={e => setKeyDraft(e.target.value)}
+                  placeholder="粘贴你的 API Key"
+                  style={{ ...inputStyle, paddingRight: 42 }}/>
+                <button type="button" onClick={() => setShowKey(s => !s)} style={{
+                  position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 0.5,
+                }}>{showKey ? 'HIDE' : 'SHOW'}</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
           <div style={{ display: 'flex', gap: 6 }}>
-            <input type="password" value={keyDraft} onChange={e => setKeyDraft(e.target.value)}
-              placeholder="sk-... 或 your-api-key"
-              style={{ flex: 1, padding: '5px 8px', border: `1px solid ${t.rule}`,
-                background: t.paper, color: t.ink, fontFamily: t.fontMono, fontSize: 11, outline: 'none' }}/>
-            <button type="button" onClick={() => { onSetKey(model.id, keyDraft); setEditingKey(false); }} style={{
-              padding: '5px 10px', border: `1px solid ${t.ink}`, background: t.ink,
-              color: t.paper, fontFamily: t.fontMono, fontSize: 9, cursor: 'pointer', letterSpacing: 1,
+            <button type="button" onClick={() => setEditingKey(false)} style={{
+              flex: 1, padding: '5px 0', border: `1px solid ${t.rule}`, background: 'transparent',
+              fontFamily: t.fontMono, fontSize: 9, color: t.mute, cursor: 'pointer', letterSpacing: 1,
+            }}>取消</button>
+            <button type="button" onClick={save} disabled={!keyDraft} style={{
+              flex: 2, padding: '5px 0',
+              border: `1px solid ${keyDraft ? t.ink : t.rule}`,
+              background: keyDraft ? t.ink : 'transparent',
+              fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1,
+              color: keyDraft ? t.paper : t.mute,
+              cursor: keyDraft ? 'pointer' : 'not-allowed',
             }}>保存</button>
           </div>
         </div>
