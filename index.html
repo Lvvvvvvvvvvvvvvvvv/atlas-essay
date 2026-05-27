@@ -1,0 +1,3193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Atlas — Report Agent (Essay)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;0,700;1,400;1,500;1,700&family=Noto+Sans+SC:wght@400;500;600;700;800;900&family=Noto+Serif+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  html, body, #root { margin: 0; padding: 0; height: 100%; width: 100%; }
+  body {
+    font-family: 'Hanken Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #fbf9f4;
+  }
+  * { box-sizing: border-box; }
+  button { font: inherit; }
+  textarea, input { font: inherit; }
+  @keyframes essay-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  @keyframes essay-pulse {
+    0%   { box-shadow: 0 0 0 0 currentColor; }
+    70%  { box-shadow: 0 0 0 6px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  @keyframes essay-fadein {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+<script type="text/babel">
+
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "palette": ["#D97757", "#29261b", "#f6f4ef"],
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        options={['#D97757', '#2A6FDB', '#1F8A5B', '#7A5AE0']}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakColor  label="Palette" value={t.palette}
+//                        options={[['#D97757', '#29261b', '#f6f4ef'],
+//                                  ['#475569', '#0f172a', '#f1f5f9']]}
+//                        onChange={(v) => setTweak('palette', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom right;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;box-sizing:border-box;width:100%;min-width:0;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+    overflow-wrap:anywhere}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;box-sizing:border-box;min-width:0;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+
+  .twk-chips{display:flex;gap:6px}
+  .twk-chip{position:relative;appearance:none;flex:1;min-width:0;height:46px;
+    padding:0;border:0;border-radius:6px;overflow:hidden;cursor:default;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.06);
+    transition:transform .12s cubic-bezier(.3,.7,.4,1),box-shadow .12s}
+  .twk-chip:hover{transform:translateY(-1px);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 4px 10px rgba(0,0,0,.12)}
+  .twk-chip[data-on="1"]{box-shadow:0 0 0 1.5px rgba(0,0,0,.85),
+    0 2px 6px rgba(0,0,0,.15)}
+  .twk-chip>span{position:absolute;top:0;bottom:0;right:0;width:34%;
+    display:flex;flex-direction:column;box-shadow:-1px 0 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i{flex:1;box-shadow:0 -1px 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i:first-child{box-shadow:none}
+  .twk-chip svg{position:absolute;top:6px;left:6px;width:13px;height:13px;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
+  // useState-style call doesn't write a "[object Object]" key into the persisted
+  // JSON block.
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
+    // can react — the parent message only reaches the host, not peers.
+    window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', noDeckControls = false, children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  // Auto-inject a rail toggle when a <deck-stage> is on the page. The
+  // toggle drives the deck's per-viewer _railVisible via window message;
+  // state is mirrored from the same localStorage key the deck reads so
+  // the control reflects reality across reloads. The mechanism is the
+  // message — authors who want custom placement can post it directly
+  // and pass noDeckControls to suppress this one.
+  const hasDeckStage = React.useMemo(
+    () => typeof document !== 'undefined' && !!document.querySelector('deck-stage'),
+    [],
+  );
+  // deck-stage enables its rail in connectedCallback, but this panel can
+  // mount before that element has upgraded. The initial read catches the
+  // common case; the listener covers mounting first. (Older deck-stage.js
+  // copies still wait for the host's __omelette_rail_enabled postMessage —
+  // same listener handles those.)
+  const [railEnabled, setRailEnabled] = React.useState(
+    () => hasDeckStage && !!document.querySelector('deck-stage')?._railEnabled,
+  );
+  React.useEffect(() => {
+    if (!hasDeckStage || railEnabled) return undefined;
+    const onMsg = (e) => {
+      if (e.data && e.data.type === '__omelette_rail_enabled') setRailEnabled(true);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [hasDeckStage, railEnabled]);
+  const [railVisible, setRailVisible] = React.useState(() => {
+    try { return localStorage.getItem('deck-stage.railVisible') !== '0'; } catch (e) { return true; }
+  });
+  const toggleRail = (on) => {
+    setRailVisible(on);
+    window.postMessage({ type: '__deck_rail_visible', on }, '*');
+  };
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" data-noncommentable=""
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">
+          {children}
+          {hasDeckStage && railEnabled && !noDeckControls && (
+            <TweakSection label="Deck">
+              <TweakToggle label="Thumbnail rail" value={railVisible} onChange={toggleRail} />
+            </TweakSection>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  // Segments wrap mid-word once per-segment width runs out. The track is
+  // ~248px (280 panel − 28 body pad − 4 seg pad), each button loses 12px
+  // to its own padding, and 11.5px system-ui averages ~6.3px/char — so 2
+  // options fit ~16 chars each, 3 fit ~10. Past that (or >3 options), fall
+  // back to a dropdown rather than wrap.
+  const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
+  const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
+  const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
+  if (!fitsAsSegments) {
+    // <select> emits strings — map back to the original option value so the
+    // fallback stays type-preserving (numbers, booleans) like the segment path.
+    const resolve = (s) => {
+      const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
+      return m === undefined ? s : typeof m === 'object' ? m.value : m;
+    };
+    return <TweakSelect label={label} value={value} options={options}
+                        onChange={(s) => onChange(resolve(s))} />;
+  }
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+// Relative-luminance contrast pick — checkmarks drawn over a swatch need to
+// read on both #111 and #fafafa without per-option configuration. Hex input
+// only (#rgb / #rrggbb); named or rgb()/hsl() colors fall through to "light".
+function __twkIsLight(hex) {
+  const h = String(hex).replace('#', '');
+  const x = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.padEnd(6, '0');
+  const n = parseInt(x.slice(0, 6), 16);
+  if (Number.isNaN(n)) return true;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return r * 299 + g * 587 + b * 114 > 148000;
+}
+
+const __TwkCheck = ({ light }) => (
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
+          strokeLinecap="round" strokeLinejoin="round"
+          stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
+  </svg>
+);
+
+// TweakColor — curated color/palette picker. Each option is either a single
+// hex string or an array of 1-5 hex strings; the card adapts — a lone color
+// renders solid, a palette renders colors[0] as the hero (left ~2/3) with the
+// rest stacked in a sharp column on the right. onChange emits the
+// option in the shape it was passed (string stays string, array stays array).
+// Without options it falls back to the native color input for back-compat.
+function TweakColor({ label, value, options, onChange }) {
+  if (!options || !options.length) {
+    return (
+      <div className="twk-row twk-row-h">
+        <div className="twk-lbl"><span>{label}</span></div>
+        <input type="color" className="twk-swatch" value={value}
+               onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  // Native <input type=color> emits lowercase hex per the HTML spec, so
+  // compare case-insensitively. String() guards JSON.stringify(undefined),
+  // which returns the primitive undefined (no .toLowerCase).
+  const key = (o) => String(JSON.stringify(o)).toLowerCase();
+  const cur = key(value);
+  return (
+    <TweakRow label={label}>
+      <div className="twk-chips" role="radiogroup">
+        {options.map((o, i) => {
+          const colors = Array.isArray(o) ? o : [o];
+          const [hero, ...rest] = colors;
+          const sup = rest.slice(0, 4);
+          const on = key(o) === cur;
+          return (
+            <button key={i} type="button" className="twk-chip" role="radio"
+                    aria-checked={on} data-on={on ? '1' : '0'}
+                    aria-label={colors.join(', ')} title={colors.join(' · ')}
+                    style={{ background: hero }}
+                    onClick={() => onChange(o)}>
+              {sup.length > 0 && (
+                <span>
+                  {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
+                </span>
+              )}
+              {on && <__TwkCheck light={__twkIsLight(hero)} />}
+            </button>
+          );
+        })}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+Object.assign(window, {
+  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+  TweakText, TweakNumber, TweakColor, TweakButton,
+});
+// Essay direction — shared base. Tokens, top nav, footer, primitives.
+
+// Tokens vary by tweak (theme + accent). Returns a consistent palette.
+function essayTokens({ theme = 'cream', accent = 'red' }) {
+  const accents = {
+    red:    { hex: '#e5251d', soft: '#fde4e2', name: 'SIGNAL RED' },
+    amber:  { hex: '#c2540a', soft: '#fbe7d2', name: 'CINNABAR' },
+    forest: { hex: '#1f6f44', soft: '#daece1', name: 'EDITORIAL SAGE' },
+    cobalt: { hex: '#1d4ed8', soft: '#dee5fb', name: 'PRESS BLUE' },
+  };
+  const a = accents[accent] || accents.red;
+
+  const themes = {
+    cream: {
+      paper:    '#fbf9f4',
+      paperAlt: '#f5f1e8',
+      ink:      '#0f0f0f',
+      inkSoft:  '#1f1d1a',
+      mute:     '#767368',
+      muteSoft: '#a8a395',
+      rule:     '#d8d4ca',
+      faint:    '#efebe1',
+      cardOn:   '#ffffff',
+    },
+    slate: {
+      paper:    '#15140f',
+      paperAlt: '#1d1c17',
+      ink:      '#f4f1e8',
+      inkSoft:  '#e2dfd5',
+      mute:     '#8c8778',
+      muteSoft: '#5d5a4f',
+      rule:     '#2a2823',
+      faint:    '#1a1914',
+      cardOn:   '#1d1c17',
+    },
+  };
+  const palette = themes[theme] || themes.cream;
+
+  return {
+    ...palette,
+    accent: a.hex,
+    accentSoft: a.soft,
+    accentName: a.name,
+    theme,
+    fontDisplay: "'Archivo', 'Noto Sans SC', system-ui, sans-serif",
+    fontBody:    "'Hanken Grotesk', 'Noto Sans SC', system-ui, sans-serif",
+    fontSerif:   "'Newsreader', 'Noto Serif SC', Georgia, serif",
+    fontMono:    "'JetBrains Mono', ui-monospace, monospace",
+    fontCN:      "'Noto Sans SC', system-ui, sans-serif",
+  };
+}
+
+// ── Top nav: wordmark + section nav + meta -------------------------------
+const NAV_ITEMS = [
+  { k: 'home',    en: 'NEW',     cn: '新建' },
+  { k: 'library', en: 'LIBRARY', cn: '报告库' },
+  { k: 'sources', en: 'SOURCES', cn: '数据源' },
+];
+
+function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241 }) {
+  return (
+    <div style={{
+      borderBottom: `1px solid ${t.ink}`, background: t.paper, flexShrink: 0,
+      padding: '0 36px', height: 60,
+      display: 'flex', alignItems: 'center', gap: 24,
+    }}>
+      <div onClick={() => setRoute('home')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 10, whiteSpace: 'nowrap', flexShrink: 0 }}>
+        <span style={{
+          fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 18,
+          letterSpacing: 2.6, textTransform: 'uppercase', color: t.ink,
+        }}>Atlas</span>
+        <span style={{
+          fontFamily: t.fontDisplay, fontWeight: 500, fontSize: 11,
+          letterSpacing: 1.4, color: t.mute, textTransform: 'uppercase',
+        }}>⎯ Essays</span>
+      </div>
+
+      <span style={{ flex: 1, height: 1, background: t.ink, opacity: 0.55, margin: '0 8px' }}/>
+
+      <nav style={{ display: 'flex', gap: 26, flexShrink: 0 }}>
+        {NAV_ITEMS.map(n => (
+          <span key={n.k}
+            onClick={() => setRoute(n.k)}
+            style={{
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'baseline', gap: 6,
+              padding: '4px 0',
+              borderBottom: route === n.k ? `2px solid ${t.accent}` : '2px solid transparent',
+              fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11,
+              letterSpacing: 1.4, textTransform: 'uppercase',
+              color: route === n.k ? t.ink : t.mute,
+            }}>
+            <span>{n.en}</span>
+            <span style={{ fontFamily: t.fontCN, fontSize: 11, letterSpacing: 0.5, color: route === n.k ? t.ink : t.mute }}>{n.cn}</span>
+          </span>
+        ))}
+      </nav>
+
+      <span style={{ flex: 1, height: 1, background: t.ink, opacity: 0.55, margin: '0 8px' }}/>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, whiteSpace: 'nowrap' }}>
+        {runState === 'running' && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <LiveDot color={t.accent}/>
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, letterSpacing: 1.2 }}>LIVE</span>
+          </span>
+        )}
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>
+          VOL.04 · № {issueNum}
+        </span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>2026·05·21</span>
+        <UserAvatar t={t}/>
+      </div>
+    </div>
+  );
+}
+
+function UserAvatar({ t }) {
+  return (
+    <div style={{
+      width: 28, height: 28, border: `1.5px solid ${t.ink}`, background: t.paper, color: t.ink,
+      fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 11, letterSpacing: 0.4,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>JL</div>
+  );
+}
+
+// ── Page footer: thin issue bar -----------------------------------------
+function IssueFooter({ t, page = '01', section = 'COVER', issue = 241 }) {
+  const cell = { whiteSpace: 'nowrap', flexShrink: 0 };
+  const dot = { ...cell, opacity: 0.5 };
+  return (
+    <div style={{
+      borderTop: `1px solid ${t.ink}`, background: t.paper,
+      padding: '0 36px', height: 32, flexShrink: 0,
+      display: 'flex', alignItems: 'center', gap: 14,
+      fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1, color: t.mute, textTransform: 'uppercase',
+      overflow: 'hidden',
+    }}>
+      <span style={cell}>PAGE {page}</span>
+      <span style={dot}>·</span>
+      <span style={cell}>{section}</span>
+      <span style={{ flex: 1 }}/>
+      <span style={cell}>Atlas v0.41</span>
+      <span style={dot}>·</span>
+      <span style={cell}>An essay engine</span>
+      <span style={{ flex: 1 }}/>
+      <span style={cell}>ISSUE № {issue}</span>
+      <span style={dot}>·</span>
+      <span style={cell}>2026·MAY</span>
+    </div>
+  );
+}
+
+// ── Small primitives ----------------------------------------------------
+
+function LiveDot({ size = 8, color }) {
+  return (
+    <span style={{
+      display: 'inline-block', width: size, height: size, background: color || '#e5251d',
+      borderRadius: size, flexShrink: 0, position: 'relative',
+      boxShadow: `0 0 0 0 ${color || '#e5251d'}`, animation: 'essay-pulse 1.6s ease-out infinite',
+    }}/>
+  );
+}
+
+function Tag({ children, t, color, bg, accent = false, filled = false, style = {} }) {
+  const fg = accent ? t.accent : (color || t.ink);
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+      fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, textTransform: 'uppercase',
+      padding: '3px 7px', border: filled ? 'none' : `1px solid ${fg}`,
+      background: filled ? fg : (bg || 'transparent'),
+      color: filled ? t.paper : fg, lineHeight: 1,
+      ...style,
+    }}>{children}</span>
+  );
+}
+
+function Btn({ children, t, primary = false, accent = false, size = 'md', onClick, disabled, style = {} }) {
+  const sizes = {
+    xs: { p: '5px 9px',  f: 9 },
+    sm: { p: '7px 12px', f: 10 },
+    md: { p: '10px 16px', f: 11 },
+    lg: { p: '14px 22px', f: 13 },
+  }[size];
+  const fg = accent ? t.accent : t.ink;
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+        padding: sizes.p, fontSize: sizes.f,
+        fontFamily: t.fontDisplay, fontWeight: 700, letterSpacing: 1.3, textTransform: 'uppercase',
+        border: `1.5px solid ${fg}`,
+        background: primary ? fg : t.paper,
+        color: primary ? t.paper : fg,
+        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+        userSelect: 'none', transition: 'background 0.12s, color 0.12s, transform 0.08s',
+        ...style,
+      }}
+      onMouseDown={e => { if (!disabled) e.currentTarget.style.transform = 'translateY(1px)'; }}
+      onMouseUp={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+    >{children}</button>
+  );
+}
+
+function Hairline({ t, color, vertical = false, opacity = 1 }) {
+  return vertical
+    ? <span style={{ width: 1, alignSelf: 'stretch', background: color || t.rule, opacity }}/>
+    : <span style={{ height: 1, width: '100%', background: color || t.rule, opacity }}/>;
+}
+
+function Sup({ n, t, color }) {
+  return (
+    <sup style={{
+      color: color || t.accent, fontFamily: t.fontMono, fontSize: 10,
+      padding: '0 1px', fontWeight: 700,
+    }}>[{n}]</sup>
+  );
+}
+
+// Big bilingual head — EN kicker over CN title (or just EN)
+function BilingualHead({ en, cn, t, size = 'lg', emphasis = '' }) {
+  const sizes = {
+    xs:  { en: 10, cn: 14, gap: 4 },
+    sm:  { en: 11, cn: 18, gap: 4 },
+    md:  { en: 12, cn: 26, gap: 6 },
+    lg:  { en: 13, cn: 38, gap: 8 },
+    xl:  { en: 14, cn: 52, gap: 10 },
+    xxl: { en: 16, cn: 68, gap: 14 },
+  }[size];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sizes.gap }}>
+      {en && (
+        <div style={{
+          fontFamily: t.fontDisplay, fontWeight: 800, fontSize: sizes.en,
+          letterSpacing: 1.6, textTransform: 'uppercase', color: t.ink,
+        }}>{en}</div>
+      )}
+      {cn && (
+        <div style={{
+          fontFamily: t.fontCN, fontWeight: 800, fontSize: sizes.cn,
+          lineHeight: 1.05, letterSpacing: -0.5, color: t.ink,
+          textWrap: 'balance', wordBreak: 'keep-all',
+        }}>{cn}</div>
+      )}
+      {emphasis && (
+        <div style={{
+          fontFamily: t.fontSerif, fontStyle: 'italic', fontSize: sizes.cn * 0.45,
+          color: t.mute, letterSpacing: 0,
+        }}>{emphasis}</div>
+      )}
+    </div>
+  );
+}
+
+// Metric pull-out: huge number + caption
+function Metric({ value, en, cn, t, accent = false, big = false }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{
+        fontFamily: t.fontDisplay, fontWeight: 800,
+        fontSize: big ? 48 : 32, lineHeight: 0.95, letterSpacing: -1.4,
+        color: accent ? t.accent : t.ink,
+      }}>{value}</span>
+      <span style={{
+        fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, textTransform: 'uppercase', color: t.mute,
+      }}>{en} · {cn}</span>
+    </div>
+  );
+}
+
+// Pull quote — italic serif emphasis block
+function PullQuote({ children, t, attribution }) {
+  return (
+    <figure style={{ margin: '8px 0', padding: '20px 0', borderTop: `1px solid ${t.ink}`, borderBottom: `1px solid ${t.ink}` }}>
+      <blockquote style={{
+        margin: 0, fontFamily: t.fontSerif, fontStyle: 'italic',
+        fontSize: 26, lineHeight: 1.3, color: t.ink, letterSpacing: -0.3,
+      }}>“{children}”</blockquote>
+      {attribution && (
+        <figcaption style={{
+          marginTop: 10, fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1.2,
+          color: t.mute, textTransform: 'uppercase',
+        }}>— {attribution}</figcaption>
+      )}
+    </figure>
+  );
+}
+
+// Figure placeholder — diagonal hatched rect with caption
+function Figure({ t, label, caption, height = 200, type = 'chart' }) {
+  return (
+    <figure style={{ margin: '12px 0' }}>
+      <div style={{
+        width: '100%', height, border: `1px solid ${t.ink}`, position: 'relative',
+        background: type === 'chart'
+          ? `repeating-linear-gradient(135deg, ${t.faint} 0 6px, transparent 6px 12px), ${t.cardOn}`
+          : t.cardOn,
+        overflow: 'hidden',
+      }}>
+        {type === 'chart' && <FigureChart t={t}/>}
+        {type === 'image' && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: t.fontMono, fontSize: 11, color: t.mute, letterSpacing: 1, textTransform: 'uppercase',
+          }}>◇ Image · {label}</div>
+        )}
+        <span style={{
+          position: 'absolute', top: 8, left: 10,
+          fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.2,
+        }}>{label}</span>
+      </div>
+      {caption && (
+        <figcaption style={{
+          marginTop: 6, fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1,
+          color: t.mute, textTransform: 'uppercase',
+        }}>{caption}</figcaption>
+      )}
+    </figure>
+  );
+}
+
+// Sample bar chart drawn inside a Figure
+function FigureChart({ t }) {
+  const bars = [
+    { label: '10万以下', v: 8 },
+    { label: '10-15万', v: 22 },
+    { label: '15-20万', v: 38 },
+    { label: '20-30万', v: 62, hi: true },
+    { label: '30-50万', v: 28 },
+    { label: '50万以上', v: 12 },
+  ];
+  const max = 70;
+  return (
+    <svg viewBox="0 0 600 200" preserveAspectRatio="none"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+      <g transform="translate(60, 20)">
+        {/* y-axis ticks */}
+        {[0, 25, 50, 75].map(y => (
+          <g key={y}>
+            <line x1={-4} x2={540} y1={140 - (y / max) * 130} y2={140 - (y / max) * 130}
+              stroke={t.rule} strokeWidth="0.5" strokeDasharray="2 3"/>
+            <text x={-8} y={144 - (y / max) * 130} textAnchor="end"
+              fontFamily={t.fontMono} fontSize="9" fill={t.mute}>{y}</text>
+          </g>
+        ))}
+        {/* baseline */}
+        <line x1={0} x2={540} y1={140} y2={140} stroke={t.ink} strokeWidth="1"/>
+        {bars.map((b, i) => {
+          const x = i * 90 + 10;
+          const w = 70;
+          const h = (b.v / max) * 130;
+          return (
+            <g key={b.label}>
+              <rect x={x} y={140 - h} width={w} height={h}
+                fill={b.hi ? t.accent : t.ink}/>
+              <text x={x + w / 2} y={156} textAnchor="middle"
+                fontFamily={t.fontCN} fontSize="11" fill={t.ink}>{b.label}</text>
+              <text x={x + w / 2} y={140 - h - 6} textAnchor="middle"
+                fontFamily={t.fontMono} fontSize="10" fontWeight="700" fill={b.hi ? t.accent : t.ink}>{b.v}%</text>
+            </g>
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+
+// Single marginalia entry — used in running screen
+function MarginNote({ t, tag, cn, time, state = 'done', children }) {
+  const live = state === 'live';
+  const queued = state === 'queued';
+  const ruleColor = live ? t.accent : (queued ? t.muteSoft : t.ink);
+  return (
+    <div style={{
+      paddingLeft: 12, borderLeft: `2px solid ${ruleColor}`,
+      display: 'flex', flexDirection: 'column', gap: 4,
+      opacity: queued ? 0.5 : (state === 'done' && !live ? 0.72 : 1),
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.1, fontWeight: 700, color: live ? t.accent : t.ink }}>{tag}</span>
+        {live && <LiveDot size={5} color={t.accent}/>}
+        <span style={{ flex: 1 }}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{time}</span>
+      </div>
+      <span style={{ fontFamily: t.fontCN, fontSize: 11, lineHeight: 1.5, color: t.inkSoft }}>{cn}</span>
+      {children}
+    </div>
+  );
+}
+
+Object.assign(window, {
+  essayTokens, TopBar, IssueFooter, UserAvatar,
+  LiveDot, Tag, Btn, Hairline, Sup,
+  BilingualHead, Metric, PullQuote, Figure, FigureChart, MarginNote,
+  NAV_ITEMS,
+});
+// Home — magazine cover + working prompt input. The first thing users see.
+
+const SAMPLE_PROMPTS = [
+  '梳理 2025 年 Q1 国内咖啡赛道的融资动态，重点说说 Manner、库迪和挪瓦的新动向，给一份 2000 字的内部分析。',
+  '用过去三个季度的销售数据，分析华南区不同品类的增长情况，输出 1,500 字的内部分析报告。',
+  '帮我写一份关于"远程办公对一线城市租房市场影响"的研究报告，要有数据支撑。',
+  '把这周团队的进展整理成一份周报，重点突出新启动的客户合作项目。',
+];
+
+const STARTERS = [
+  {
+    num: 'I.',
+    en: 'Industry Scan',
+    cn: '调研一个我没听过的赛道',
+    sub: '我先扫一圈公开报道、社群讨论和融资数据，输出洞察。',
+    minutes: '8-12 min',
+    tag: 'RESEARCH',
+    prompt: '帮我调研「家用清洁机器人」这个赛道：玩家、价格带、用户怎么说，给出一份内部速记。',
+  },
+  {
+    num: 'II.',
+    en: 'Data Analysis',
+    cn: '把这堆数据读懂',
+    sub: '上传或连接表格，我做清洗、聚类和洞察，附图。',
+    minutes: '5-8 min',
+    tag: 'DATA',
+    prompt: '附件是过去四个季度的门店销售数据，请按城市等级分群分析增长情况，输出 1,200 字。',
+  },
+  {
+    num: 'III.',
+    en: 'Weekly Brief',
+    cn: '给老板写一份 10 分钟读完的周报',
+    sub: '我会自动整理上周日程、文档和项目进展。',
+    minutes: '2-4 min',
+    tag: 'INTERNAL',
+    prompt: '帮我写上周的工作周报，重点说三件事：客户 A 的合作进展、上线的两个功能、本周遇到的问题。',
+  },
+  {
+    num: 'IV.',
+    en: 'Competitor Teardown',
+    cn: '拆一拆这个对手',
+    sub: '产品、定价、增长、舆情，四个角度做对比。',
+    minutes: '10-15 min',
+    tag: 'RESEARCH',
+    prompt: '把 Notion AI 和 ChatGPT for Teams 拆一下对比，从产品功能、定价、用户口碑、增长四方面，输出 2,000 字。',
+  },
+];
+
+function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore }) {
+  const editorial = density === 'editorial';
+  const headSize = editorial ? 'xxl' : 'xl';
+
+  return (
+    <div style={{
+      flex: 1, background: t.paper, color: t.ink,
+      display: 'grid', gridTemplateColumns: '64px 1fr', minHeight: 0, overflow: 'auto',
+    }}>
+      {/* Left thin rail — vertical metadata */}
+      <div style={{
+        borderRight: `1px solid ${t.ink}`,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
+        padding: '28px 0', minHeight: 0,
+      }}>
+        <span style={{
+          fontFamily: t.fontMono, fontSize: 10, letterSpacing: 2,
+          writingMode: 'vertical-rl', transform: 'rotate(180deg)',
+          color: t.ink,
+        }}>VOL. 04 · № 241</span>
+        <span style={{
+          fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.8, color: t.mute,
+          writingMode: 'vertical-rl', transform: 'rotate(180deg)',
+        }}>报告智能体 · ATLAS</span>
+      </div>
+
+      {/* Cover area */}
+      <div style={{
+        padding: editorial ? '48px 72px 32px' : '32px 56px 28px',
+        display: 'flex', flexDirection: 'column', gap: editorial ? 36 : 24, minHeight: 0,
+      }}>
+        {/* Kicker row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <Tag t={t} accent>◆ THE COVER STORY · 封面故事</Tag>
+          <span style={{ flex: 1, height: 1, background: t.ink }}/>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>5月21日 · THU</span>
+        </div>
+
+        {/* Headline */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <BilingualHead t={t} size={headSize}
+            en="Tell Atlas what to write."
+            cn={<>今天写点什么<span style={{ color: t.accent }}>报告</span>？</>}
+          />
+          <div style={{
+            fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 400,
+            fontSize: editorial ? 26 : 22, lineHeight: 1.35, color: t.mute,
+            letterSpacing: -0.3, maxWidth: 720,
+          }}>
+            An essay engine. Drop a brief, get back a piece you can actually file.
+          </div>
+        </div>
+
+        {/* Prompt input */}
+        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} modelStore={modelStore}/>
+
+        {/* Editor's note callout */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 18, padding: '12px 16px',
+          border: `1px solid ${t.ink}`, background: t.cardOn,
+        }}>
+          <Tag t={t} accent>EDITOR'S NOTE · 编者按</Tag>
+          <span style={{ fontFamily: t.fontCN, fontSize: 13, lineHeight: 1.55, color: t.inkSoft, flex: 1 }}>
+            这一期，我学会了更好地引用脚注。写完后告诉我“再细一些”，我会重写。
+          </span>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, whiteSpace: 'nowrap' }}>— ATLAS v0.41</span>
+        </div>
+
+        {/* Starters grid */}
+        <div>
+          <div style={{
+            display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 14,
+            borderTop: `1px solid ${t.ink}`, paddingTop: 12,
+          }}>
+            <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 12, letterSpacing: 1.6, textTransform: 'uppercase' }}>
+              Or pick a starter
+            </span>
+            <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute }}>从模板开始</span>
+            <span style={{ flex: 1, height: 1, background: t.rule }}/>
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>0{STARTERS.length} entries</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0,
+            borderTop: `1px solid ${t.rule}`, borderLeft: `1px solid ${t.rule}`,
+          }}>
+            {STARTERS.map((s, i) => (
+              <button key={s.num}
+                type="button"
+                onClick={() => setPrompt(s.prompt)}
+                style={{
+                  borderRight: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
+                  background: t.paper, padding: '18px 22px', textAlign: 'left',
+                  display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer',
+                  fontFamily: t.fontBody, color: t.ink,
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = t.faint}
+                onMouseLeave={e => e.currentTarget.style.background = t.paper}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{
+                    fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 600,
+                    fontSize: 22, color: t.accent, letterSpacing: -0.5, lineHeight: 1,
+                  }}>{s.num}</span>
+                  <Tag t={t}>{s.tag}</Tag>
+                </div>
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 13, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                  {s.en}
+                </div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 15, fontWeight: 600, lineHeight: 1.3 }}>{s.cn}</div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, lineHeight: 1.5 }}>{s.sub}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>{s.minutes}</span>
+                  <span style={{ flex: 1 }}/>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.ink }}>↗</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Model Selector ─────────────────────────────────────────────────────
+
+const BUILTIN_MODELS = [
+  { id: 'claude-opus-4-7',           name: 'Opus 4.7',    provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
+  { id: 'claude-sonnet-4-6',         name: 'Sonnet 4.6',  provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5',   provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
+  { id: 'mimo-v2.5-pro',             name: 'MiMo V2.5 Pro', provider: 'Xiaomi', builtin: true, apiUrl: 'https://api.xiaomimimo.com/v1', needsKey: true },
+];
+const EFFORT_OPTIONS = ['Low', 'Medium', 'High', 'Max'];
+
+function useModelStore() {
+  const [customModels, setCustomModels] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_custom_models') || '[]'); } catch { return []; }
+  });
+  const [selectedId, setSelectedId] = React.useState(
+    () => localStorage.getItem('atlas_selected_model') || 'claude-sonnet-4-6'
+  );
+  // API keys for builtin models that need them (keyed by model id)
+  const [builtinKeys, setBuiltinKeys] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_builtin_keys') || '{}'); } catch { return {}; }
+  });
+  const [effort, setEffort] = React.useState('High');
+  const [fastMode, setFastMode] = React.useState(false);
+
+  // Merge builtin keys into allModels
+  const allModels = [
+    ...BUILTIN_MODELS.map(m => m.needsKey ? { ...m, apiKey: builtinKeys[m.id] || '' } : m),
+    ...customModels,
+  ];
+  const selected = allModels.find(m => m.id === selectedId) || allModels[1];
+
+  const selectModel = (id) => {
+    setSelectedId(id);
+    try { localStorage.setItem('atlas_selected_model', id); } catch {}
+  };
+  const setBuiltinKey = (id, key) => {
+    const updated = { ...builtinKeys, [id]: key };
+    setBuiltinKeys(updated);
+    try { localStorage.setItem('atlas_builtin_keys', JSON.stringify(updated)); } catch {}
+  };
+  const addModel = (model) => {
+    const updated = [...customModels, model];
+    setCustomModels(updated);
+    try { localStorage.setItem('atlas_custom_models', JSON.stringify(updated)); } catch {}
+  };
+  const removeModel = (id) => {
+    const updated = customModels.filter(m => m.id !== id);
+    setCustomModels(updated);
+    try { localStorage.setItem('atlas_custom_models', JSON.stringify(updated)); } catch {}
+  };
+  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, setBuiltinKey, builtinKeys };
+}
+
+function ModelSelector({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const [showAddForm, setShowAddForm] = React.useState(false);
+  const emptyForm = { name: '', modelId: '', apiUrl: '', apiKey: '', provider: '' };
+  const [form, setForm] = React.useState(emptyForm);
+  const [showKey, setShowKey] = React.useState(false);
+  const popoverRef = React.useRef(null);
+  const triggerRef = React.useRef(null);
+
+  // Close on outside click
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target) &&
+          triggerRef.current && !triggerRef.current.contains(e.target)) {
+        setOpen(false); setShowAddForm(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // ⇧⌘I keyboard shortcut
+  React.useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'I') {
+        e.preventDefault(); setOpen(o => !o);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const handleAdd = () => {
+    if (!form.name || !form.modelId || !form.apiUrl || !form.apiKey) return;
+    store.addModel({ id: form.modelId, name: form.name, apiUrl: form.apiUrl, apiKey: form.apiKey, provider: form.provider || 'Custom', builtin: false });
+    setForm(emptyForm); setShowAddForm(false); setShowKey(false);
+  };
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }}>
+      {/* Trigger */}
+      <button ref={triggerRef} type="button" onClick={() => setOpen(o => !o)} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+        fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, textTransform: 'uppercase',
+        padding: '3px 7px', lineHeight: 1, cursor: 'pointer',
+        border: `1px solid ${open ? t.ink : t.ink}`,
+        background: open ? t.ink : 'transparent',
+        color: open ? t.paper : t.ink,
+      }}>◈ {store.selected.name} ▾</button>
+
+      {/* Popover */}
+      {open && (
+        <div ref={popoverRef} style={{
+          position: 'absolute', bottom: 'calc(100% + 10px)', left: 0,
+          width: 290, zIndex: 300,
+          background: t.cardOn, border: `1.5px solid ${t.ink}`,
+          boxShadow: `4px 4px 0 ${t.ink}`,
+        }}>
+          {/* ── MODELS ── */}
+          <div style={{ borderBottom: `1px solid ${t.rule}` }}>
+            <div style={{ padding: '8px 14px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.4, color: t.mute, textTransform: 'uppercase' }}>Models · 模型</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.muteSoft, letterSpacing: 0.5 }}>⇧⌘I</span>
+            </div>
+            {store.allModels.map(m => (
+              <ModelRow key={m.id} model={m} t={t}
+                selected={store.selected.id === m.id}
+                onSelect={() => store.selectModel(m.id)}
+                onRemove={!m.builtin ? () => store.removeModel(m.id) : null}
+                onSetKey={store.setBuiltinKey}/>
+            ))}
+            {/* Add model */}
+            {!showAddForm ? (
+              <button type="button" onClick={() => setShowAddForm(true)} style={{
+                display: 'flex', width: '100%', padding: '8px 14px',
+                border: 'none', borderTop: `1px dashed ${t.rule}`,
+                background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2,
+                color: t.mute, textTransform: 'uppercase',
+              }}
+                onMouseEnter={e => e.currentTarget.style.background = t.faint}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >＋ 添加模型 · Add model</button>
+            ) : (
+              <AddModelForm t={t} form={form} setForm={setForm}
+                showKey={showKey} setShowKey={setShowKey}
+                onAdd={handleAdd}
+                onCancel={() => { setShowAddForm(false); setForm(emptyForm); setShowKey(false); }}/>
+            )}
+          </div>
+
+          {/* ── EFFORT ── */}
+          <div style={{ padding: '8px 14px 10px', borderBottom: `1px solid ${t.rule}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.4, color: t.mute, textTransform: 'uppercase' }}>Effort · 力度</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.muteSoft, letterSpacing: 0.5 }}>⇧⌘E</span>
+            </div>
+            <div style={{ display: 'flex', border: `1px solid ${t.ink}` }}>
+              {EFFORT_OPTIONS.map((e, i) => (
+                <button key={e} type="button" onClick={() => store.setEffort(e)} style={{
+                  flex: 1, padding: '6px 0', border: 'none',
+                  borderLeft: i === 0 ? 'none' : `1px solid ${t.ink}`,
+                  background: store.effort === e ? t.ink : 'transparent',
+                  color: store.effort === e ? t.paper : t.ink,
+                  fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8,
+                  cursor: 'pointer', textTransform: 'uppercase',
+                }}>{e}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── FAST MODE ── */}
+          <div style={{ padding: '8px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.4, color: t.mute, textTransform: 'uppercase', marginBottom: 3 }}>Fast mode · 快速模式</div>
+              <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, lineHeight: 1.4 }}>用 Opus 的速度输出（Beta）</div>
+            </div>
+            <button type="button" onClick={() => store.setFastMode(v => !v)} style={{
+              position: 'relative', width: 36, height: 20, border: `1.5px solid ${t.ink}`,
+              background: store.fastMode ? t.ink : t.paper, cursor: 'pointer', padding: 0, flexShrink: 0,
+            }}>
+              <span style={{
+                position: 'absolute', top: 2, left: store.fastMode ? 16 : 2,
+                width: 12, height: 12, background: store.fastMode ? t.paper : t.ink, transition: 'left 0.12s',
+              }}/>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModelRow({ model, t, selected, onSelect, onRemove, onSetKey }) {
+  const [hover, setHover] = React.useState(false);
+  const [editingKey, setEditingKey] = React.useState(false);
+  const [keyDraft, setKeyDraft] = React.useState(model.apiKey || '');
+  const hasKey = !!(model.apiKey);
+  const needsKey = model.needsKey;
+
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ borderBottom: `1px solid ${t.faint}` }}>
+      <div onClick={onSelect} style={{
+        display: 'flex', alignItems: 'center', padding: '7px 14px',
+        cursor: 'pointer', background: hover ? t.faint : 'transparent',
+      }}>
+        <span style={{ width: 16, flexShrink: 0, fontFamily: t.fontMono, fontSize: 11, color: t.accent }}>
+          {selected ? '✓' : ''}
+        </span>
+        <span style={{ flex: 1, fontFamily: t.fontBody, fontSize: 13, color: t.ink }}>{model.name}</span>
+        {needsKey && (
+          <span onClick={e => { e.stopPropagation(); setEditingKey(v => !v); setKeyDraft(model.apiKey || ''); }}
+            style={{ fontFamily: t.fontMono, fontSize: 9, color: hasKey ? '#10b981' : t.accent,
+              letterSpacing: 0.8, cursor: 'pointer', marginRight: 6, textDecoration: 'underline' }}>
+            {hasKey ? 'KEY ✓' : 'SET KEY'}
+          </span>
+        )}
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.4 }}>{model.provider}</span>
+        {onRemove && hover && (
+          <button type="button" onClick={e => { e.stopPropagation(); onRemove(); }} style={{
+            marginLeft: 8, border: 'none', background: 'transparent', cursor: 'pointer',
+            fontFamily: t.fontMono, fontSize: 10, color: t.mute, padding: '0 2px', lineHeight: 1,
+          }}>✕</button>
+        )}
+      </div>
+      {editingKey && needsKey && (
+        <div onClick={e => e.stopPropagation()} style={{
+          padding: '6px 14px 10px 30px', background: t.paperAlt,
+          display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>
+            API KEY · {model.apiUrl}
+          </span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input type="password" value={keyDraft} onChange={e => setKeyDraft(e.target.value)}
+              placeholder="sk-... 或 your-api-key"
+              style={{ flex: 1, padding: '5px 8px', border: `1px solid ${t.rule}`,
+                background: t.paper, color: t.ink, fontFamily: t.fontMono, fontSize: 11, outline: 'none' }}/>
+            <button type="button" onClick={() => { onSetKey(model.id, keyDraft); setEditingKey(false); }} style={{
+              padding: '5px 10px', border: `1px solid ${t.ink}`, background: t.ink,
+              color: t.paper, fontFamily: t.fontMono, fontSize: 9, cursor: 'pointer', letterSpacing: 1,
+            }}>保存</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddModelForm({ t, form, setForm, showKey, setShowKey, onAdd, onCancel }) {
+  const iStyle = (extra = {}) => ({
+    width: '100%', padding: '6px 8px', boxSizing: 'border-box',
+    border: `1px solid ${t.rule}`, background: t.paper, color: t.ink,
+    fontFamily: t.fontBody, fontSize: 12, outline: 'none',
+    ...extra,
+  });
+  const lStyle = {
+    display: 'block', fontFamily: t.fontMono, fontSize: 9,
+    letterSpacing: 1, color: t.mute, textTransform: 'uppercase', marginBottom: 3,
+  };
+  const canSubmit = form.name && form.modelId && form.apiUrl && form.apiKey;
+  return (
+    <div style={{ padding: '10px 14px 12px', borderTop: `1px dashed ${t.rule}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.4, color: t.ink, textTransform: 'uppercase' }}>Add Model · 新增模型</span>
+      <div>
+        <label style={lStyle}>显示名称 *</label>
+        <input style={iStyle()} placeholder="GPT-4o Mini" value={form.name}
+          onChange={e => setForm(f => ({ ...f, name: e.target.value }))}/>
+      </div>
+      <div>
+        <label style={lStyle}>Model ID *</label>
+        <input style={iStyle()} placeholder="gpt-4o-mini" value={form.modelId}
+          onChange={e => setForm(f => ({ ...f, modelId: e.target.value }))}/>
+      </div>
+      <div>
+        <label style={lStyle}>API Base URL *</label>
+        <input style={iStyle()} placeholder="https://api.openai.com/v1" value={form.apiUrl}
+          onChange={e => setForm(f => ({ ...f, apiUrl: e.target.value }))}/>
+      </div>
+      <div>
+        <label style={lStyle}>API Key *</label>
+        <div style={{ position: 'relative' }}>
+          <input style={iStyle({ paddingRight: 48 })}
+            type={showKey ? 'text' : 'password'}
+            placeholder="sk-••••••••••••••••"
+            value={form.apiKey}
+            onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}/>
+          <button type="button" onClick={() => setShowKey(s => !s)} style={{
+            position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+            border: 'none', background: 'transparent', cursor: 'pointer',
+            fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 0.5,
+          }}>{showKey ? 'HIDE' : 'SHOW'}</button>
+        </div>
+      </div>
+      <div>
+        <label style={lStyle}>Provider（选填）</label>
+        <input style={iStyle()} placeholder="Custom" value={form.provider}
+          onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}/>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+        <button type="button" onClick={onCancel} style={{
+          flex: 1, padding: '6px 0', border: `1px solid ${t.rule}`, background: 'transparent',
+          fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, color: t.mute,
+          cursor: 'pointer', textTransform: 'uppercase',
+        }}>取消</button>
+        <button type="button" onClick={onAdd} disabled={!canSubmit} style={{
+          flex: 2, padding: '6px 0',
+          border: `1px solid ${canSubmit ? t.ink : t.rule}`,
+          background: canSubmit ? t.ink : 'transparent',
+          fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1,
+          color: canSubmit ? t.paper : t.mute,
+          cursor: canSubmit ? 'pointer' : 'not-allowed', textTransform: 'uppercase',
+        }}>确认添加 ↗</button>
+      </div>
+    </div>
+  );
+}
+
+// ── PromptComposer ──────────────────────────────────────────────────────
+
+function PromptComposer({ t, prompt, setPrompt, onStart, modelStore }) {
+  const charCount = prompt.length;
+  const placeholder = '比如，"梳理一下 2025 年 Q1 咖啡赛道的融资动态…"';
+  const taRef = React.useRef(null);
+
+  // auto-grow
+  React.useEffect(() => {
+    if (taRef.current) {
+      taRef.current.style.height = 'auto';
+      taRef.current.style.height = Math.max(96, taRef.current.scrollHeight) + 'px';
+    }
+  }, [prompt]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && prompt.trim()) {
+      e.preventDefault();
+      onStart();
+    }
+  };
+
+  return (
+    <div style={{
+      border: `1.5px solid ${t.ink}`, background: t.cardOn,
+      display: 'flex', flexDirection: 'column',
+    }}>
+      <div style={{
+        padding: '10px 14px', borderBottom: `1px solid ${t.rule}`,
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <Tag t={t} filled>PROMPT</Tag>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.5 }}>describe the report</span>
+        <span style={{ flex: 1 }}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{charCount} / 4000</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>⌘ ↩ to send</span>
+      </div>
+      <textarea
+        ref={taRef}
+        value={prompt}
+        onChange={e => setPrompt(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        style={{
+          padding: '18px 22px', minHeight: 96, fontFamily: t.fontCN, fontSize: 16,
+          lineHeight: 1.55, color: t.ink, background: 'transparent',
+          border: 'none', outline: 'none', resize: 'none', width: '100%', boxSizing: 'border-box',
+        }}
+      />
+      <div style={{
+        padding: '12px 14px', borderTop: `1px solid ${t.rule}`,
+        display: 'flex', alignItems: 'center', gap: 8, background: t.paperAlt,
+        flexWrap: 'wrap',
+      }}>
+        <Tag t={t}>＋ 数据源 (3)</Tag>
+        <Tag t={t}>＋ 附件</Tag>
+        <Tag t={t}>语气 · 分析</Tag>
+        <Tag t={t}>长度 · 2,500 字</Tag>
+        {modelStore && <ModelSelector t={t} store={modelStore}/>}
+        <span style={{ flex: 1 }}/>
+        <Btn t={t} size="sm"
+          onClick={() => setPrompt(SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)])}>
+          ✦ Surprise me
+        </Btn>
+        <Btn t={t} primary accent size="md" onClick={onStart} disabled={!prompt.trim()}>
+          Start writing ↗
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Home, PromptComposer, SAMPLE_PROMPTS, STARTERS });
+// Running — agent at work. Center column streams the essay paragraph by
+// paragraph; right column collects marginalia in real time. Total demo
+// duration ~26s. User can pause, slow down, or skip to the finished report.
+
+// ── Paragraph copy --------------------------------------------------------
+const RUN_PARAGRAPHS = [
+  { kind: 'lede',
+    text: '一句话总结：钱没少，故事变了——资本退出"高密度精品"的叙事，重新拥抱规模与下沉。' },
+  { kind: 'p',
+    text: '2025 年第一季度，国内连锁咖啡品牌共发生 9 起公开融资事件，总金额约 11.4 亿元§1。其中 6 起集中在 1 月，3 起分布在 2 月与 3 月——节奏明显前置，且回避了春节后的传统淡季窗口。' },
+  { kind: 'p',
+    text: 'Manner 在 1 月完成新一轮融资，估值约 30 亿美元§2，并同步释放"5 年内开设 5,000 家门店"的计划。这是公司首次明确表态规模化路径，此前 Manner 长期被视作精品咖啡的代表。' },
+  { kind: 'p',
+    text: '另一端则是库迪、挪瓦、本来不该有等品牌密集出现在三四线城市§3。库迪 1 月披露的加盟数据显示，下沉市场加盟商占比已超过 60%。' },
+];
+
+// ── Timeline ------------------------------------------------------------
+const RUN_EVENTS = [
+  // 0–8s: planning + fetching + analyzing
+  { at: 0.0,  kind: 'marginStart', id: 'plan',    tag: 'PLAN',    cn: '拆解任务为 5 个子步骤' },
+  { at: 2.4,  kind: 'marginDone',  id: 'plan' },
+  { at: 2.6,  kind: 'marginStart', id: 'fetch1',  tag: 'FETCH',   cn: '抓取 IT 桔子 2025·Q1 融资数据库' },
+  { at: 4.6,  kind: 'marginDone',  id: 'fetch1' },
+  { at: 4.7,  kind: 'marginStart', id: 'fetch2',  tag: 'FETCH',   cn: '读取 36 氪 18 篇相关报道' },
+  { at: 6.4,  kind: 'marginDone',  id: 'fetch2' },
+  { at: 6.6,  kind: 'marginStart', id: 'analyze', tag: 'ANALYZE', cn: '提取金额 · 轮次 · 估值' },
+  { at: 8.2,  kind: 'marginDone',  id: 'analyze' },
+  // 8.5–20s: writing essay paragraph by paragraph
+  { at: 8.5,  kind: 'marginStart', id: 'write',   tag: 'WRITE',   cn: '撰写正文 (1 / 4)' },
+  { at: 8.6,  kind: 'paragraph',   idx: 0 },
+  { at: 10.8, kind: 'paragraph',   idx: 1 },
+  { at: 11.1, kind: 'marginAdd',   id: 'cite1',   tag: 'CITE [1]', cn: 'IT 桔子 · 2025 Q1 融资数据库' },
+  { at: 14.0, kind: 'paragraph',   idx: 2 },
+  { at: 14.4, kind: 'marginAdd',   id: 'cite2',   tag: 'CITE [2]', cn: '36 氪 · Manner 新一轮融资消息' },
+  { at: 17.4, kind: 'paragraph',   idx: 3 },
+  { at: 17.8, kind: 'marginAdd',   id: 'cite3',   tag: 'CITE [3]', cn: '窄门餐眼 · 咖啡品牌门店数据' },
+  { at: 20.5, kind: 'marginDone',  id: 'write' },
+  // 20.5–26s: chart + review
+  { at: 20.7, kind: 'marginStart', id: 'chart',   tag: 'CHART',   cn: '生成融资金额柱状图' },
+  { at: 22.4, kind: 'figure' },
+  { at: 22.5, kind: 'marginDone',  id: 'chart' },
+  { at: 22.7, kind: 'marginStart', id: 'review',  tag: 'REVIEW',  cn: '审校与引用核对' },
+  { at: 25.2, kind: 'marginDone',  id: 'review' },
+  { at: 26.0, kind: 'complete' },
+];
+
+const RUN_TOTAL = 26.0;
+
+// ── Live API streaming -----------------------------------------------
+async function streamReport({ model, prompt, onChunk, onDone, onError }) {
+  const apiKey = model.apiKey || '';
+  const apiUrl = (model.apiUrl || 'https://api.xiaomimimo.com/v1').replace(/\/$/, '');
+
+  const systemPrompt = `你是一个专业的商业分析师，擅长撰写深度行业报告。
+请用中文撰写一篇结构清晰的分析报告，要求：
+1. 开头用一句话总结核心观点（作为导语）
+2. 分 3-4 段展开分析，每段 200-300 字
+3. 行文风格：简洁、有洞察力、有数据支撑
+4. 引用格式：重要数据用 §1 §2 §3 标注脚注
+直接输出报告正文，不需要标题或前言。`;
+
+  try {
+    const resp = await fetch(`${apiUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: model.id,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt },
+        ],
+        stream: true,
+        max_tokens: 2000,
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`API error ${resp.status}: ${errText.slice(0, 200)}`);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(trimmed.slice(6));
+            const delta = data.choices?.[0]?.delta?.content || '';
+            if (delta) onChunk(delta);
+          } catch {}
+        }
+      }
+    }
+    onDone();
+  } catch (err) {
+    onError(err.message || String(err));
+  }
+}
+
+// ── Component -----------------------------------------------------------
+function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, density = 'editorial', modelStore }) {
+  const selectedModel = modelStore?.selected;
+  const isLiveMode = !!(selectedModel?.apiKey);
+
+  // ── LIVE MODE state ──────────────────────────────────────────────────
+  const [liveText, setLiveText] = React.useState('');
+  const [liveStatus, setLiveStatus] = React.useState('connecting'); // connecting | streaming | done | error
+  const [liveError, setLiveError] = React.useState('');
+  const [liveStartTime] = React.useState(Date.now);
+  const [liveElapsed, setLiveElapsed] = React.useState(0);
+  const liveTimerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!isLiveMode) return;
+    liveTimerRef.current = setInterval(() => {
+      setLiveElapsed(((Date.now() - liveStartTime) / 1000));
+    }, 200);
+    streamReport({
+      model: selectedModel,
+      prompt,
+      onChunk: (chunk) => {
+        setLiveStatus('streaming');
+        setLiveText(prev => prev + chunk);
+      },
+      onDone: () => {
+        clearInterval(liveTimerRef.current);
+        setLiveStatus('done');
+        onTimelineComplete && onTimelineComplete();
+      },
+      onError: (msg) => {
+        clearInterval(liveTimerRef.current);
+        setLiveStatus('error');
+        setLiveError(msg);
+        onTimelineComplete && onTimelineComplete();
+      },
+    });
+    return () => clearInterval(liveTimerRef.current);
+  }, []);
+
+  // Split liveText into paragraphs for rendering
+  const liveParagraphs = React.useMemo(() => {
+    if (!liveText) return [];
+    return liveText.split(/\n\n+/).filter(Boolean).map((p, i) => ({
+      kind: i === 0 ? 'lede' : 'p', text: p.trim(),
+    }));
+  }, [liveText]);
+
+  // ── DEMO MODE state ──────────────────────────────────────────────────
+  const [elapsed, setElapsed] = React.useState(0);
+  const [playing, setPlaying] = React.useState(!isLiveMode);
+  const [speed, setSpeed] = React.useState(1);
+  const startedRef = React.useRef(Date.now());
+  const offsetRef = React.useRef(0);
+  const firedDoneRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (isLiveMode) return;
+    if (!playing) { offsetRef.current = elapsed; return; }
+    startedRef.current = Date.now();
+    const id = setInterval(() => {
+      const e = offsetRef.current + ((Date.now() - startedRef.current) / 1000) * speed;
+      setElapsed(Math.min(e, RUN_TOTAL + 0.5));
+      if (e >= RUN_TOTAL) { offsetRef.current = RUN_TOTAL; setPlaying(false); }
+    }, 80);
+    return () => clearInterval(id);
+  }, [playing, speed, isLiveMode]);
+
+  React.useEffect(() => {
+    if (isLiveMode) return;
+    if (elapsed >= RUN_TOTAL && !firedDoneRef.current) {
+      firedDoneRef.current = true;
+      onTimelineComplete && onTimelineComplete();
+    }
+  }, [elapsed, onTimelineComplete, isLiveMode]);
+
+  const { margins, paraIdx, showFigure, complete: demoComplete } = React.useMemo(() => {
+    if (isLiveMode) return { margins: [], paraIdx: -1, showFigure: false, complete: false };
+    const margins = new Map();
+    let paraIdx = -1, showFigure = false, complete = false;
+    for (const ev of RUN_EVENTS) {
+      if (ev.at > elapsed) break;
+      if (ev.kind === 'marginStart') margins.set(ev.id, { id: ev.id, tag: ev.tag, cn: ev.cn, state: 'live', t: ev.at });
+      else if (ev.kind === 'marginDone' && margins.has(ev.id)) margins.get(ev.id).state = 'done';
+      else if (ev.kind === 'marginAdd') margins.set(ev.id, { id: ev.id, tag: ev.tag, cn: ev.cn, state: 'done', t: ev.at });
+      else if (ev.kind === 'paragraph') paraIdx = Math.max(paraIdx, ev.idx);
+      else if (ev.kind === 'figure') showFigure = true;
+      else if (ev.kind === 'complete') complete = true;
+    }
+    return { margins: Array.from(margins.values()), paraIdx, showFigure, complete };
+  }, [elapsed, isLiveMode]);
+
+  const activePara = React.useMemo(() => {
+    if (isLiveMode || paraIdx < 0) return null;
+    const startEv = RUN_EVENTS.find(e => e.kind === 'paragraph' && e.idx === paraIdx);
+    const nextEv = RUN_EVENTS.find(e => e.at > (startEv?.at || 0) && (e.kind === 'paragraph' || e.kind === 'figure' || e.kind === 'complete'));
+    const start = startEv?.at || 0;
+    const finish = nextEv?.at || RUN_TOTAL;
+    const para = RUN_PARAGRAPHS[paraIdx];
+    if (!para) return null;
+    const progress = Math.max(0, Math.min(1, (elapsed - start) / Math.max((finish - start) * 0.92, 0.6)));
+    return { ...para, idx: paraIdx, revealCount: Math.floor(progress * para.text.length), complete: elapsed >= finish - 0.2 };
+  }, [paraIdx, elapsed, isLiveMode]);
+
+  // ── Unified derived values ───────────────────────────────────────────
+  const complete = isLiveMode ? (liveStatus === 'done' || liveStatus === 'error') : demoComplete;
+  const progressPct = isLiveMode
+    ? (liveStatus === 'done' ? 100 : Math.min(95, (liveText.length / 1800) * 100))
+    : Math.min(100, (elapsed / RUN_TOTAL) * 100);
+
+  const editorial = density === 'editorial';
+  const bodyCols = editorial
+    ? (marginaliaOn ? '1fr 600px 220px 1fr' : '1fr 720px 1fr')
+    : (marginaliaOn ? '1fr 540px 200px 1fr' : '1fr 660px 1fr');
+
+  // ── Live marginalia (generated from API keywords) ────────────────────
+  const liveMargins = React.useMemo(() => {
+    if (!isLiveMode) return [];
+    const out = [];
+    if (liveStatus === 'connecting') out.push({ id: 'connect', tag: 'CONNECT', cn: `正在连接 ${selectedModel?.name || '模型'}…`, state: 'live', t: 0 });
+    if (liveStatus === 'streaming' || liveStatus === 'done') {
+      out.push({ id: 'write', tag: 'WRITE', cn: `${selectedModel?.name || 'AI'} 正在撰写…`, state: liveStatus === 'done' ? 'done' : 'live', t: 0.5 });
+      const charCount = liveText.length;
+      if (charCount > 300) out.push({ id: 'p1', tag: 'PARA 1', cn: '完成第一段', state: 'done', t: 2 });
+      if (charCount > 700) out.push({ id: 'p2', tag: 'PARA 2', cn: '完成第二段', state: 'done', t: 5 });
+      if (charCount > 1100) out.push({ id: 'p3', tag: 'PARA 3', cn: '完成第三段', state: 'done', t: 8 });
+    }
+    if (liveStatus === 'done') out.push({ id: 'done', tag: 'DONE', cn: `共 ${liveText.length} 字`, state: 'done', t: liveElapsed });
+    if (liveStatus === 'error') out.push({ id: 'err', tag: 'ERROR', cn: liveError.slice(0, 60), state: 'done', t: liveElapsed });
+    return out;
+  }, [isLiveMode, liveStatus, liveText.length, liveError, selectedModel, liveElapsed]);
+
+  const displayMargins = isLiveMode ? liveMargins : margins;
+
+  return (
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Header bar */}
+      <div style={{
+        padding: '14px 36px', borderBottom: `1px solid ${t.rule}`,
+        display: 'flex', alignItems: 'center', gap: 18, background: t.paper, flexShrink: 0,
+      }}>
+        <LiveDot color={complete ? '#10b981' : (liveStatus === 'error' ? '#e5251d' : t.accent)}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1.4, color: complete ? '#10b981' : t.accent, minWidth: 120 }}>
+          {liveStatus === 'error' ? 'ERROR · 出错了' : complete ? 'DONE · 撰写完成' : isLiveMode ? `LIVE · ${selectedModel?.name}` : 'LIVE · 撰写中'}
+        </span>
+        <div style={{ flex: 1, height: 3, background: t.faint, position: 'relative' }}>
+          <div style={{
+            position: 'absolute', left: 0, top: 0, height: '100%',
+            width: `${progressPct}%`,
+            background: liveStatus === 'error' ? '#e5251d' : complete ? '#10b981' : t.accent,
+            transition: 'width 0.2s linear',
+          }}/>
+        </div>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, minWidth: 100, textAlign: 'right' }}>
+          {isLiveMode
+            ? (complete ? `完成 · ${liveElapsed.toFixed(1)}s` : `${liveElapsed.toFixed(1)}s · ${liveText.length} 字`)
+            : (complete ? '完成 · 26.0s' : `${elapsed.toFixed(1)}s / ~${RUN_TOTAL.toFixed(0)}s`)}
+        </span>
+        {!isLiveMode && <Btn t={t} size="sm" onClick={() => setPlaying(p => !p)} disabled={complete}>{playing ? '⏸' : '▶'}</Btn>}
+        {!isLiveMode && <Btn t={t} size="sm" onClick={() => setSpeed(s => s === 1 ? 2 : s === 2 ? 4 : 1)} disabled={complete}>×{speed}</Btn>}
+        {!isLiveMode && !complete && (
+          <Btn t={t} size="sm" onClick={() => { offsetRef.current = RUN_TOTAL; setElapsed(RUN_TOTAL); setPlaying(false); }}>SKIP →</Btn>
+        )}
+        {complete && <Btn t={t} size="sm" primary accent onClick={onDone}>View report ↗</Btn>}
+      </div>
+
+      {/* Essay layout */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: bodyCols, minHeight: 0, overflow: 'auto' }}>
+        <div/>
+        <div style={{ padding: '36px 0 48px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <PromptHeader t={t} prompt={prompt}/>
+          {/* Model badge in live mode */}
+          {isLiveMode && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Tag t={t} accent>◈ {selectedModel?.name} · {selectedModel?.provider}</Tag>
+              {liveStatus === 'connecting' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>正在连接…</span>}
+            </div>
+          )}
+          {!isLiveMode && (
+            <div>
+              <BilingualHead t={t} size="md" en="Cold brew, hotter capital." cn="2025 Q1 国内咖啡赛道融资速记" emphasis="From Manner's new round to the sprawl of small-town chains."/>
+            </div>
+          )}
+
+          <div style={{
+            fontFamily: t.fontCN, fontSize: editorial ? 16 : 15,
+            lineHeight: 1.85, color: t.inkSoft,
+            display: 'flex', flexDirection: 'column', gap: 18,
+            paddingTop: 18, borderTop: `2px solid ${t.ink}`,
+          }}>
+            {/* LIVE MODE rendering */}
+            {isLiveMode && liveParagraphs.map((p, i) => (
+              <Paragraph key={i} t={t} para={p} isLead={p.kind === 'lede'} isActive={i === liveParagraphs.length - 1 && liveStatus === 'streaming'}/>
+            ))}
+            {isLiveMode && liveStatus === 'error' && (
+              <div style={{ padding: '12px 16px', border: `1.5px solid #e5251d`, background: t.cardOn, fontFamily: t.fontCN, fontSize: 13, color: '#e5251d', lineHeight: 1.6 }}>
+                ✕ API 错误：{liveError}
+              </div>
+            )}
+            {isLiveMode && liveStatus === 'connecting' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.mute }}>
+                <span style={{ display: 'inline-block', width: 10, height: 18, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+                <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>connecting to {selectedModel?.name}…</span>
+              </div>
+            )}
+
+            {/* DEMO MODE rendering */}
+            {!isLiveMode && RUN_PARAGRAPHS.slice(0, paraIdx + 1).map((p, i) => {
+              const isActive = i === paraIdx && !demoComplete && !(activePara && activePara.complete);
+              const text = isActive && activePara ? activePara.text.slice(0, activePara.revealCount) : p.text;
+              return <Paragraph key={i} t={t} para={{ ...p, text }} isLead={p.kind === 'lede'} isActive={isActive}/>;
+            })}
+            {!isLiveMode && showFigure && (
+              <Figure t={t} type="chart" label="Fig. 1 · 季度融资金额分布 (亿元)" caption="数据来源：IT 桔子 · 2025 Q1 一级市场数据库" height={220}/>
+            )}
+            {!isLiveMode && paraIdx < 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.mute }}>
+                <span style={{ display: 'inline-block', width: 10, height: 18, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+                <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>thinking…</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Marginalia */}
+        {marginaliaOn && (
+          <div style={{ padding: '36px 0 36px 24px', borderLeft: `1px dashed ${t.rule}`, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'hidden' }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              MARGINALIA · 边注<span style={{ flex: 1 }}/><span>{displayMargins.length}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {displayMargins.map(m => (
+                <MarginNote key={m.id} t={t} tag={m.tag} cn={m.cn} state={m.state} time={formatTime(m.t)}/>
+              ))}
+              {complete && liveStatus !== 'error' && (
+                <div style={{ padding: '12px 14px', border: `1.5px solid #10b981`, background: t.cardOn, fontFamily: t.fontCN, fontSize: 12, lineHeight: 1.55, color: t.inkSoft }}>
+                  ✓ {isLiveMode ? `写完了，共 ${liveText.length} 字。` : '写完了。共 2,418 字，9 处引用，4 段。'}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        <div/>
+      </div>
+    </div>
+  );
+}
+
+function Paragraph({ t, para, isLead, isActive }) {
+  // Render text with §N footnote markers converted to superscripts
+  const parts = [];
+  const re = /§(\d+)/g;
+  let lastIdx = 0;
+  let match;
+  while ((match = re.exec(para.text)) !== null) {
+    parts.push(para.text.slice(lastIdx, match.index));
+    parts.push({ sup: match[1] });
+    lastIdx = match.index + match[0].length;
+  }
+  parts.push(para.text.slice(lastIdx));
+
+  const style = isLead ? {
+    margin: 0, fontWeight: 700, fontSize: 19, lineHeight: 1.55, color: t.ink,
+  } : { margin: 0 };
+
+  return (
+    <p style={style}>
+      {parts.map((p, i) => typeof p === 'string'
+        ? <React.Fragment key={i}>{p}</React.Fragment>
+        : <Sup key={i} n={p.sup} t={t}/>)}
+      {isActive && <span style={{
+        display: 'inline-block', width: 8, height: 16, background: t.accent,
+        verticalAlign: '-3px', marginLeft: 2, animation: 'essay-blink 1s steps(2) infinite',
+      }}/>}
+    </p>
+  );
+}
+
+function PromptHeader({ t, prompt }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Tag t={t} accent>◆ YOUR PROMPT · 你的提问</Tag>
+      <div style={{
+        padding: '12px 0', borderTop: `1px solid ${t.ink}`, borderBottom: `1px solid ${t.ink}`,
+        fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.6, color: t.inkSoft,
+      }}>{prompt}</div>
+    </div>
+  );
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+Object.assign(window, { Running, RUN_PARAGRAPHS, RUN_EVENTS, RUN_TOTAL });
+// Report — final published essay. Lead paragraph, sections with figures,
+// pull quotes, marginal references column. Polished editorial output.
+
+const REPORT_META = {
+  issue: '№ 241',
+  date: '2026 · MAY · 21',
+  duration: '07:42',
+  words: '2,418',
+  sources: 9,
+  reading: '6 min',
+  category: 'INDUSTRY · 行业研究',
+};
+
+const REPORT_METRICS = [
+  { value: '¥11.4亿', en: 'TOTAL', cn: '融资总额',  accent: false },
+  { value: '+38%',   en: 'YOY',   cn: '同比增长',  accent: true },
+  { value: '9',       en: 'DEALS', cn: '公开事件',  accent: false },
+  { value: '6 / 9',   en: 'JAN',   cn: '集中于 1 月', accent: false },
+];
+
+const REPORT_SECTIONS = [
+  {
+    id: 's1', num: '01', en: 'TL;DR', cn: '核心结论',
+    blocks: [
+      { kind: 'lede',
+        text: '钱没少，故事变了——资本退出"高密度精品"叙事，重新拥抱规模与下沉。' },
+      { kind: 'p',
+        text: '2025 年第一季度，国内连锁咖啡品牌共发生 9 起公开融资事件，总金额约 11.4 亿元§1。其中 6 起集中在 1 月，3 起分布在 2 月与 3 月，节奏明显前置——多数公司选择把好消息放在春节前后释放，回避后段的传统淡季窗口。' },
+      { kind: 'p',
+        text: '更值得注意的是融资标的的迁移：从过去两年的"精品 / 第三空间 / 高密度门店"叙事，转向"规模化 / 下沉 / 加盟"叙事。两端同时拿钱，中间最难。' },
+    ],
+  },
+  {
+    id: 's2', num: '02', en: 'The state of capital', cn: '资本的新姿态',
+    blocks: [
+      { kind: 'p',
+        text: 'Manner 在 1 月完成新一轮融资，估值约 30 亿美元§2，并同步释放"5 年内开设 5,000 家门店"的计划——目前 Manner 的门店数约 1,300 家，这意味着接下来 4 年要保持每年新增 ~900 家的速度。' },
+      { kind: 'quote',
+        text: '资本不再用"每平米营收"读懂咖啡，它开始用"每个县城"读懂咖啡。',
+        by: '一位连锁咖啡品牌的早期投资人 · 行业访谈' },
+      { kind: 'p',
+        text: '这是公司首次明确表态规模化路径——此前 Manner 长期被视作精品咖啡的代表，2024 年还曾因门店密度过低而被外界质疑增长上限。新的估值与计划，是一次清晰的姿态切换。' },
+    ],
+  },
+  {
+    id: 's3', num: '03', en: 'The sprawl beneath', cn: '下沉之下',
+    blocks: [
+      { kind: 'p',
+        text: '另一端则是库迪、挪瓦、本来不该有等品牌密集出现在三四线城市§3。库迪 1 月披露的加盟数据显示，下沉市场加盟商占比已超过 60%。' },
+      { kind: 'figure', label: 'Fig. 1 · 季度融资金额分布 (亿元)',
+        caption: '数据来源：IT 桔子 · 2025 Q1 一级市场数据库' },
+      { kind: 'p',
+        text: '从单店模型上看，这些品牌的客单价在 9-12 元之间，比一二线城市的精品咖啡低近一倍。模型成立的前提是低租金、低人力、半成品供应链——这是另一套生意，需要另一套估值体系。' },
+    ],
+  },
+  {
+    id: 's4', num: '04', en: 'What to watch', cn: '接下来看什么',
+    blocks: [
+      { kind: 'p',
+        text: '两个信号需要持续跟踪：其一，Manner 的展店速度是否能稳定在年化 ~900 家——这是判断"规模化叙事"能否成立的关键指标。其二，下沉市场的单店模型是否仍能维持 ~12 个月的回本周期。' },
+      { kind: 'p',
+        text: '如果两条线都顺利，2025 年 H2 会迎来下一波融资。如果有一条断了，资本就会重新回到"中间地带"，那些目前最尴尬的城市——比如杭州、苏州、宁波——可能反而成为新的故事来源。' },
+    ],
+  },
+];
+
+const REPORT_REFS = [
+  { n: '[1]', src: 'IT 桔子', title: '2025 Q1 一级市场融资数据库', url: 'itjuzi.com', date: '2025.04.02' },
+  { n: '[2]', src: '36 氪',   title: 'Manner 新一轮融资消息',         url: '36kr.com',  date: '2025.01.18' },
+  { n: '[3]', src: '窄门餐眼', title: '咖啡品牌门店分布数据',         url: 'zhaimen.cn', date: '2025.03.30' },
+  { n: '[4]', src: '行业访谈', title: '5 位早期投资人匿名访谈',       url: 'internal',   date: '2025.04.10' },
+];
+
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial' }) {
+  const [activeSec, setActiveSec] = React.useState('s1');
+  const containerRef = React.useRef(null);
+
+  // Scroll-spy: as user scrolls, highlight current section in left rail
+  React.useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const handler = () => {
+      const headings = REPORT_SECTIONS.map(s => ({ id: s.id, el: root.querySelector(`[data-sec="${s.id}"]`) }));
+      const top = root.scrollTop + 120;
+      let current = headings[0].id;
+      for (const h of headings) {
+        if (h.el && h.el.offsetTop <= top) current = h.id;
+      }
+      setActiveSec(current);
+    };
+    root.addEventListener('scroll', handler);
+    return () => root.removeEventListener('scroll', handler);
+  }, []);
+
+  const editorial = density === 'editorial';
+  const bodyCols = editorial
+    ? (marginaliaOn ? '180px 1fr 600px 220px 1fr' : '180px 1fr 720px 1fr')
+    : (marginaliaOn ? '160px 1fr 540px 200px 1fr' : '160px 1fr 660px 1fr');
+
+  const scrollTo = (id) => {
+    const el = containerRef.current?.querySelector(`[data-sec="${id}"]`);
+    if (el) containerRef.current.scrollTo({ top: el.offsetTop - 80, behavior: 'smooth' });
+  };
+
+  return (
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Report header bar */}
+      <div style={{
+        padding: '12px 36px', borderBottom: `1px solid ${t.rule}`,
+        display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, background: t.paper,
+      }}>
+        <Tag t={t} accent>◆ {REPORT_META.issue} · DONE</Tag>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
+          {REPORT_META.words} 字 · {REPORT_META.sources} 来源 · {REPORT_META.reading}阅读
+        </span>
+        <span style={{ flex: 1 }}/>
+        <Btn t={t} size="sm">▸ 重跑</Btn>
+        <Btn t={t} size="sm">⌖ 收藏</Btn>
+        <Btn t={t} size="sm" primary accent onClick={onExport}>↗ 导出 / 分享</Btn>
+      </div>
+
+      {/* Scrollable body */}
+      <div ref={containerRef} style={{
+        flex: 1, minHeight: 0, overflow: 'auto',
+        display: 'grid', gridTemplateColumns: bodyCols,
+      }}>
+        {/* Left rail: section index */}
+        <aside style={{
+          padding: '40px 20px 40px 32px', position: 'sticky', top: 0, alignSelf: 'start',
+        }}>
+          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, marginBottom: 14 }}>
+            CONTENTS · 目录
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {REPORT_SECTIONS.map(s => (
+              <button key={s.id}
+                type="button"
+                onClick={() => scrollTo(s.id)}
+                style={{
+                  display: 'block', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
+                  padding: '10px 0 10px 10px',
+                  borderLeft: activeSec === s.id ? `3px solid ${t.accent}` : `3px solid transparent`,
+                  fontFamily: t.fontBody, color: t.ink,
+                }}>
+                <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.5 }}>{s.num}</div>
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 }}>{s.en}</div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: activeSec === s.id ? t.ink : t.mute, marginTop: 1 }}>{s.cn}</div>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        {/* Outer gutter */}
+        <div/>
+
+        {/* Center body */}
+        <article style={{ padding: '32px 0 80px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* Title block */}
+          <header style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
+              <Tag t={t}>◆ {REPORT_META.category}</Tag>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{REPORT_META.date}</span>
+              <span style={{ flex: 1, height: 1, background: t.rule }}/>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>by ATLAS · 04:07–07:42</span>
+            </div>
+            <div style={{
+              fontFamily: t.fontDisplay, fontWeight: 900,
+              fontSize: editorial ? 64 : 52, lineHeight: 0.95, letterSpacing: -2,
+              color: t.ink,
+            }}>
+              Cold brew,<br/>
+              <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>hotter</span> capital.
+            </div>
+            <div style={{
+              fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 26 : 22,
+              lineHeight: 1.3, color: t.inkSoft,
+            }}>
+              2025 Q1 国内咖啡赛道融资速记。从 Manner 的新一轮，到下沉市场的快速展店。
+            </div>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0,
+              borderTop: `2px solid ${t.ink}`, borderBottom: `1px solid ${t.ink}`,
+              paddingTop: 16, paddingBottom: 16, marginTop: 4,
+            }}>
+              {REPORT_METRICS.map((m, i) => (
+                <div key={m.en} style={{
+                  paddingLeft: i === 0 ? 0 : 18,
+                  borderLeft: i === 0 ? 'none' : `1px solid ${t.rule}`,
+                }}>
+                  <Metric {...m} t={t}/>
+                </div>
+              ))}
+            </div>
+          </header>
+
+          {REPORT_SECTIONS.map(s => (
+            <section key={s.id} data-sec={s.id} style={{
+              display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 24, scrollMarginTop: 80,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, borderTop: `2px solid ${t.ink}`, paddingTop: 10 }}>
+                <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.accent, letterSpacing: 0.5 }}>§ {s.num}</span>
+                <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 16, letterSpacing: 1.4, textTransform: 'uppercase' }}>{s.en}</span>
+                <span style={{ fontFamily: t.fontCN, fontSize: 16, fontWeight: 700, color: t.inkSoft }}>· {s.cn}</span>
+              </div>
+              <div style={{
+                fontFamily: t.fontCN, fontSize: editorial ? 16 : 15,
+                lineHeight: 1.85, color: t.inkSoft,
+                display: 'flex', flexDirection: 'column', gap: 16,
+              }}>
+                {s.blocks.map((b, i) => <ReportBlock key={i} block={b} t={t}/>)}
+              </div>
+            </section>
+          ))}
+
+          {/* Follow-up composer */}
+          <div style={{
+            marginTop: 36, padding: '18px 22px',
+            border: `1.5px solid ${t.ink}`, background: t.cardOn,
+            display: 'flex', flexDirection: 'column', gap: 12,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Tag t={t} filled>FOLLOW-UP</Tag>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>追问、要求改写或继续</span>
+            </div>
+            <textarea defaultValue="把第 3 节扩写一倍，加上来自小红书的真实用户评论。"
+              style={{
+                fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.55, color: t.ink,
+                padding: '4px 0', border: 'none', outline: 'none', resize: 'none', minHeight: 44, background: 'transparent',
+              }}/>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Tag t={t}>引用 §3</Tag>
+              <Tag t={t}>+ 小红书数据源</Tag>
+              <span style={{ flex: 1 }}/>
+              <Btn t={t} size="sm" primary accent>↗ Send</Btn>
+            </div>
+          </div>
+        </article>
+
+        {/* Right rail: references */}
+        {marginaliaOn && (
+          <aside style={{ padding: '32px 0 32px 24px', borderLeft: `1px dashed ${t.rule}` }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, marginBottom: 14 }}>
+              REFERENCES · 引用 ({REPORT_REFS.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {REPORT_REFS.map((r, i) => (
+                <div key={r.n} style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 12, borderBottom: `1px dashed ${t.rule}` }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, fontWeight: 700 }}>{r.n}</span>
+                    <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' }}>{r.src}</span>
+                  </div>
+                  <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, lineHeight: 1.45, marginLeft: 24 }}>{r.title}</span>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 24 }}>{r.url} · {r.date}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              marginTop: 18, padding: 12, border: `1.5px solid ${t.ink}`, background: t.cardOn,
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>SHARE · 分享</span>
+              <Btn t={t} size="sm" onClick={onExport}>↗ 创建链接</Btn>
+              <Btn t={t} size="sm" onClick={onExport}>↓ 导出 PDF</Btn>
+            </div>
+          </aside>
+        )}
+        <div/>
+      </div>
+    </div>
+  );
+}
+
+function ReportBlock({ block, t }) {
+  if (block.kind === 'lede') {
+    return (
+      <p style={{ margin: 0, fontWeight: 700, fontSize: 19, lineHeight: 1.55, color: t.ink }}>
+        {renderFootnotes(block.text, t)}
+      </p>
+    );
+  }
+  if (block.kind === 'figure') {
+    return <Figure t={t} type="chart" label={block.label} caption={block.caption} height={240}/>;
+  }
+  if (block.kind === 'quote') {
+    return <PullQuote t={t} attribution={block.by}>{block.text}</PullQuote>;
+  }
+  return (
+    <p style={{ margin: 0 }}>
+      {renderFootnotes(block.text, t)}
+    </p>
+  );
+}
+
+function renderFootnotes(text, t) {
+  const parts = [];
+  const re = /§(\d+)/g;
+  let lastIdx = 0;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    parts.push(text.slice(lastIdx, match.index));
+    parts.push({ sup: match[1] });
+    lastIdx = match.index + match[0].length;
+  }
+  parts.push(text.slice(lastIdx));
+  return parts.map((p, i) => typeof p === 'string'
+    ? <React.Fragment key={i}>{p}</React.Fragment>
+    : <Sup key={i} n={p.sup} t={t}/>);
+}
+
+Object.assign(window, { Report, REPORT_META, REPORT_SECTIONS, REPORT_REFS });
+// Library — magazine-style archive of past reports. Grid of "issues",
+// filterable by category. Each card opens the report view.
+
+const LIBRARY_ENTRIES = [
+  {
+    issue: 241, status: 'NEW',
+    title: { en: 'Cold brew, hotter capital.', cn: '2025 Q1 国内咖啡赛道融资速记' },
+    category: 'INDUSTRY · 行业研究', tag: 'RESEARCH',
+    date: '5月21日', words: '2,418', reading: '6 min', sources: 9,
+    by: 'ATLAS · 04:07–07:42',
+    teaser: '钱没少，故事变了——资本退出"高密度精品"叙事，重新拥抱规模与下沉。',
+    feature: true,
+  },
+  {
+    issue: 240, status: '',
+    title: { en: 'Q1 sales · South China', cn: '华南区 Q1 品类增长复盘' },
+    category: 'DATA · 数据分析', tag: 'DATA',
+    date: '5月18日', words: '1,524', reading: '4 min', sources: 4,
+    by: 'ATLAS · 02:41',
+    teaser: '低线城市贡献了 70% 增量，但毛利空间收窄到 8 个百分点。',
+  },
+  {
+    issue: 239, status: '',
+    title: { en: 'Notion AI · ChatGPT Teams', cn: 'AI 协作工具竞品拆解' },
+    category: 'COMPETITOR · 竞品', tag: 'RESEARCH',
+    date: '5月15日', words: '3,102', reading: '9 min', sources: 14,
+    by: 'ATLAS · 11:08',
+    teaser: '两家在「知识检索」上的产品差异，比定价策略更值得讨论。',
+  },
+  {
+    issue: 238, status: '',
+    title: { en: 'Weekly · Wk20 / 2026', cn: '团队周报 · 第 20 周' },
+    category: 'INTERNAL · 内部', tag: 'INTERNAL',
+    date: '5月12日', words: '812', reading: '3 min', sources: 2,
+    by: 'ATLAS · 01:24',
+    teaser: '上线 2 个功能，客户 A 谈判进入第二阶段，HR 系统迁移延期。',
+  },
+  {
+    issue: 237, status: '',
+    title: { en: 'Home robotics scan', cn: '家用清洁机器人赛道扫描' },
+    category: 'INDUSTRY · 行业研究', tag: 'RESEARCH',
+    date: '5月09日', words: '2,710', reading: '7 min', sources: 11,
+    by: 'ATLAS · 08:55',
+    teaser: '价格带正在被 1,500-2,500 元这一段重新定义。',
+  },
+  {
+    issue: 236, status: '',
+    title: { en: 'Remote work · rent', cn: '远程办公对一线城市租房市场影响' },
+    category: 'SOCIETY · 社会观察', tag: 'RESEARCH',
+    date: '5月05日', words: '2,194', reading: '5 min', sources: 8,
+    by: 'ATLAS · 06:38',
+    teaser: '远郊租金回升了 4-6%，市中心仍在跌——但比一年前已收窄。',
+  },
+  {
+    issue: 235, status: '',
+    title: { en: 'Q1 board memo', cn: '一季度董事会备忘录' },
+    category: 'INTERNAL · 内部', tag: 'INTERNAL',
+    date: '5月02日', words: '1,406', reading: '4 min', sources: 3,
+    by: 'ATLAS · 02:18',
+    teaser: '三大业务线达成、超出、未达 Q1 目标的分布与原因。',
+  },
+  {
+    issue: 234, status: 'ARCHIVED',
+    title: { en: 'Q4 retro · go-to-market', cn: 'Q4 GTM 复盘' },
+    category: 'INTERNAL · 内部', tag: 'INTERNAL',
+    date: '4月28日', words: '1,802', reading: '5 min', sources: 5,
+    by: 'ATLAS · 03:51',
+    teaser: '渠道侧的 CAC 显著优于直销，但 LTV 还需要 2 个季度验证。',
+  },
+];
+
+const LIB_FILTERS = [
+  { k: 'ALL',        en: 'All',         cn: '全部' },
+  { k: 'RESEARCH',   en: 'Research',    cn: '研究' },
+  { k: 'DATA',       en: 'Data',        cn: '数据分析' },
+  { k: 'INTERNAL',   en: 'Internal',    cn: '内部' },
+];
+
+function Library({ t, onOpen }) {
+  const [filter, setFilter] = React.useState('ALL');
+  const [sort, setSort] = React.useState('date');
+
+  const entries = LIBRARY_ENTRIES.filter(e =>
+    filter === 'ALL' ? true : e.tag === filter
+  );
+  const feature = entries.find(e => e.feature) || entries[0];
+  const rest = entries.filter(e => e !== feature);
+
+  return (
+    <div style={{
+      flex: 1, background: t.paper, color: t.ink,
+      display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto',
+    }}>
+      {/* Masthead */}
+      <div style={{
+        padding: '36px 36px 24px',
+        display: 'grid', gridTemplateColumns: '1fr auto', gap: 32, alignItems: 'flex-end',
+        borderBottom: `2px solid ${t.ink}`,
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 12 }}>
+            <Tag t={t} accent>◆ THE ARCHIVE · 报告库</Tag>
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{LIBRARY_ENTRIES.length} entries · 全部 {LIBRARY_ENTRIES.length} 期</span>
+          </div>
+          <div style={{
+            fontFamily: t.fontDisplay, fontWeight: 900,
+            fontSize: 80, lineHeight: 0.92, letterSpacing: -3, color: t.ink,
+          }}>
+            Every essay <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>Atlas</span><br/>has ever filed.
+          </div>
+        </div>
+        <div style={{
+          textAlign: 'right',
+          display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end',
+        }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>SINCE</span>
+          <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 28, letterSpacing: -0.5 }}>2025 · 09 · 12</span>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>241 issues · 487,210 words</span>
+        </div>
+      </div>
+
+      {/* Filters bar */}
+      <div style={{
+        padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 12,
+        borderBottom: `1px solid ${t.rule}`, background: t.paper,
+      }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>FILTER ·</span>
+        {LIB_FILTERS.map(f => (
+          <button key={f.k}
+            type="button"
+            onClick={() => setFilter(f.k)}
+            style={{
+              padding: '5px 12px', border: `1px solid ${filter === f.k ? t.ink : t.rule}`,
+              background: filter === f.k ? t.ink : 'transparent',
+              color: filter === f.k ? t.paper : t.ink,
+              fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10,
+              letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
+              display: 'inline-flex', gap: 6,
+            }}>
+            <span>{f.en}</span>
+            <span style={{ fontFamily: t.fontCN, opacity: 0.7 }}>{f.cn}</span>
+          </button>
+        ))}
+        <span style={{ flex: 1 }}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>SORT</span>
+        <button type="button" onClick={() => setSort(s => s === 'date' ? 'words' : 'date')}
+          style={{
+            padding: '5px 10px', border: `1px solid ${t.rule}`, background: 'transparent',
+            fontFamily: t.fontMono, fontSize: 10, color: t.ink, cursor: 'pointer',
+            letterSpacing: 1, textTransform: 'uppercase',
+          }}>
+          {sort === 'date' ? 'BY DATE ↓' : 'BY LENGTH ↓'}
+        </button>
+        <button type="button"
+          style={{
+            padding: '5px 10px', border: `1px solid ${t.rule}`, background: 'transparent',
+            fontFamily: t.fontMono, fontSize: 10, color: t.ink, cursor: 'pointer',
+            letterSpacing: 1, textTransform: 'uppercase',
+          }}>SEARCH ⌘ K</button>
+      </div>
+
+      {/* Featured */}
+      {feature && (
+        <article onClick={() => onOpen(feature)} style={{
+          padding: '36px 36px', borderBottom: `1px solid ${t.ink}`,
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 36,
+          cursor: 'pointer', background: t.paper,
+          transition: 'background 0.12s',
+        }}
+          onMouseEnter={e => e.currentTarget.style.background = t.faint}
+          onMouseLeave={e => e.currentTarget.style.background = t.paper}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Tag t={t} accent filled>◆ ISSUE № {feature.issue} · LATEST</Tag>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.category}</span>
+            </div>
+            <div style={{
+              fontFamily: t.fontDisplay, fontWeight: 900,
+              fontSize: 48, lineHeight: 0.96, letterSpacing: -1.6,
+            }}>{feature.title.en}</div>
+            <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 22, lineHeight: 1.3, color: t.inkSoft }}>
+              {feature.title.cn}
+            </div>
+            <div style={{ fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.7, color: t.inkSoft, marginTop: 4 }}>
+              {feature.teaser}
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginTop: 8, alignItems: 'center' }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{feature.date}</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.words} 字</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.sources} 来源</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.reading}</span>
+              <span style={{ flex: 1 }}/>
+              <Btn t={t} size="sm" accent primary>Read ↗</Btn>
+            </div>
+          </div>
+          <CoverArt t={t} entry={feature}/>
+        </article>
+      )}
+
+      {/* Rest grid */}
+      <div style={{
+        padding: '24px 36px 48px',
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0,
+        borderTop: `1px solid ${t.rule}`, borderLeft: `1px solid ${t.rule}`,
+        marginLeft: 0, marginRight: 0,
+      }}>
+        {rest.map(e => <LibraryCard key={e.issue} entry={e} t={t} onOpen={onOpen}/>)}
+      </div>
+    </div>
+  );
+}
+
+function LibraryCard({ entry, t, onOpen }) {
+  return (
+    <article onClick={() => onOpen(entry)} style={{
+      borderRight: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
+      padding: '22px 22px', cursor: 'pointer', background: t.paper,
+      display: 'flex', flexDirection: 'column', gap: 12, minHeight: 280,
+      transition: 'background 0.12s',
+    }}
+      onMouseEnter={e => e.currentTarget.style.background = t.faint}
+      onMouseLeave={e => e.currentTarget.style.background = t.paper}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>№ {entry.issue}</span>
+        <Tag t={t}>{entry.tag}</Tag>
+      </div>
+      <CoverArt t={t} entry={entry} mini/>
+      <div>
+        <div style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 17, letterSpacing: -0.3, lineHeight: 1.1, marginBottom: 4 }}>
+          {entry.title.en}
+        </div>
+        <div style={{ fontFamily: t.fontCN, fontWeight: 600, fontSize: 13, color: t.inkSoft, lineHeight: 1.3 }}>
+          {entry.title.cn}
+        </div>
+      </div>
+      <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, lineHeight: 1.5, flex: 1 }}>
+        {entry.teaser}
+      </div>
+      <div style={{
+        display: 'flex', gap: 10, alignItems: 'center', paddingTop: 8, borderTop: `1px solid ${t.rule}`,
+      }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.5 }}>{entry.date}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>·</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{entry.words} 字</span>
+        <span style={{ flex: 1 }}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>↗</span>
+      </div>
+    </article>
+  );
+}
+
+// Simple typographic "cover art" — bold geometric composition per category
+function CoverArt({ t, entry, mini = false }) {
+  const h = mini ? 110 : 280;
+  // Color & shapes vary by tag
+  const variants = {
+    RESEARCH: { bg: t.ink, fg: t.paper, accent: t.accent },
+    DATA:     { bg: t.accent, fg: t.paper, accent: t.ink },
+    INTERNAL: { bg: t.paperAlt, fg: t.ink, accent: t.accent },
+  };
+  const v = variants[entry.tag] || variants.RESEARCH;
+  const seed = entry.issue;
+  return (
+    <div style={{
+      height: h, background: v.bg, color: v.fg,
+      border: `1px solid ${t.ink}`,
+      position: 'relative', overflow: 'hidden',
+      fontFamily: t.fontDisplay,
+    }}>
+      <CoverArtComposition issue={entry.issue} v={v} t={t} mini={mini}/>
+      <div style={{ position: 'absolute', top: 10, left: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: mini ? 8 : 10, letterSpacing: 1.4, opacity: 0.85 }}>VOL.04</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: mini ? 8 : 10, letterSpacing: 1.4, opacity: 0.85 }}>№ {entry.issue}</span>
+      </div>
+      <div style={{ position: 'absolute', bottom: 10, right: 12 }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: mini ? 8 : 10, letterSpacing: 1.2, opacity: 0.85 }}>{entry.date}</span>
+      </div>
+    </div>
+  );
+}
+
+function CoverArtComposition({ issue, v, t, mini }) {
+  // Pseudo-random but deterministic composition per issue
+  const r = (s) => ((Math.sin((issue + s) * 91.3) + 1) / 2);
+  const big = mini ? 36 : 88;
+  return (
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+      {/* Big number */}
+      <text x={50} y={64 + (mini ? 4 : 0)} textAnchor="middle"
+        fontFamily="Archivo, sans-serif" fontWeight="900"
+        fontSize={mini ? 48 : 78} letterSpacing="-4"
+        fill={v.fg} opacity="0.18">{issue}</text>
+      {/* Random shapes */}
+      <circle cx={20 + r(1) * 30} cy={30 + r(2) * 20} r={4 + r(3) * 6}
+        fill={v.accent} opacity="0.85"/>
+      <rect x={60} y={20 + r(4) * 10} width={28} height={3} fill={v.fg} opacity="0.6"/>
+      <line x1={10} y1={70} x2={92} y2={70} stroke={v.fg} strokeWidth="0.3" opacity="0.6"/>
+      <text x={10} y={92} fontFamily="JetBrains Mono, monospace" fontSize="3.5" letterSpacing="0.4"
+        fill={v.fg} opacity="0.7">A · T · L · A · S · ESSAYS</text>
+    </svg>
+  );
+}
+
+Object.assign(window, { Library, LIBRARY_ENTRIES });
+// Sources — knowledge base / data source management.
+// Plus the ExportModal overlay used from the report screen.
+
+const SOURCE_CATEGORIES = [
+  { k: 'all',   en: 'All',         cn: '全部',    count: 23 },
+  { k: 'db',    en: 'Databases',   cn: '数据库',  count: 4 },
+  { k: 'files', en: 'Files & Docs', cn: '文件',   count: 9 },
+  { k: 'web',   en: 'Web crawl',   cn: '网络抓取', count: 6 },
+  { k: 'api',   en: 'APIs',        cn: 'API',     count: 4 },
+];
+
+const SOURCES = [
+  {
+    name: '乘联会 · 销量月报', en: 'CPCA monthly sales',
+    type: 'web', kind: 'WEB · RSS', size: '12.3 MB', docs: 96,
+    lastSync: '5月20日 18:02', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '官方乘联会数据，按月发布。涵盖乘用车 / 新能源 / 出口三个口径。',
+  },
+  {
+    name: 'IT 桔子 · 一级市场数据库', en: 'IT Juzi · primary market',
+    type: 'api', kind: 'API · v3', size: '—', docs: 8400,
+    lastSync: '5月21日 09:14', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '融资事件 / 估值 / 投资方关系。仅 Q1-Q2 数据进入此次报告范围。',
+  },
+  {
+    name: '小红书讨论抓取', en: 'Xiaohongshu discussions',
+    type: 'web', kind: 'WEB · scraper', size: '4.1 MB', docs: 218,
+    lastSync: '5月19日 22:40', cadence: 'weekly', status: 'warn', quality: 'B',
+    note: '218 条相关讨论，已自动去重 / 过滤广告。下次抓取建议增加关键词。',
+  },
+  {
+    name: '36 氪报道精选', en: '36Kr articles',
+    type: 'web', kind: 'WEB · RSS', size: '8.6 MB', docs: 412,
+    lastSync: '5月21日 06:30', cadence: 'daily', status: 'ok', quality: 'A',
+  },
+  {
+    name: '内部销售数据库', en: 'Internal sales DB',
+    type: 'db', kind: 'PostgreSQL', size: '1.4 GB', docs: '~ 240k 行',
+    lastSync: '5月21日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '只读连接。涵盖近 24 个月所有渠道、品类、城市维度的销售数据。',
+  },
+  {
+    name: '客户访谈纪要 (Q1)', en: 'Customer interview transcripts',
+    type: 'files', kind: 'FILES · 18 项', size: '3.2 MB', docs: 18,
+    lastSync: '5月14日 11:22', cadence: 'manual', status: 'ok', quality: 'A',
+    note: '已经过隐私脱敏处理。仅 Atlas 内部可见。',
+  },
+  {
+    name: '团队 Notion 知识库', en: 'Team Notion workspace',
+    type: 'api', kind: 'NOTION · workspace', size: '—', docs: 1240,
+    lastSync: '5月21日 13:55', cadence: 'realtime', status: 'ok', quality: 'B',
+    note: '索引滞后约 15 分钟。',
+  },
+  {
+    name: 'J.D. Power 中国汽车', en: 'J.D. Power China auto',
+    type: 'files', kind: 'FILES · PDF', size: '24 MB', docs: 6,
+    lastSync: '5月02日 09:10', cadence: 'manual', status: 'stale', quality: 'A',
+    note: '上次更新已超过 14 天。建议刷新。',
+  },
+  {
+    name: 'BigQuery · 行为日志', en: 'BigQuery · event log',
+    type: 'db', kind: 'BigQuery', size: '83 GB', docs: '~ 84M 事件',
+    lastSync: '5月21日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
+  },
+  {
+    name: '窄门餐眼 · 门店数据', en: 'Zhaimen · stores',
+    type: 'api', kind: 'API · v1', size: '—', docs: 4800,
+    lastSync: '5月20日 16:40', cadence: 'daily', status: 'ok', quality: 'A',
+  },
+];
+
+const STATUS_META = {
+  ok:    { label: 'IN SYNC',   cn: '同步中',  color: '#2a8c5c' },
+  warn:  { label: 'NEEDS ATT', cn: '待处理',  color: '#c2540a' },
+  stale: { label: 'STALE',     cn: '已过期',  color: '#9b1c14' },
+  off:   { label: 'OFFLINE',   cn: '未连接',  color: '#767368' },
+};
+
+const QUALITY_META = {
+  A: { label: 'A · 高', color: '#0f0f0f' },
+  B: { label: 'B · 中', color: '#767368' },
+  C: { label: 'C · 低', color: '#9b1c14' },
+};
+
+function Sources({ t }) {
+  const [cat, setCat] = React.useState('all');
+  const filtered = SOURCES.filter(s => cat === 'all' || s.type === cat);
+
+  // counters
+  const total = SOURCES.length;
+  const docs = SOURCES.reduce((a, s) => a + (typeof s.docs === 'number' ? s.docs : 0), 0);
+  const warn = SOURCES.filter(s => s.status === 'warn' || s.status === 'stale').length;
+
+  return (
+    <div style={{
+      flex: 1, background: t.paper, color: t.ink,
+      display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '32px 36px 20px', borderBottom: `2px solid ${t.ink}`,
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32,
+      }}>
+        <div>
+          <Tag t={t} accent>◆ SOURCES · 数据源</Tag>
+          <div style={{
+            fontFamily: t.fontDisplay, fontWeight: 900,
+            fontSize: 56, lineHeight: 0.96, letterSpacing: -1.6, marginTop: 14,
+          }}>
+            Where the<br/>
+            <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>essays</span> come from.
+          </div>
+          <div style={{ fontFamily: t.fontCN, fontSize: 15, color: t.mute, marginTop: 10, maxWidth: 480 }}>
+            Atlas 接入的数据库、文件库、网络抓取和 API。每次撰写都会自动选择最相关的来源。
+          </div>
+        </div>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(3, auto)', gap: 18,
+          paddingLeft: 24, borderLeft: `1px solid ${t.rule}`,
+        }}>
+          <Metric value={total}   en="SOURCES" cn="数据源"   t={t}/>
+          <Metric value="14,196" en="DOCS"    cn="文档"     t={t}/>
+          <Metric value={warn}   en="ATTN"    cn="待处理"   t={t} accent={warn > 0}/>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div style={{
+        padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 10,
+        borderBottom: `1px solid ${t.rule}`,
+      }}>
+        {SOURCE_CATEGORIES.map(c => (
+          <button key={c.k}
+            type="button"
+            onClick={() => setCat(c.k)}
+            style={{
+              padding: '6px 12px', border: `1px solid ${cat === c.k ? t.ink : t.rule}`,
+              background: cat === c.k ? t.ink : 'transparent',
+              color: cat === c.k ? t.paper : t.ink,
+              fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10,
+              letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>
+            <span>{c.en}</span>
+            <span style={{ fontFamily: t.fontCN, opacity: 0.7 }}>{c.cn}</span>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, opacity: 0.7 }}>{c.count}</span>
+          </button>
+        ))}
+        <span style={{ flex: 1 }}/>
+        <Btn t={t} size="sm">⟳ SYNC ALL · 全部同步</Btn>
+        <Btn t={t} size="sm" primary accent>＋ ADD SOURCE · 添加</Btn>
+      </div>
+
+      {/* Table */}
+      <div style={{ padding: '0 36px 48px' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '48px 1.7fr 110px 1fr 1fr 90px 80px 28px',
+          alignItems: 'center', gap: 12,
+          padding: '10px 0', borderBottom: `1.5px solid ${t.ink}`,
+          fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute, textTransform: 'uppercase',
+        }}>
+          <span>—</span>
+          <span>Source · 名称</span>
+          <span>Kind · 类型</span>
+          <span>Last sync · 上次同步</span>
+          <span>Status · 状态</span>
+          <span>Quality</span>
+          <span>Docs</span>
+          <span/>
+        </div>
+        {filtered.map((s, i) => (
+          <SourceRow key={s.name} src={s} t={t} index={i}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SourceRow({ src, t, index }) {
+  const [open, setOpen] = React.useState(false);
+  const status = STATUS_META[src.status] || STATUS_META.off;
+  const quality = QUALITY_META[src.quality] || QUALITY_META.B;
+  return (
+    <div style={{ borderBottom: `1px solid ${t.rule}` }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '48px 1.7fr 110px 1fr 1fr 90px 80px 28px',
+          alignItems: 'center', gap: 12,
+          padding: '14px 0', cursor: 'pointer',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = t.faint}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      >
+        <SourceIcon t={t} kind={src.type}/>
+        <div>
+          <div style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 600 }}>{src.name}</div>
+          <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginTop: 2 }}>{src.en}</div>
+        </div>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, letterSpacing: 0.5 }}>{src.kind}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.ink }}>
+          {src.lastSync}
+          <span style={{ display: 'block', fontSize: 9, color: t.mute, marginTop: 2 }}>{src.cadence}</span>
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 8, background: status.color }}/>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, letterSpacing: 1 }}>{status.label}</span>
+        </span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: quality.color, letterSpacing: 1, fontWeight: 700 }}>
+          {quality.label}
+        </span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.ink }}>{src.docs}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 12, color: t.mute, transition: 'transform 0.15s', transform: `rotate(${open ? 90 : 0}deg)` }}>›</span>
+      </div>
+      {open && (
+        <div style={{
+          padding: '14px 0 22px 60px', display: 'flex', flexDirection: 'column', gap: 10,
+          borderTop: `1px dashed ${t.rule}`, background: t.paperAlt,
+        }}>
+          {src.note && (
+            <div style={{ fontFamily: t.fontCN, fontSize: 13, lineHeight: 1.6, color: t.inkSoft, maxWidth: 720 }}>
+              {src.note}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <Btn t={t} size="sm">⟳ Sync now</Btn>
+            <Btn t={t} size="sm">View 18 references</Btn>
+            <Btn t={t} size="sm">Edit access</Btn>
+            <Btn t={t} size="sm" accent>Disconnect</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SourceIcon({ t, kind }) {
+  const map = {
+    web:   { symbol: '◐', label: 'W' },
+    api:   { symbol: '⌖', label: 'A' },
+    db:    { symbol: '▦', label: 'D' },
+    files: { symbol: '◇', label: 'F' },
+  };
+  const m = map[kind] || map.files;
+  return (
+    <div style={{
+      width: 32, height: 32, border: `1.5px solid ${t.ink}`, background: t.cardOn,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 14, color: t.ink,
+    }}>{m.symbol}</div>
+  );
+}
+
+// ─── Export modal ─────────────────────────────────────────────────────
+
+const EXPORT_FORMATS = [
+  { k: 'pdf',    en: 'PDF',     cn: '便于打印 / 邮件附件', size: '~ 480 KB · 8 页', recommended: true },
+  { k: 'docx',   en: 'DOCX',    cn: '继续在 Word 编辑',    size: '~ 320 KB' },
+  { k: 'md',     en: 'Markdown', cn: '纯文本，含元数据',    size: '~ 18 KB' },
+  { k: 'notion', en: 'NOTION',  cn: '导出到你的 Notion',   size: '页面' },
+  { k: 'link',   en: 'LINK',    cn: '生成可分享的网页',    size: '可设置过期 / 密码' },
+];
+
+function ExportModal({ t, onClose }) {
+  const [format, setFormat] = React.useState('pdf');
+  const [includeMarginalia, setIncludeMarginalia] = React.useState(true);
+  const [includeCover, setIncludeCover] = React.useState(true);
+  const [pageSize, setPageSize] = React.useState('A4');
+  const [linkScope, setLinkScope] = React.useState('team');
+
+  const selected = EXPORT_FORMATS.find(f => f.k === format);
+
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 100,
+      background: 'rgba(15,15,15,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 40,
+    }}
+      onClick={onClose}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 880, maxHeight: '100%',
+          background: t.paper, border: `1.5px solid ${t.ink}`,
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}>
+        {/* Header */}
+        <div style={{
+          padding: '16px 22px', borderBottom: `1.5px solid ${t.ink}`, display: 'flex', alignItems: 'center', gap: 14,
+        }}>
+          <Tag t={t} accent>◆ EXPORT · 导出 / 分享</Tag>
+          <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 16, letterSpacing: 0.5 }}>
+            Issue № {REPORT_META.issue}
+          </span>
+          <span style={{ flex: 1 }}/>
+          <button type="button" onClick={onClose} style={{
+            border: `1px solid ${t.ink}`, background: t.paper, padding: '4px 9px',
+            fontFamily: t.fontMono, fontSize: 11, cursor: 'pointer',
+          }}>ESC</button>
+        </div>
+        {/* Body */}
+        <div style={{
+          flex: 1, minHeight: 0, display: 'grid',
+          gridTemplateColumns: '260px 1fr 240px',
+        }}>
+          {/* Format list */}
+          <div style={{ borderRight: `1px solid ${t.rule}`, padding: '14px 0' }}>
+            <div style={{ padding: '0 18px 6px', fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>FORMAT · 格式</div>
+            {EXPORT_FORMATS.map(f => (
+              <button key={f.k}
+                type="button"
+                onClick={() => setFormat(f.k)}
+                style={{
+                  display: 'block', textAlign: 'left', background: format === f.k ? t.faint : 'transparent',
+                  borderLeft: format === f.k ? `3px solid ${t.accent}` : `3px solid transparent`,
+                  border: 'none', padding: '10px 18px', width: '100%', cursor: 'pointer',
+                  fontFamily: t.fontBody,
+                }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{
+                    fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase',
+                  }}>{f.en}</span>
+                  {f.recommended && <Tag t={t} accent>推荐</Tag>}
+                </div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, marginTop: 2 }}>{f.cn}</div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginTop: 2 }}>{f.size}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Options */}
+          <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14, overflow: 'auto' }}>
+            <div style={{
+              fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4,
+              borderBottom: `1px solid ${t.rule}`, paddingBottom: 6,
+            }}>OPTIONS · 选项</div>
+
+            <OptionToggle t={t} label="包含杂志封面 (Cover sheet)" value={includeCover} onChange={setIncludeCover}/>
+            <OptionToggle t={t} label="包含边注与流程 (Marginalia + ledger)" value={includeMarginalia} onChange={setIncludeMarginalia}/>
+
+            {format === 'pdf' && (
+              <OptionRadio t={t} label="纸张大小" value={pageSize} onChange={setPageSize}
+                options={[['A4','A4'],['LET','Letter'],['B5','B5']]}/>
+            )}
+
+            {format === 'link' && (
+              <>
+                <OptionRadio t={t} label="访问范围" value={linkScope} onChange={setLinkScope}
+                  options={[['team','团队内'],['link','凡有链接者'],['pwd','需要密码']]}/>
+                <OptionToggle t={t} label="允许追问 (let viewers ask follow-ups)" value={true}/>
+                <OptionToggle t={t} label="显示阅读热度 (analytics)" value={false}/>
+              </>
+            )}
+
+            <div style={{ marginTop: 'auto', paddingTop: 14, borderTop: `1px solid ${t.rule}`, display: 'flex', gap: 8 }}>
+              <span style={{ flex: 1 }}/>
+              <Btn t={t} size="md" onClick={onClose}>取消 · Cancel</Btn>
+              <Btn t={t} size="md" primary accent>
+                {format === 'link' ? '生成链接 ↗' : `下载 ${selected.en} ↓`}
+              </Btn>
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div style={{ background: t.paperAlt, padding: '18px', borderLeft: `1px solid ${t.rule}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>PREVIEW · 预览</div>
+            <div style={{
+              flex: 1, background: '#fff', border: `1px solid ${t.ink}`,
+              boxShadow: `4px 4px 0 ${t.ink}`,
+              padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 6,
+              fontFamily: t.fontDisplay,
+            }}>
+              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.4, color: '#0f0f0f' }}>ISSUE № 241</div>
+              <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 0.95, letterSpacing: -0.5, color: '#0f0f0f' }}>Cold brew,<br/>hotter capital.</div>
+              <div style={{ fontFamily: t.fontCN, fontSize: 9, lineHeight: 1.3, color: '#0f0f0f' }}>2025 Q1 咖啡赛道融资速记</div>
+              <div style={{ height: 1, background: '#0f0f0f', margin: '4px 0' }}/>
+              <div style={{ background: '#f0eee9', height: 10 }}/>
+              <div style={{ background: '#f0eee9', height: 5, width: '70%' }}/>
+              <div style={{ background: '#f0eee9', height: 5, width: '90%' }}/>
+              <div style={{ background: '#f0eee9', height: 5, width: '60%' }}/>
+              {includeMarginalia && <div style={{ fontFamily: 'JetBrains Mono', fontSize: 6, color: '#767368', marginTop: 4 }}>§ marginalia included</div>}
+            </div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
+              {format === 'pdf' && `${pageSize} · 8 页 · ~480 KB`}
+              {format === 'docx' && '8 页 · ~320 KB'}
+              {format === 'md' && '~ 18 KB · UTF-8'}
+              {format === 'notion' && 'atlas-team.notion.so'}
+              {format === 'link' && 'atlas.app/r/r-7841 · expires in 30d'}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OptionToggle({ t, label, value, onChange }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: onChange ? 'pointer' : 'default' }}>
+      <span style={{
+        width: 36, height: 20, border: `1.5px solid ${t.ink}`,
+        background: value ? t.ink : t.paper, position: 'relative', flexShrink: 0,
+      }}>
+        <span style={{
+          position: 'absolute', top: 1, left: value ? 17 : 1,
+          width: 14, height: 14, background: value ? t.paper : t.ink, transition: 'left 0.12s',
+        }}/>
+      </span>
+      <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, flex: 1 }}>{label}</span>
+      <input type="checkbox" checked={value} onChange={onChange ? (e => onChange(e.target.checked)) : undefined}
+        style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}/>
+    </label>
+  );
+}
+
+function OptionRadio({ t, label, value, onChange, options }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, flex: 1 }}>{label}</span>
+      <div style={{ display: 'flex', border: `1.5px solid ${t.ink}` }}>
+        {options.map(([k, l], i) => (
+          <button key={k}
+            type="button"
+            onClick={() => onChange(k)}
+            style={{
+              padding: '5px 10px', border: 'none',
+              borderLeft: i === 0 ? 'none' : `1px solid ${t.ink}`,
+              background: value === k ? t.ink : t.paper,
+              color: value === k ? t.paper : t.ink,
+              fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1, cursor: 'pointer',
+            }}>{l}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Sources, ExportModal, SOURCES, SOURCE_CATEGORIES });
+// Root app — route state + Tweaks integration.
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "red",
+  "theme": "cream",
+  "density": "editorial",
+  "marginalia": true,
+  "headerLarge": true
+}/*EDITMODE-END*/;
+
+const FOOTER_CONTEXT = {
+  home:    { page: '01', section: 'COVER · 封面' },
+  running: { page: '02', section: 'IN PROGRESS · 撰写中' },
+  report:  { page: '03', section: 'FEATURE · 正文' },
+  library: { page: '04', section: 'ARCHIVE · 报告库' },
+  sources: { page: '05', section: 'SOURCES · 数据源' },
+};
+
+const SAMPLE_FIRST_PROMPT = '梳理 2025 年 Q1 国内咖啡赛道的融资动态，重点说说 Manner、库迪和挪瓦的新动向，给一份 2000 字的内部分析。';
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const t = essayTokens({ theme: tweaks.theme, accent: tweaks.accent });
+  const modelStore = useModelStore();
+
+  const [route, setRoute] = React.useState('home');
+  const [prompt, setPrompt] = React.useState(SAMPLE_FIRST_PROMPT);
+  const [showExport, setShowExport] = React.useState(false);
+  const [runKey, setRunKey] = React.useState(0); // remounts Running to restart
+  const [runDone, setRunDone] = React.useState(false);
+
+  const goRun = () => { setRunKey(k => k + 1); setRunDone(false); setRoute('running'); };
+
+  const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
+
+  // Map tweak accent (named) → hex (already keyed in essayTokens)
+  const accentSwatches = [
+    { v: 'red',    swatch: '#e5251d', label: 'Red' },
+    { v: 'amber',  swatch: '#c2540a', label: 'Amber' },
+    { v: 'forest', swatch: '#1f6f44', label: 'Sage' },
+    { v: 'cobalt', swatch: '#1d4ed8', label: 'Blue' },
+  ];
+
+  return (
+    <div style={{
+      width: '100vw', height: '100vh',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      background: t.paper, color: t.ink,
+    }}>
+      <TopBar t={t} route={route} setRoute={setRoute}
+        runState={route === 'running' && !runDone ? 'running' : 'idle'}/>
+      <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
+        {route === 'home' && (
+          <Home t={t} prompt={prompt} setPrompt={setPrompt}
+            onStart={goRun} density={tweaks.density} modelStore={modelStore}/>
+        )}
+        {route === 'running' && (
+          <Running key={runKey} t={t} prompt={prompt}
+            onDone={() => setRoute('report')}
+            onTimelineComplete={() => setRunDone(true)}
+            marginaliaOn={tweaks.marginalia} density={tweaks.density}
+            modelStore={modelStore}/>
+        )}
+        {route === 'report' && (
+          <Report t={t} onExport={() => setShowExport(true)}
+            marginaliaOn={tweaks.marginalia} density={tweaks.density}/>
+        )}
+        {route === 'library' && (
+          <Library t={t} onOpen={() => setRoute('report')}/>
+        )}
+        {route === 'sources' && <Sources t={t}/>}
+        {showExport && <ExportModal t={t} onClose={() => setShowExport(false)}/>}
+      </main>
+      <IssueFooter t={t} page={footer.page} section={footer.section}/>
+
+      <TweaksPanel title="Tweaks · 微调">
+        <TweakSection label="Color · 颜色">
+          <div style={{ padding: '4px 0' }}>
+            <SwatchPicker t={t} label="Accent · 主色"
+              value={tweaks.accent}
+              options={accentSwatches}
+              onChange={v => setTweak('accent', v)}/>
+          </div>
+          <TweakRadio label="Theme · 主题" value={tweaks.theme}
+            options={[
+              { value: 'cream', label: 'Cream' },
+              { value: 'slate', label: 'Slate' },
+            ]}
+            onChange={v => setTweak('theme', v)}/>
+        </TweakSection>
+
+        <TweakSection label="Density · 密度">
+          <TweakRadio label="Type scale" value={tweaks.density}
+            options={[
+              { value: 'editorial', label: 'Editorial' },
+              { value: 'compact',   label: 'Compact' },
+            ]}
+            onChange={v => setTweak('density', v)}/>
+          <TweakToggle label="Marginalia · 边注列" value={tweaks.marginalia}
+            onChange={v => setTweak('marginalia', v)}/>
+        </TweakSection>
+
+        <TweakSection label="Demo · 跳转">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, padding: '4px 0' }}>
+            <DemoBtn onClick={() => setRoute('home')}>① Home 主页</DemoBtn>
+            <DemoBtn onClick={goRun}>② Running 运行</DemoBtn>
+            <DemoBtn onClick={() => setRoute('report')}>③ Report 报告</DemoBtn>
+            <DemoBtn onClick={() => setRoute('library')}>④ Library 库</DemoBtn>
+            <DemoBtn onClick={() => setRoute('sources')}>⑤ Sources 数据源</DemoBtn>
+            <DemoBtn onClick={() => setShowExport(true)}>⑥ Export 导出</DemoBtn>
+          </div>
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+// Custom swatch picker (TweakColor wants hex options but I'm keying by name)
+function SwatchPicker({ t, label, value, options, onChange }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
+      <div style={{
+        fontSize: 11, color: '#555', letterSpacing: 0.3, fontFamily: 'inherit',
+      }}>{label}</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {options.map(o => (
+          <button key={o.v} type="button" onClick={() => onChange(o.v)}
+            title={o.label}
+            style={{
+              width: 32, height: 32, border: value === o.v ? '2px solid #111' : '1px solid #ccc',
+              background: o.swatch, cursor: 'pointer', padding: 0,
+              boxShadow: value === o.v ? '0 0 0 2px #fff inset' : 'none',
+            }}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DemoBtn({ children, onClick }) {
+  return (
+    <button type="button" onClick={onClick}
+      style={{
+        padding: '7px 8px', fontSize: 11, fontFamily: 'inherit',
+        border: '1px solid #d4d4d4', background: '#fff', color: '#111',
+        cursor: 'pointer', textAlign: 'left',
+      }}
+      onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
+      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>{children}</button>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+</script>
+</body>
+</html>
