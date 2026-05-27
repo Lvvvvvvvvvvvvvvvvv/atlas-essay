@@ -1033,8 +1033,22 @@ const STARTERS = [
     sub: '我先扫一圈公开报道、社群讨论和融资数据，输出洞察。',
     minutes: '8-12 min',
     tag: 'RESEARCH',
-    prompt: '帮我调研「家用清洁机器人」这个赛道：玩家、价格带、用户怎么说，给出一份内部速记。',
-    reportData: {
+    prompt: `调研「家用清洁机器人」赛道，输出一篇 2,200 字的内部分析报告，严格按以下四节结构展开：
+
+第一节 · 核心结论（TL;DR）
+开头一句导语，直接点明赛道最重要的结构性变化（不超过 30 字）。随后两段：第一段给出市场规模与增速数据；第二段说明头部格局的分化现状，谁在领跑、谁在掉队。
+
+第二节 · 主要玩家分析
+分析石头科技、追觅、科沃斯三家各自的竞争策略与差异化路径。穿插一段行业内部人士视角的引述（用引号 + 来源标注），说明价格带逻辑：旗舰 8000 元以上 / 中端 2000–5000 元 / 白牌 1500 元以下各自的生存法则。
+
+第三节 · 用户在说什么
+基于小红书与电商评论提炼用户洞察：高频好评关键词、高频差评关键词（各列 3 个）；指出一个被品牌方低估的细分人群，说明其需求特征与对应价格带。
+
+第四节 · 接下来看什么
+列出两个值得持续追踪的行业信号，各用一段展开；最后一段简要提及海外机会。
+
+写作要求：分析性语气，结论先行，数据支撑，观点鲜明。重要数据用 §1 §2 §3 标注脚注编号。直接输出报告正文，不要输出标题、前言或任何说明文字。`,
+    _reportData: {
       meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '2,240', sources: 8, reading: '5 min', category: 'INDUSTRY · 行业研究', titleEn: 'Bots, brushes, and the bathroom.', titleCn: '机器人、刷头与浴室', subtitle: '家用清洁机器人赛道 2025 全景速记' },
       metrics: [
         { value: '¥312亿', en: 'MARKET', cn: '2025年市场规模', accent: false },
@@ -1080,8 +1094,22 @@ const STARTERS = [
     sub: '上传或连接表格，我做清洗、聚类和洞察，附图。',
     minutes: '5-8 min',
     tag: 'DATA',
-    prompt: '附件是过去四个季度的门店销售数据，请按城市等级分群分析增长情况，输出 1,200 字。',
-    reportData: {
+    prompt: `分析过去四个季度的门店销售数据，按城市等级分群，输出约 1,400 字的内部分析报告，严格按以下四节结构展开：
+
+第一节 · 核心结论（TL;DR）
+开头一句导语，直接点明增长分布的关键事实（如"一线扛大旗，三四线在吃老本"）。随后说明：整体增速与各城市等级实际增速的落差；新店效应 vs 老店有机增长的区别。
+
+第二节 · 城市等级分层分析
+逐层分析一线城市（客单价变化、增速驱动因素）、新一线城市（成都 / 杭州 / 武汉等，潜力与现状）、三四线城市（增长天花板在哪里）；穿插一段来自运营层面的内部判断引述（用引号 + 来源标注）。
+
+第三节 · 季节性规律
+分析 Q1–Q4 各季度节奏：哪个季度是峰值、淡旺季效应是否在减弱；用同比数据对比说明趋势。
+
+第四节 · 建议与行动项
+三条具体可执行的业务建议，每条一句话，附明确方向（谁做、做什么、大概时间节点）。
+
+写作要求：数据分析性语气，结论先行，不模棱两可。重要数据用 §1 §2 §3 标注。直接输出报告正文，不要输出标题。`,
+    _reportData: {
       meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '1,380', sources: 4, reading: '3 min', category: 'DATA · 数据分析', titleEn: 'The stores that didn\'t blink.', titleCn: '没有眨眼的门店', subtitle: '过去四季度门店销售数据分群分析' },
       metrics: [
         { value: '+18%',    en: 'OVERALL', cn: '整体销售增长',   accent: false },
@@ -1123,8 +1151,19 @@ const STARTERS = [
     sub: '我会自动整理上周日程、文档和项目进展。',
     minutes: '2-4 min',
     tag: 'INTERNAL',
-    prompt: '帮我写上周的工作周报，重点说三件事：客户 A 的合作进展、上线的两个功能、本周遇到的问题。',
-    reportData: {
+    prompt: `帮我写一份本周工作周报，约 1,000 字，严格按以下三节结构展开：
+
+第一节 · 本周进展
+开头一句导语，直接点明本周最重要的一件事（不超过 25 字）。随后分三块：1）客户 A 的合作进展——本周第几次沟通、对方态度出现了什么变化、卡点在哪里、下一步动作；2）上线的第一个功能——功能名称、上线范围、初步数据表现；3）上线的第二个功能——同上格式。
+
+第二节 · 本周遇到的问题
+具体描述问题：发生时间、影响范围（用户数）、根本原因。穿插一段来自内部复盘会议的关键判断（用引号 + 发言人 · 场合标注）。最后说明善后处理情况和受影响用户的补偿方案。
+
+第三节 · 下周计划
+三件事，每件一句话，格式：事项描述 + 时间节点 + 负责人。
+
+写作要求：内部报告风格，简洁直接，不废话，领导扫一遍就能抓住重点。重要事项来源或备注用 §1 §2 §3 标注。直接输出报告正文，不要输出标题。`,
+    _reportData: {
       meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '980', sources: 3, reading: '2 min', category: 'INTERNAL · 内部报告', titleEn: 'Seven days. Three wins.', titleCn: '七天，三件事', subtitle: '本周工作总结与关键进展' },
       metrics: [
         { value: '3',    en: 'WINS',     cn: '重要进展', accent: true },
@@ -1161,8 +1200,22 @@ const STARTERS = [
     sub: '产品、定价、增长、舆情，四个角度做对比。',
     minutes: '10-15 min',
     tag: 'RESEARCH',
-    prompt: '把 Notion AI 和 ChatGPT for Teams 拆一下对比，从产品功能、定价、用户口碑、增长四方面，输出 2,000 字。',
-    reportData: {
+    prompt: `对 Notion AI 和 ChatGPT for Teams 进行竞品对比分析，输出约 2,200 字的内部报告，严格按以下四节结构展开：
+
+第一节 · 核心结论（TL;DR）
+开头一句导语，直接点明两者的本质差异（不是功能差异，而是工作流哲学的不同）。随后：定价对比与综合 TCO 分析；各自最适合的团队类型一句话总结。
+
+第二节 · 产品功能对比
+Notion AI 的核心竞争力（上下文感知、工作区文档集成的优势与局限）；ChatGPT Teams 的核心竞争力（模型能力、灵活对话、多模态的优势与局限）；穿插一段真实用户使用体感的引述（用引号 + 来源标注），体现两种产品的日常使用感受差异。
+
+第三节 · 用户口碑与增长
+对比 G2 / Capterra 评分及成因；各自负面反馈集中在哪里（分别列出 2–3 个高频差评关键词）；增长数据与市场渗透趋势（可基于公开信息推算）。
+
+第四节 · 选择建议
+分场景给出明确的、有立场的选择建议（场景一：已重度使用 Notion；场景二：技术驱动的团队；场景三：重度 Office 365 用户）；最后点出第三个需要关注的变量。
+
+写作要求：分析性语气，观点鲜明，不模棱两可，有明确立场。重要数据与来源用 §1 §2 §3 标注。直接输出报告正文，不要输出标题。`,
+    _reportData: {
       meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '2,180', sources: 6, reading: '5 min', category: 'RESEARCH · 竞品研究', titleEn: 'The AI assistant wars, enterprise edition.', titleCn: 'AI 助手企业战', subtitle: 'Notion AI 与 ChatGPT for Teams 深度对比' },
       metrics: [
         { value: '$16/月', en: 'NOTION', cn: 'Notion AI 单席位', accent: false },
@@ -1202,7 +1255,7 @@ const STARTERS = [
   },
 ];
 
-function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources, onStarterClick }) {
+function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
   const editorial = density === 'editorial';
   const headSize = editorial ? 'xxl' : 'xl';
   const [now] = React.useState(() => new Date());
@@ -1293,7 +1346,7 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
             {STARTERS.map((s, i) => (
               <button key={s.num}
                 type="button"
-                onClick={() => s.reportData && onStarterClick ? onStarterClick(s) : setPrompt(s.prompt)}
+                onClick={() => setPrompt(s.prompt)}
                 style={{
                   borderRight: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
                   background: t.paper, padding: '18px 22px', textAlign: 'left',
@@ -3696,10 +3749,8 @@ function App() {
   const [showExport, setShowExport] = React.useState(false);
   const [runKey, setRunKey] = React.useState(0);
   const [runDone, setRunDone] = React.useState(false);
-  const [starterReport, setStarterReport] = React.useState(null);
 
-  const goRun = () => { setStarterReport(null); setRunKey(k => k + 1); setRunDone(false); setRoute('running'); };
-  const openStarterReport = (starter) => { setStarterReport(starter.reportData); setRoute('report'); };
+  const goRun = () => { setRunKey(k => k + 1); setRunDone(false); setRoute('running'); };
 
   const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
 
@@ -3723,8 +3774,7 @@ function App() {
         {route === 'home' && (
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
             onStart={goRun} density={tweaks.density} modelStore={modelStore}
-            toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}
-            onStarterClick={openStarterReport}/>
+            toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}/>
         )}
         {route === 'running' && (
           <Running key={runKey} t={t} prompt={prompt}
@@ -3740,11 +3790,10 @@ function App() {
         )}
         {route === 'report' && (
           <Report t={t} onExport={() => setShowExport(true)}
-            marginaliaOn={tweaks.marginalia} density={tweaks.density}
-            reportData={starterReport}/>
+            marginaliaOn={tweaks.marginalia} density={tweaks.density}/>
         )}
         {route === 'library' && (
-          <Library t={t} onOpen={() => { setStarterReport(null); setRoute('report'); }}/>
+          <Library t={t} onOpen={() => setRoute('report')}/>
         )}
         {route === 'sources' && <Sources t={t}/>}
         {showExport && <ExportModal t={t} onClose={() => setShowExport(false)}/>}
