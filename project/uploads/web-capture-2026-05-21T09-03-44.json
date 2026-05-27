@@ -1,0 +1,53 @@
+[
+  {
+    "id": "cap_mpf9k7xm_2onwcd",
+    "selector": "img",
+    "label": "img",
+    "tag": "img",
+    "url": "https://reeoo.com/made-identity-2/",
+    "title": "MADE Identity - Reeoo",
+    "timestamp": "2026-05-21T09:03:41.098Z",
+    "innerText": "",
+    "outerHTML": "<img src=\"https://img.reeoo.com/cdn-cgi/image/width=2560,fit=scale-down,quality=90,format=auto/made-identity-2.jpg\" alt=\"MADE Identity\" title=\"MADE Identity\" loading=\"lazy\">",
+    "rect": {
+      "x": 48,
+      "y": 0,
+      "width": 1344,
+      "height": 8425
+    },
+    "computedStyles": {
+      "display": "block",
+      "width": "1344px",
+      "height": "8424.67px",
+      "border": "0px none rgb(17, 19, 21)",
+      "box-sizing": "border-box",
+      "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box",
+      "color": "rgb(17, 19, 21)",
+      "font-family": "-apple-system, \"system-ui\", \"SF Pro Text\", Inter, sans-serif",
+      "font-size": "16px",
+      "text-decoration": "none",
+      "overflow": "clip",
+      "transition": "all",
+      "object-fit": "cover"
+    },
+    "cssRules": [
+      {
+        "selector": "*",
+        "css": "box-sizing: border-box;"
+      },
+      {
+        "selector": "img",
+        "css": "display: block; max-width: 100%;"
+      },
+      {
+        "selector": ".case-detail__cover img",
+        "css": "width: 100%; object-fit: cover;"
+      },
+      {
+        "selector": ".case-card__media, .case-card__image, .app-card__media, .app-card__image, .icon-card__image, .similar-recs__image, .icon-showcase img, .case-detail__cover img, .mobile-screenshot-grid img, .screenshot-grid img",
+        "css": "min-inline-size: 0px; max-inline-size: 100%;",
+        "media": "(max-width: 980px)"
+      }
+    ]
+  }
+]
