@@ -2369,7 +2369,7 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
 }
 
 // ── Component -----------------------------------------------------------
-function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, density = 'editorial', modelStore, toolbarConfig }) {
+function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, density = 'editorial', modelStore, toolbarConfig, onSaveReport }) {
   const selectedModel = modelStore?.selected;
   const isLiveMode = !!(selectedModel?.apiKey);
 
@@ -2383,6 +2383,40 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
   const [liveStartTime] = React.useState(Date.now);
   const [liveElapsed, setLiveElapsed] = React.useState(0);
   const liveTimerRef = React.useRef(null);
+
+  // Auto-save generated report when streaming completes
+  const savedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (liveStatus === 'done' && liveText && isLiveMode && !savedRef.current && onSaveReport) {
+      savedRef.current = true;
+      const sections = parseMarkdownReport(liveText);
+      const wordCount = liveText.replace(/\s+/g,' ').trim().length;
+      const refs = [...new Set((liveText.match(/§\d+/g) || []))].length;
+      const readMins = Math.max(1, Math.ceil(wordCount / 300));
+      const firstSec = sections.find(s => s.en !== '正文' && s.en !== 'Content');
+      const now = new Date();
+      const DAY_CN = ['日','一','二','三','四','五','六'];
+      onSaveReport({
+        id: now.getTime().toString(),
+        prompt,
+        text: liveText,
+        sections,
+        meta: {
+          title: { en: firstSec?.en || prompt.slice(0,40), cn: '' },
+          subtitle: prompt.slice(0, 80),
+          date: `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`,
+          words: wordCount.toLocaleString(),
+          sources: refs,
+          reading: `${readMins} min`,
+          category: `AI · ${selectedModel?.name || '生成'}`,
+          issue: '—',
+          model: selectedModel?.name || 'AI',
+          tone: toolbarConfig?.tone?.cn || '',
+        },
+        favorited: false,
+      });
+    }
+  }, [liveStatus]);
 
   React.useEffect(() => {
     if (!isLiveMode) return;
@@ -2742,7 +2776,7 @@ const REPORT_REFS = [
   { n: '[4]', src: '行业访谈', title: '5 位早期投资人匿名访谈',       url: 'internal',   date: '2025.04.10' },
 ];
 
-function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData }) {
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
 
@@ -2787,8 +2821,12 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
           {rMeta.words} 字 · {rMeta.sources} 来源 · {rMeta.reading} 阅读
         </span>
         <span style={{ flex: 1 }}/>
-        <Btn t={t} size="sm">▸ 重跑</Btn>
-        <Btn t={t} size="sm">⌖ 收藏</Btn>
+        {onRerun && <Btn t={t} size="sm" onClick={onRerun}>▸ 重跑</Btn>}
+        {!onRerun && <Btn t={t} size="sm">▸ 重跑</Btn>}
+        <Btn t={t} size="sm" onClick={onToggleFavorite || undefined}
+          style={isFavorited ? { background: '#c8a84b', borderColor: '#c8a84b', color: '#fff' } : {}}>
+          {isFavorited ? '★ 已收藏' : '☆ 收藏'}
+        </Btn>
         <Btn t={t} size="sm" primary accent onClick={onExport}>↗ 导出 / 分享</Btn>
       </div>
 
@@ -2953,20 +2991,99 @@ function ReportBlock({ block, t }) {
   );
 }
 
-function renderFootnotes(text, t) {
+function renderMd(text, t) {
+  if (!text) return null;
   const parts = [];
-  const re = /§(\d+)/g;
-  let lastIdx = 0;
-  let match;
+  const re = /(\*\*[^*\n]+\*\*|§\d+)/g;
+  let last = 0, match;
   while ((match = re.exec(text)) !== null) {
-    parts.push(text.slice(lastIdx, match.index));
-    parts.push({ sup: match[1] });
-    lastIdx = match.index + match[0].length;
+    if (match.index > last) parts.push(<React.Fragment key={`t${last}`}>{text.slice(last, match.index)}</React.Fragment>);
+    const token = match[0];
+    if (token.startsWith('**')) {
+      parts.push(<strong key={`b${match.index}`}>{token.slice(2,-2)}</strong>);
+    } else {
+      parts.push(<Sup key={`s${match.index}`} n={token.slice(1)} t={t}/>);
+    }
+    last = match.index + token.length;
   }
-  parts.push(text.slice(lastIdx));
-  return parts.map((p, i) => typeof p === 'string'
-    ? <React.Fragment key={i}>{p}</React.Fragment>
-    : <Sup key={i} n={p.sup} t={t}/>);
+  if (last < text.length) parts.push(<React.Fragment key="end">{text.slice(last)}</React.Fragment>);
+  return parts;
+}
+// Keep alias for backward compat
+const renderFootnotes = renderMd;
+
+// ── Markdown → Report Sections parser ───────────────────────────────────────
+function parseMarkdownReport(rawText) {
+  if (!rawText?.trim()) return [];
+  const NUMS = ['01','02','03','04','05','06','07','08','09','10'];
+
+  // Tokenize line by line
+  const tokens = [];
+  for (const raw of rawText.split('\n')) {
+    const line = raw.trim();
+    if (!line) { tokens.push({ type: 'blank' }); continue; }
+    // Heading patterns
+    if (/^[一二三四五六七八九十]+[、．]/.test(line) ||
+        /^#{1,3}\s/.test(line) ||
+        (/^\*\*/.test(line) && /\*\*$/.test(line) && /[一二三四五六七八九十]+[、．]|第[一二三四五六七八九十\d]+[节章]/.test(line)) ||
+        /^第[一二三四五六七八九十\d]+[节章][·：:\s]/.test(line)) {
+      const text = line.replace(/^\*{1,2}|\*{1,2}$/g,'').replace(/^#{1,3}\s*/,'').trim();
+      tokens.push({ type: 'heading', text });
+    } else if (line.startsWith('> ')) {
+      tokens.push({ type: 'quote-line', text: line.slice(2).trim() });
+    } else {
+      tokens.push({ type: 'text', text: line });
+    }
+  }
+
+  // Group into sections
+  const sections = [];
+  let sIdx = 0;
+  let currentTitle = null;
+  let currentBlocks = [];
+  let textBuffer = [];
+  let isFirstBlock = true;
+  let inQuote = false;
+  let quoteLines = [];
+
+  const flushText = () => {
+    const txt = textBuffer.join(' ').trim();
+    if (txt) { currentBlocks.push({ kind: isFirstBlock ? 'lede' : 'p', text: txt }); isFirstBlock = false; }
+    textBuffer = [];
+  };
+  const flushQuote = () => {
+    if (inQuote && quoteLines.length > 0) {
+      const qText = quoteLines[0];
+      const by = quoteLines.slice(1).join(' ').replace(/^[—\s]+/,'').trim();
+      currentBlocks.push({ kind: 'quote', text: qText, by });
+      isFirstBlock = false;
+      inQuote = false; quoteLines = [];
+    }
+  };
+  const commitSection = () => {
+    flushQuote(); flushText();
+    if (currentBlocks.length > 0) {
+      sIdx++;
+      sections.push({ id: `s${sIdx}`, num: NUMS[sIdx-1] || String(sIdx).padStart(2,'0'), en: currentTitle || '正文', cn: '', blocks: currentBlocks });
+    }
+    currentTitle = null; currentBlocks = []; isFirstBlock = true;
+  };
+
+  for (const token of tokens) {
+    if (token.type === 'heading') { commitSection(); currentTitle = token.text; }
+    else if (token.type === 'blank') { flushQuote(); flushText(); }
+    else if (token.type === 'quote-line') {
+      flushText();
+      if (!inQuote) { inQuote = true; quoteLines = [token.text]; }
+      else { const attr = token.text.replace(/^[—\s]+/,''); if (attr) quoteLines.push(attr); }
+    }
+    else if (token.type === 'text') {
+      flushQuote();
+      textBuffer.push(token.text);
+    }
+  }
+  commitSection();
+  return sections.filter(s => s.blocks.length > 0);
 }
 
 Object.assign(window, { Report, REPORT_META, REPORT_SECTIONS, REPORT_REFS });
@@ -3048,121 +3165,117 @@ const LIB_FILTERS = [
   { k: 'INTERNAL',   en: 'Internal',    cn: '内部' },
 ];
 
-function Library({ t, onOpen }) {
+function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
   const [filter, setFilter] = React.useState('ALL');
   const [sort, setSort] = React.useState('date');
 
-  const entries = LIBRARY_ENTRIES.filter(e =>
-    filter === 'ALL' ? true : e.tag === filter
-  );
-  const feature = entries.find(e => e.feature) || entries[0];
-  const rest = entries.filter(e => e !== feature);
+  // Merge saved (generated) + static entries
+  const generatedEntries = savedReports.map(r => ({
+    _id: r.id,
+    issue: '—',
+    status: 'NEW',
+    title: r.meta.title,
+    category: r.meta.category,
+    tag: 'AI',
+    date: r.meta.date,
+    words: r.meta.words,
+    reading: r.meta.reading,
+    sources: r.meta.sources,
+    by: `ATLAS · ${r.meta.model || 'AI'}`,
+    teaser: r.meta.subtitle || r.prompt?.slice(0, 80),
+    favorited: r.favorited,
+    feature: false,
+  }));
+  const staticEntries = LIBRARY_ENTRIES.map(e => ({ ...e, favorited: false }));
+  const allEntries = [...generatedEntries, ...staticEntries];
+
+  const LIB_FILTERS_DYNAMIC = [
+    { k: 'ALL',       en: 'All',       cn: '全部' },
+    { k: 'FAVORITES', en: '★ Fav',     cn: '收藏' },
+    { k: 'AI',        en: 'Generated', cn: 'AI 生成' },
+    { k: 'RESEARCH',  en: 'Research',  cn: '研究' },
+    { k: 'DATA',      en: 'Data',      cn: '数据' },
+    { k: 'INTERNAL',  en: 'Internal',  cn: '内部' },
+  ];
+
+  const filtered = allEntries.filter(e => {
+    if (filter === 'FAVORITES') return e.favorited;
+    if (filter === 'ALL') return true;
+    return e.tag === filter;
+  });
+
+  const feature = filtered.find(e => e.feature) || filtered[0];
+  const rest = filtered.filter(e => e !== feature);
+  const total = allEntries.length;
 
   return (
-    <div style={{
-      flex: 1, background: t.paper, color: t.ink,
-      display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto',
-    }}>
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
       {/* Masthead */}
-      <div style={{
-        padding: '36px 36px 24px',
-        display: 'grid', gridTemplateColumns: '1fr auto', gap: 32, alignItems: 'flex-end',
-        borderBottom: `2px solid ${t.ink}`,
-      }}>
+      <div style={{ padding: '36px 36px 24px', display: 'grid', gridTemplateColumns: '1fr auto', gap: 32, alignItems: 'flex-end', borderBottom: `2px solid ${t.ink}` }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 12 }}>
             <Tag t={t} accent>◆ THE ARCHIVE · 报告库</Tag>
-            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{LIBRARY_ENTRIES.length} entries · 全部 {LIBRARY_ENTRIES.length} 期</span>
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{total} entries · 全部 {total} 期</span>
           </div>
-          <div style={{
-            fontFamily: t.fontDisplay, fontWeight: 900,
-            fontSize: 80, lineHeight: 0.92, letterSpacing: -3, color: t.ink,
-          }}>
+          <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 80, lineHeight: 0.92, letterSpacing: -3, color: t.ink }}>
             Every essay <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>Atlas</span><br/>has ever filed.
           </div>
         </div>
-        <div style={{
-          textAlign: 'right',
-          display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end',
-        }}>
+        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
           <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>SINCE</span>
           <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 28, letterSpacing: -0.5 }}>2025 · 09 · 12</span>
-          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>241 issues · 487,210 words</span>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{total} issues</span>
         </div>
       </div>
 
       {/* Filters bar */}
-      <div style={{
-        padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 12,
-        borderBottom: `1px solid ${t.rule}`, background: t.paper,
-      }}>
+      <div style={{ padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${t.rule}`, background: t.paper, flexWrap: 'wrap' }}>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>FILTER ·</span>
-        {LIB_FILTERS.map(f => (
-          <button key={f.k}
-            type="button"
-            onClick={() => setFilter(f.k)}
-            style={{
-              padding: '5px 12px', border: `1px solid ${filter === f.k ? t.ink : t.rule}`,
-              background: filter === f.k ? t.ink : 'transparent',
-              color: filter === f.k ? t.paper : t.ink,
-              fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10,
-              letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
-              display: 'inline-flex', gap: 6,
-            }}>
+        {LIB_FILTERS_DYNAMIC.map(f => (
+          <button key={f.k} type="button" onClick={() => setFilter(f.k)} style={{
+            padding: '5px 12px', border: `1px solid ${filter === f.k ? t.ink : t.rule}`,
+            background: filter === f.k ? t.ink : 'transparent',
+            color: filter === f.k ? t.paper : t.ink,
+            fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10,
+            letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
+            display: 'inline-flex', gap: 6,
+          }}>
             <span>{f.en}</span>
             <span style={{ fontFamily: t.fontCN, opacity: 0.7 }}>{f.cn}</span>
           </button>
         ))}
         <span style={{ flex: 1 }}/>
-        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>SORT</span>
         <button type="button" onClick={() => setSort(s => s === 'date' ? 'words' : 'date')}
-          style={{
-            padding: '5px 10px', border: `1px solid ${t.rule}`, background: 'transparent',
-            fontFamily: t.fontMono, fontSize: 10, color: t.ink, cursor: 'pointer',
-            letterSpacing: 1, textTransform: 'uppercase',
-          }}>
+          style={{ padding: '5px 10px', border: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 10, color: t.ink, cursor: 'pointer', letterSpacing: 1, textTransform: 'uppercase' }}>
           {sort === 'date' ? 'BY DATE ↓' : 'BY LENGTH ↓'}
         </button>
-        <button type="button"
-          style={{
-            padding: '5px 10px', border: `1px solid ${t.rule}`, background: 'transparent',
-            fontFamily: t.fontMono, fontSize: 10, color: t.ink, cursor: 'pointer',
-            letterSpacing: 1, textTransform: 'uppercase',
-          }}>SEARCH ⌘ K</button>
       </div>
+
+      {filtered.length === 0 && (
+        <div style={{ padding: '48px 36px', fontFamily: t.fontCN, fontSize: 16, color: t.mute, textAlign: 'center' }}>
+          {filter === 'FAVORITES' ? '还没有收藏的报告' : '没有符合条件的报告'}
+        </div>
+      )}
 
       {/* Featured */}
       {feature && (
-        <article onClick={() => onOpen(feature)} style={{
-          padding: '36px 36px', borderBottom: `1px solid ${t.ink}`,
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 36,
-          cursor: 'pointer', background: t.paper,
-          transition: 'background 0.12s',
-        }}
+        <article onClick={() => onOpen(feature)} style={{ padding: '36px 36px', borderBottom: `1px solid ${t.ink}`, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 36, cursor: 'pointer', background: t.paper, transition: 'background 0.12s' }}
           onMouseEnter={e => e.currentTarget.style.background = t.faint}
-          onMouseLeave={e => e.currentTarget.style.background = t.paper}
-        >
+          onMouseLeave={e => e.currentTarget.style.background = t.paper}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Tag t={t} accent filled>◆ ISSUE № {feature.issue} · LATEST</Tag>
+              <Tag t={t} accent filled>◆ {feature._id ? 'AI · GENERATED' : `ISSUE № ${feature.issue} · LATEST`}</Tag>
               <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.category}</span>
             </div>
-            <div style={{
-              fontFamily: t.fontDisplay, fontWeight: 900,
-              fontSize: 48, lineHeight: 0.96, letterSpacing: -1.6,
-            }}>{feature.title.en}</div>
-            <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 22, lineHeight: 1.3, color: t.inkSoft }}>
-              {feature.title.cn}
-            </div>
-            <div style={{ fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.7, color: t.inkSoft, marginTop: 4 }}>
-              {feature.teaser}
-            </div>
+            <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 48, lineHeight: 0.96, letterSpacing: -1.6 }}>{feature.title.en}</div>
+            <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 22, lineHeight: 1.3, color: t.inkSoft }}>{feature.title.cn}</div>
+            <div style={{ fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.7, color: t.inkSoft, marginTop: 4 }}>{feature.teaser}</div>
             <div style={{ display: 'flex', gap: 16, marginTop: 8, alignItems: 'center' }}>
               <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{feature.date}</span>
               <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.words} 字</span>
               <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.sources} 来源</span>
-              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.reading}</span>
               <span style={{ flex: 1 }}/>
+              {feature.favorited && <span style={{ color: '#c8a84b', fontSize: 16 }}>★</span>}
               <Btn t={t} size="sm" accent primary>Read ↗</Btn>
             </div>
           </div>
@@ -3171,31 +3284,43 @@ function Library({ t, onOpen }) {
       )}
 
       {/* Rest grid */}
-      <div style={{
-        padding: '24px 36px 48px',
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0,
-        borderTop: `1px solid ${t.rule}`, borderLeft: `1px solid ${t.rule}`,
-        marginLeft: 0, marginRight: 0,
-      }}>
-        {rest.map(e => <LibraryCard key={e.issue} entry={e} t={t} onOpen={onOpen}/>)}
+      <div style={{ padding: '24px 36px 48px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, borderTop: `1px solid ${t.rule}`, borderLeft: `1px solid ${t.rule}` }}>
+        {rest.map((e, i) => (
+          <LibraryCard key={e._id || e.issue} entry={e} t={t} onOpen={onOpen}
+            onToggleFavorite={e._id && onToggleFavorite ? (ev) => { ev.stopPropagation(); onToggleFavorite(e._id); } : null}/>
+        ))}
       </div>
     </div>
   );
 }
 
-function LibraryCard({ entry, t, onOpen }) {
+function LibraryCard({ entry, t, onOpen, onToggleFavorite }) {
   return (
     <article onClick={() => onOpen(entry)} style={{
       borderRight: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
       padding: '22px 22px', cursor: 'pointer', background: t.paper,
       display: 'flex', flexDirection: 'column', gap: 12, minHeight: 280,
-      transition: 'background 0.12s',
+      transition: 'background 0.12s', position: 'relative',
     }}
       onMouseEnter={e => e.currentTarget.style.background = t.faint}
-      onMouseLeave={e => e.currentTarget.style.background = t.paper}
-    >
+      onMouseLeave={e => e.currentTarget.style.background = t.paper}>
+      {/* Favorite star */}
+      {(entry.favorited || onToggleFavorite) && (
+        <div onClick={onToggleFavorite} style={{
+          position: 'absolute', top: 12, right: 12,
+          color: entry.favorited ? '#c8a84b' : t.rule,
+          fontSize: 16, cursor: onToggleFavorite ? 'pointer' : 'default',
+          transition: 'color 0.15s', zIndex: 1,
+        }}
+          onMouseEnter={e => { if (onToggleFavorite) e.target.style.color = '#c8a84b'; }}
+          onMouseLeave={e => { if (onToggleFavorite) e.target.style.color = entry.favorited ? '#c8a84b' : t.rule; }}>
+          {entry.favorited ? '★' : '☆'}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>№ {entry.issue}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>
+          {entry._id ? 'AI · 生成' : `№ ${entry.issue}`}
+        </span>
         <Tag t={t}>{entry.tag}</Tag>
       </div>
       <CoverArt t={t} entry={entry} mini/>
@@ -3210,9 +3335,7 @@ function LibraryCard({ entry, t, onOpen }) {
       <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, lineHeight: 1.5, flex: 1 }}>
         {entry.teaser}
       </div>
-      <div style={{
-        display: 'flex', gap: 10, alignItems: 'center', paddingTop: 8, borderTop: `1px solid ${t.rule}`,
-      }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', paddingTop: 8, borderTop: `1px solid ${t.rule}` }}>
         <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.5 }}>{entry.date}</span>
         <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>·</span>
         <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{entry.words} 字</span>
@@ -3738,11 +3861,37 @@ const FOOTER_CONTEXT = {
 
 const SAMPLE_FIRST_PROMPT = '梳理 2025 年 Q1 国内咖啡赛道的融资动态，重点说说 Manner、库迪和挪瓦的新动向，给一份 2000 字的内部分析。';
 
+// ── Saved Reports Store ──────────────────────────────────────────────────────
+const SAVED_REPORTS_KEY = 'atlas_saved_reports';
+
+function useSavedReports() {
+  const [reports, setReports] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_REPORTS_KEY) || '[]'); } catch { return []; }
+  });
+  const save = React.useCallback((report) => {
+    setReports(prev => {
+      const next = [report, ...prev.filter(r => r.id !== report.id)];
+      try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  const toggleFav = React.useCallback((id) => {
+    setReports(prev => {
+      const next = prev.map(r => r.id === id ? { ...r, favorited: !r.favorited } : r);
+      try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  return { reports, save, toggleFav };
+}
+
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const t = essayTokens({ theme: tweaks.theme, accent: tweaks.accent });
   const modelStore = useModelStore();
   const toolbarStore = useToolbarStore();
+  const savedReports = useSavedReports();
+  const [activeReportId, setActiveReportId] = React.useState(null);
 
   const [route, setRoute] = React.useState('home');
   const [prompt, setPrompt] = React.useState(SAMPLE_FIRST_PROMPT);
@@ -3750,7 +3899,15 @@ function App() {
   const [runKey, setRunKey] = React.useState(0);
   const [runDone, setRunDone] = React.useState(false);
 
-  const goRun = () => { setRunKey(k => k + 1); setRunDone(false); setRoute('running'); };
+  const goRun = () => { setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false); setRoute('running'); };
+
+  const handleSaveReport = React.useCallback((report) => {
+    savedReports.save(report);
+    setActiveReportId(report.id);
+  }, [savedReports]);
+
+  const activeReport = activeReportId ? savedReports.reports.find(r => r.id === activeReportId) : null;
+  const reportData = activeReport ? { meta: activeReport.meta, metrics: [], sections: activeReport.sections, refs: [] } : null;
 
   const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
 
@@ -3786,14 +3943,26 @@ function App() {
               length: toolbarStore.effectiveLength,
               selectedSources: toolbarStore.selectedSources,
               attachments: toolbarStore.attachments,
-            }}/>
+            }}
+            onSaveReport={handleSaveReport}/>
         )}
         {route === 'report' && (
           <Report t={t} onExport={() => setShowExport(true)}
-            marginaliaOn={tweaks.marginalia} density={tweaks.density}/>
+            marginaliaOn={tweaks.marginalia} density={tweaks.density}
+            reportData={reportData}
+            isFavorited={activeReport?.favorited || false}
+            onToggleFavorite={activeReport ? () => savedReports.toggleFav(activeReportId) : null}
+            onRerun={activeReport ? () => { setPrompt(activeReport.prompt); goRun(); } : null}/>
         )}
         {route === 'library' && (
-          <Library t={t} onOpen={() => setRoute('report')}/>
+          <Library t={t}
+            savedReports={savedReports.reports}
+            onToggleFavorite={savedReports.toggleFav}
+            onOpen={(entry) => {
+              if (entry._id) setActiveReportId(entry._id);
+              else setActiveReportId(null);
+              setRoute('report');
+            }}/>
         )}
         {route === 'sources' && <Sources t={t}/>}
         {showExport && <ExportModal t={t} onClose={() => setShowExport(false)}/>}
