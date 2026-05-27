@@ -2791,6 +2791,80 @@ const REPORT_REFS = [
   { n: '[4]', src: '行业访谈', title: '5 位早期投资人匿名访谈',       url: 'internal',   date: '2025.04.10' },
 ];
 
+// ── Follow-up composer ──────────────────────────────────────────────────────
+function FollowUpComposer({ t, reportData, rSections, onFollowUp }) {
+  const [text, setText] = React.useState('');
+  const [sent, setSent] = React.useState(false);
+  const [chips, setChips] = React.useState([]);
+  const editorial = true;
+
+  // Build context chips from section list
+  React.useEffect(() => {
+    const secChips = (rSections || []).slice(0, 4).map(s => ({
+      id: s.id, label: `引用 ${s.num}`, active: false,
+    }));
+    setChips(secChips);
+  }, [rSections]);
+
+  const toggleChip = (id) => setChips(prev => prev.map(c => c.id === id ? { ...c, active: !c.active } : c));
+
+  const handleSend = () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const ctxSections = chips.filter(c => c.active).map(c => c.label).join('、');
+    const ctx = ctxSections ? `（参考：${ctxSections}）` : '';
+    const combined = ctxSections
+      ? `${trimmed}${ctx}\n\n[原始报告主题: ${reportData?.meta?.subtitle || reportData?.meta?.titleEn || ''}]`
+      : trimmed;
+    if (onFollowUp) {
+      onFollowUp(combined);
+    } else {
+      setSent(true);
+      setTimeout(() => { setSent(false); setText(''); }, 2000);
+    }
+  };
+
+  return (
+    <div style={{
+      marginTop: 36, padding: '18px 22px',
+      border: `1.5px solid ${t.ink}`, background: t.cardOn,
+      display: 'flex', flexDirection: 'column', gap: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Tag t={t} filled>FOLLOW-UP</Tag>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>追问、要求改写或继续</span>
+      </div>
+      <textarea
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend(); }}
+        placeholder="例：把第二节扩写一倍，加入更多具体数据和案例…"
+        style={{
+          fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.55, color: t.ink,
+          padding: '4px 0', border: 'none', outline: 'none', resize: 'none',
+          minHeight: 54, background: 'transparent',
+        }}/>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {chips.map(c => (
+          <button key={c.id} type="button" onClick={() => toggleChip(c.id)} style={{
+            padding: '3px 8px', border: `1px solid ${c.active ? t.accent : t.rule}`,
+            background: c.active ? t.accent : 'transparent',
+            color: c.active ? '#fff' : t.inkSoft,
+            fontFamily: t.fontMono, fontSize: 10, cursor: 'pointer', letterSpacing: 0.5,
+          }}>{c.label}</button>
+        ))}
+        <span style={{ flex: 1 }}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>⌘↵ 发送</span>
+        <Btn t={t} size="sm" primary accent
+          onClick={handleSend}
+          style={sent ? { background: '#10b981', borderColor: '#10b981' } : (!text.trim() ? { opacity: 0.4 } : {})}>
+          {sent ? '✓ 已发送' : '↗ Send'}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 // Quick inline copy-link button used in the report right-rail share box
 function CopyLinkBtn({ t, reportData }) {
   const [copied, setCopied] = React.useState(false);
@@ -2810,7 +2884,7 @@ function CopyLinkBtn({ t, reportData }) {
   );
 }
 
-function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun }) {
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
 
@@ -2967,27 +3041,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
           })}
 
           {/* Follow-up composer */}
-          <div style={{
-            marginTop: 36, padding: '18px 22px',
-            border: `1.5px solid ${t.ink}`, background: t.cardOn,
-            display: 'flex', flexDirection: 'column', gap: 12,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Tag t={t} filled>FOLLOW-UP</Tag>
-              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>追问、要求改写或继续</span>
-            </div>
-            <textarea defaultValue="把第 3 节扩写一倍，加上来自小红书的真实用户评论。"
-              style={{
-                fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.55, color: t.ink,
-                padding: '4px 0', border: 'none', outline: 'none', resize: 'none', minHeight: 44, background: 'transparent',
-              }}/>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Tag t={t}>引用 §3</Tag>
-              <Tag t={t}>+ 小红书数据源</Tag>
-              <span style={{ flex: 1 }}/>
-              <Btn t={t} size="sm" primary accent>↗ Send</Btn>
-            </div>
-          </div>
+          <FollowUpComposer t={t} reportData={reportData} rSections={rSections} onFollowUp={onFollowUp}/>
         </article>
 
         {/* Right rail: references */}
@@ -3601,31 +3655,158 @@ const QUALITY_META = {
   C: { label: 'C · 低', color: '#9b1c14' },
 };
 
+// ── Add Source Modal ──────────────────────────────────────────────────────
+function AddSourceModal({ t, onClose, onAdd }) {
+  const [name, setName] = React.useState('');
+  const [url, setUrl] = React.useState('');
+  const [kind, setKind] = React.useState('web');
+  const [cadence, setCadence] = React.useState('每日');
+  const [saving, setSaving] = React.useState(false);
+
+  const handleAdd = () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    setTimeout(() => {
+      onAdd({ name: name.trim(), en: url.trim() || name.trim(), type: kind, kind: kind.toUpperCase(), lastSync: '刚刚', cadence, status: 'ok', quality: 'A', docs: 0, note: '已接入，等待首次同步。' });
+      onClose();
+    }, 800);
+  };
+
+  const inp = { border: `1.5px solid ${t.ink}`, padding: '7px 10px', fontFamily: t.fontCN, fontSize: 13, background: t.paper, color: t.ink, outline: 'none', width: '100%' };
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(15,15,15,0.5)', display:'flex', alignItems:'center', justifyContent:'center', padding:40 }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:t.paper, border:`1.5px solid ${t.ink}`, width:'100%', maxWidth:460, display:'flex', flexDirection:'column' }}>
+        <div style={{ padding:'14px 20px', borderBottom:`1.5px solid ${t.ink}`, display:'flex', alignItems:'center', gap:10 }}>
+          <Tag t={t} accent>＋ ADD SOURCE</Tag>
+          <span style={{ flex:1 }}/>
+          <button onClick={onClose} style={{ border:`1px solid ${t.ink}`, background:t.paper, padding:'3px 8px', fontFamily:t.fontMono, fontSize:11, cursor:'pointer', color:t.ink }}>ESC</button>
+        </div>
+        <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:14 }}>
+          <div>
+            <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, marginBottom:5 }}>数据源名称 *</div>
+            <input value={name} onChange={e=>setName(e.target.value)} placeholder="例：产品用户反馈库" style={inp}/>
+          </div>
+          <div>
+            <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, marginBottom:5 }}>地址 / URL</div>
+            <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..." style={inp}/>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div>
+              <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, marginBottom:5 }}>类型</div>
+              <OptionRadio t={t} label="" value={kind} onChange={setKind} options={[['web','网页'],['api','API'],['db','数据库'],['files','文件']]}/>
+            </div>
+            <div>
+              <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, marginBottom:5 }}>同步频率</div>
+              <OptionRadio t={t} label="" value={cadence} onChange={setCadence} options={[['每小时','时'],['每日','日'],['每周','周']]}/>
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end', paddingTop:6, borderTop:`1px solid ${t.rule}` }}>
+            <Btn t={t} size="md" onClick={onClose}>取消</Btn>
+            <Btn t={t} size="md" primary accent onClick={handleAdd} disabled={!name.trim() || saving}>{saving ? '接入中…' : '确认接入 ↗'}</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── References Drawer ──────────────────────────────────────────────────────
+function RefsDrawer({ t, src, onClose }) {
+  const refs = Array.from({ length: Math.min(src.docs || 6, 10) }, (_, i) => ({
+    n: i + 1,
+    title: `${src.name}文档 #${String(i+1).padStart(3,'0')} — ${['分析报告','数据集','行业综述','调研报告','市场数据','用户研究','竞品分析','技术白皮书','年度报告','专家访谈'][i % 10]}`,
+    date: `2025.${String(Math.floor(Math.random()*12)+1).padStart(2,'0')}.${String(Math.floor(Math.random()*28)+1).padStart(2,'0')}`,
+    used: Math.random() > 0.4,
+  }));
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(15,15,15,0.5)', display:'flex', justifyContent:'flex-end' }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:t.paper, border:`1.5px solid ${t.ink}`, width:400, display:'flex', flexDirection:'column', height:'100%' }}>
+        <div style={{ padding:'14px 20px', borderBottom:`1.5px solid ${t.ink}`, display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+          <Tag t={t} accent>◆ REFERENCES</Tag>
+          <span style={{ fontFamily:t.fontCN, fontSize:13, fontWeight:600 }}>{src.name}</span>
+          <span style={{ flex:1 }}/>
+          <button onClick={onClose} style={{ border:`1px solid ${t.ink}`, background:t.paper, padding:'3px 8px', fontFamily:t.fontMono, fontSize:11, cursor:'pointer', color:t.ink }}>✕</button>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', padding:'12px 20px', display:'flex', flexDirection:'column', gap:8 }}>
+          {refs.map(r => (
+            <div key={r.n} style={{ padding:'10px 12px', border:`1px solid ${t.rule}`, background:r.used?t.faint:'transparent', display:'flex', gap:10, alignItems:'flex-start' }}>
+              <span style={{ fontFamily:t.fontMono, fontSize:10, color:t.accent, fontWeight:700, minWidth:24 }}>#{r.n}</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.ink, lineHeight:1.45 }}>{r.title}</div>
+                <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, marginTop:3 }}>{r.date} {r.used && '· 已在报告中引用'}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Edit Access Modal ──────────────────────────────────────────────────────
+function EditAccessModal({ t, src, onClose, onSave }) {
+  const [level, setLevel] = React.useState('team');
+  const [allowedModels, setAllowedModels] = React.useState(true);
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(15,15,15,0.5)', display:'flex', alignItems:'center', justifyContent:'center', padding:40 }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:t.paper, border:`1.5px solid ${t.ink}`, width:'100%', maxWidth:400, display:'flex', flexDirection:'column' }}>
+        <div style={{ padding:'14px 20px', borderBottom:`1.5px solid ${t.ink}`, display:'flex', alignItems:'center', gap:10 }}>
+          <Tag t={t}>EDIT ACCESS</Tag>
+          <span style={{ fontFamily:t.fontCN, fontSize:13, fontWeight:600, flex:1 }}>{src.name}</span>
+          <button onClick={onClose} style={{ border:`1px solid ${t.ink}`, background:t.paper, padding:'3px 8px', fontFamily:t.fontMono, fontSize:11, cursor:'pointer', color:t.ink }}>ESC</button>
+        </div>
+        <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:14 }}>
+          <OptionRadio t={t} label="访问级别" value={level} onChange={setLevel}
+            options={[['owner','管理员'],['team','团队'],['read','只读']]}/>
+          <OptionToggle t={t} label="允许 AI 模型读取此数据源" value={allowedModels} onChange={setAllowedModels}/>
+          <OptionToggle t={t} label="在报告中自动引用" value={true} onChange={null}/>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end', paddingTop:6, borderTop:`1px solid ${t.rule}` }}>
+            <Btn t={t} size="md" onClick={onClose}>取消</Btn>
+            <Btn t={t} size="md" primary accent onClick={() => { onSave && onSave(level); onClose(); }}>保存</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Sources({ t }) {
   const [cat, setCat] = React.useState('all');
-  const filtered = SOURCES.filter(s => cat === 'all' || s.type === cat);
+  const [sourceList, setSourceList] = React.useState(SOURCES);
+  const [syncingAll, setSyncingAll] = React.useState(false);
+  const [syncAllDone, setSyncAllDone] = React.useState(false);
+  const [showAdd, setShowAdd] = React.useState(false);
 
-  // counters
-  const total = SOURCES.length;
-  const docs = SOURCES.reduce((a, s) => a + (typeof s.docs === 'number' ? s.docs : 0), 0);
-  const warn = SOURCES.filter(s => s.status === 'warn' || s.status === 'stale').length;
+  const filtered = sourceList.filter(s => cat === 'all' || s.type === cat);
+  const total = sourceList.length;
+  const warn = sourceList.filter(s => s.status === 'warn' || s.status === 'stale').length;
+
+  const handleSyncAll = () => {
+    setSyncingAll(true);
+    setSyncAllDone(false);
+    setTimeout(() => {
+      setSyncingAll(false);
+      setSyncAllDone(true);
+      setSourceList(prev => prev.map(s => ({ ...s, status: 'ok', lastSync: '刚刚' })));
+      setTimeout(() => setSyncAllDone(false), 3000);
+    }, 2200);
+  };
+
+  const handleAdd = (newSrc) => {
+    setSourceList(prev => [newSrc, ...prev]);
+  };
+
+  const handleDisconnect = (name) => {
+    setSourceList(prev => prev.filter(s => s.name !== name));
+  };
 
   return (
-    <div style={{
-      flex: 1, background: t.paper, color: t.ink,
-      display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto',
-    }}>
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
       {/* Header */}
-      <div style={{
-        padding: '32px 36px 20px', borderBottom: `2px solid ${t.ink}`,
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32,
-      }}>
+      <div style={{ padding: '32px 36px 20px', borderBottom: `2px solid ${t.ink}`, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32 }}>
         <div>
           <Tag t={t} accent>◆ SOURCES · 数据源</Tag>
-          <div style={{
-            fontFamily: t.fontDisplay, fontWeight: 900,
-            fontSize: 56, lineHeight: 0.96, letterSpacing: -1.6, marginTop: 14,
-          }}>
+          <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 56, lineHeight: 0.96, letterSpacing: -1.6, marginTop: 14 }}>
             Where the<br/>
             <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>essays</span> come from.
           </div>
@@ -3633,124 +3814,152 @@ function Sources({ t }) {
             Atlas 接入的数据库、文件库、网络抓取和 API。每次撰写都会自动选择最相关的来源。
           </div>
         </div>
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(3, auto)', gap: 18,
-          paddingLeft: 24, borderLeft: `1px solid ${t.rule}`,
-        }}>
-          <Metric value={total}   en="SOURCES" cn="数据源"   t={t}/>
-          <Metric value="14,196" en="DOCS"    cn="文档"     t={t}/>
-          <Metric value={warn}   en="ATTN"    cn="待处理"   t={t} accent={warn > 0}/>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', gap: 18, paddingLeft: 24, borderLeft: `1px solid ${t.rule}` }}>
+          <Metric value={total} en="SOURCES" cn="数据源" t={t}/>
+          <Metric value="14,196" en="DOCS" cn="文档" t={t}/>
+          <Metric value={warn} en="ATTN" cn="待处理" t={t} accent={warn > 0}/>
         </div>
       </div>
 
       {/* Toolbar */}
-      <div style={{
-        padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 10,
-        borderBottom: `1px solid ${t.rule}`,
-      }}>
+      <div style={{ padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${t.rule}` }}>
         {SOURCE_CATEGORIES.map(c => (
-          <button key={c.k}
-            type="button"
-            onClick={() => setCat(c.k)}
-            style={{
-              padding: '6px 12px', border: `1px solid ${cat === c.k ? t.ink : t.rule}`,
-              background: cat === c.k ? t.ink : 'transparent',
-              color: cat === c.k ? t.paper : t.ink,
-              fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10,
-              letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-            }}>
+          <button key={c.k} type="button" onClick={() => setCat(c.k)} style={{
+            padding: '6px 12px', border: `1px solid ${cat === c.k ? t.ink : t.rule}`,
+            background: cat === c.k ? t.ink : 'transparent',
+            color: cat === c.k ? t.paper : t.ink,
+            fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10,
+            letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
             <span>{c.en}</span>
             <span style={{ fontFamily: t.fontCN, opacity: 0.7 }}>{c.cn}</span>
             <span style={{ fontFamily: t.fontMono, fontSize: 9, opacity: 0.7 }}>{c.count}</span>
           </button>
         ))}
         <span style={{ flex: 1 }}/>
-        <Btn t={t} size="sm">⟳ SYNC ALL · 全部同步</Btn>
-        <Btn t={t} size="sm" primary accent>＋ ADD SOURCE · 添加</Btn>
+        <Btn t={t} size="sm" onClick={handleSyncAll} disabled={syncingAll}
+          style={syncAllDone ? { color: '#10b981', borderColor: '#10b981' } : {}}>
+          {syncingAll ? '⟳ 同步中…' : syncAllDone ? '✓ 全部同步完成' : '⟳ SYNC ALL · 全部同步'}
+        </Btn>
+        <Btn t={t} size="sm" primary accent onClick={() => setShowAdd(true)}>＋ ADD SOURCE · 添加</Btn>
       </div>
 
       {/* Table */}
       <div style={{ padding: '0 36px 48px' }}>
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: '48px 1.7fr 110px 1fr 1fr 90px 80px 28px',
-          alignItems: 'center', gap: 12,
-          padding: '10px 0', borderBottom: `1.5px solid ${t.ink}`,
+          display: 'grid', gridTemplateColumns: '48px 1.7fr 110px 1fr 1fr 90px 80px 28px',
+          alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: `1.5px solid ${t.ink}`,
           fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute, textTransform: 'uppercase',
         }}>
-          <span>—</span>
-          <span>Source · 名称</span>
-          <span>Kind · 类型</span>
-          <span>Last sync · 上次同步</span>
-          <span>Status · 状态</span>
-          <span>Quality</span>
-          <span>Docs</span>
-          <span/>
+          <span>—</span><span>Source · 名称</span><span>Kind · 类型</span>
+          <span>Last sync · 上次同步</span><span>Status · 状态</span>
+          <span>Quality</span><span>Docs</span><span/>
         </div>
         {filtered.map((s, i) => (
-          <SourceRow key={s.name} src={s} t={t} index={i}/>
+          <SourceRow key={s.name} src={s} t={t} index={i} onDisconnect={() => handleDisconnect(s.name)}/>
         ))}
+        {filtered.length === 0 && (
+          <div style={{ padding: '32px 0', textAlign: 'center', fontFamily: t.fontCN, fontSize: 13, color: t.mute }}>
+            没有符合条件的数据源
+          </div>
+        )}
       </div>
+
+      {showAdd && <AddSourceModal t={t} onClose={() => setShowAdd(false)} onAdd={handleAdd}/>}
     </div>
   );
 }
 
-function SourceRow({ src, t, index }) {
+function SourceRow({ src, t, index, onDisconnect }) {
   const [open, setOpen] = React.useState(false);
-  const status = STATUS_META[src.status] || STATUS_META.off;
-  const quality = QUALITY_META[src.quality] || QUALITY_META.B;
+  const [syncing, setSyncing] = React.useState(false);
+  const [syncDone, setSyncDone] = React.useState(false);
+  const [showRefs, setShowRefs] = React.useState(false);
+  const [showAccess, setShowAccess] = React.useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
+  const [srcData, setSrcData] = React.useState(src);
+
+  const status = STATUS_META[srcData.status] || STATUS_META.off;
+  const quality = QUALITY_META[srcData.quality] || QUALITY_META.B;
+
+  const handleSync = (e) => {
+    e.stopPropagation();
+    setSyncing(true); setSyncDone(false);
+    setTimeout(() => {
+      setSyncing(false); setSyncDone(true);
+      setSrcData(prev => ({ ...prev, status: 'ok', lastSync: '刚刚' }));
+      setTimeout(() => setSyncDone(false), 2500);
+    }, 1800);
+  };
+
   return (
     <div style={{ borderBottom: `1px solid ${t.rule}` }}>
-      <div
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '48px 1.7fr 110px 1fr 1fr 90px 80px 28px',
-          alignItems: 'center', gap: 12,
-          padding: '14px 0', cursor: 'pointer',
-        }}
+      <div onClick={() => setOpen(o => !o)} style={{
+        display: 'grid', gridTemplateColumns: '48px 1.7fr 110px 1fr 1fr 90px 80px 28px',
+        alignItems: 'center', gap: 12, padding: '14px 0', cursor: 'pointer',
+      }}
         onMouseEnter={e => e.currentTarget.style.background = t.faint}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-      >
-        <SourceIcon t={t} kind={src.type}/>
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+        <SourceIcon t={t} kind={srcData.type}/>
         <div>
-          <div style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 600 }}>{src.name}</div>
-          <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginTop: 2 }}>{src.en}</div>
+          <div style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 600 }}>{srcData.name}</div>
+          <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginTop: 2 }}>{srcData.en}</div>
         </div>
-        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, letterSpacing: 0.5 }}>{src.kind}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, letterSpacing: 0.5 }}>{srcData.kind}</span>
         <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.ink }}>
-          {src.lastSync}
-          <span style={{ display: 'block', fontSize: 9, color: t.mute, marginTop: 2 }}>{src.cadence}</span>
+          {srcData.lastSync}
+          <span style={{ display: 'block', fontSize: 9, color: t.mute, marginTop: 2 }}>{srcData.cadence}</span>
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 8, background: status.color }}/>
-          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, letterSpacing: 1 }}>{status.label}</span>
+          <span style={{ width: 8, height: 8, borderRadius: 8, background: status.color,
+            animation: syncing ? 'essay-pulse 1s infinite' : 'none' }}/>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, letterSpacing: 1 }}>
+            {syncing ? 'SYNCING' : status.label}
+          </span>
         </span>
-        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: quality.color, letterSpacing: 1, fontWeight: 700 }}>
-          {quality.label}
-        </span>
-        <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.ink }}>{src.docs}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: quality.color, letterSpacing: 1, fontWeight: 700 }}>{quality.label}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.ink }}>{srcData.docs}</span>
         <span style={{ fontFamily: t.fontMono, fontSize: 12, color: t.mute, transition: 'transform 0.15s', transform: `rotate(${open ? 90 : 0}deg)` }}>›</span>
       </div>
+
       {open && (
-        <div style={{
-          padding: '14px 0 22px 60px', display: 'flex', flexDirection: 'column', gap: 10,
-          borderTop: `1px dashed ${t.rule}`, background: t.paperAlt,
-        }}>
-          {src.note && (
+        <div style={{ padding: '14px 0 22px 60px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: `1px dashed ${t.rule}`, background: t.paperAlt }}>
+          {srcData.note && (
             <div style={{ fontFamily: t.fontCN, fontSize: 13, lineHeight: 1.6, color: t.inkSoft, maxWidth: 720 }}>
-              {src.note}
+              {srcData.note}
             </div>
           )}
-          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            <Btn t={t} size="sm">⟳ Sync now</Btn>
-            <Btn t={t} size="sm">View 18 references</Btn>
-            <Btn t={t} size="sm">Edit access</Btn>
-            <Btn t={t} size="sm" accent>Disconnect</Btn>
-          </div>
+          {!confirmDisconnect ? (
+            <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+              <Btn t={t} size="sm" onClick={handleSync} disabled={syncing}
+                style={syncDone ? { color: '#10b981', borderColor: '#10b981' } : {}}>
+                {syncing ? '⟳ 同步中…' : syncDone ? '✓ 同步完成' : '⟳ Sync now'}
+              </Btn>
+              <Btn t={t} size="sm" onClick={e => { e.stopPropagation(); setShowRefs(true); }}>
+                查看 {srcData.docs || 0} 条引用
+              </Btn>
+              <Btn t={t} size="sm" onClick={e => { e.stopPropagation(); setShowAccess(true); }}>
+                Edit access
+              </Btn>
+              <Btn t={t} size="sm" accent onClick={e => { e.stopPropagation(); setConfirmDisconnect(true); }}>
+                Disconnect
+              </Btn>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontFamily: t.fontCN, fontSize: 13, color: '#e5251d' }}>
+                确定要断开「{srcData.name}」的连接？此操作不可撤销。
+              </span>
+              <Btn t={t} size="sm" onClick={e => { e.stopPropagation(); setConfirmDisconnect(false); }}>取消</Btn>
+              <Btn t={t} size="sm" accent onClick={e => { e.stopPropagation(); onDisconnect && onDisconnect(); }}>确认断开</Btn>
+            </div>
+          )}
         </div>
       )}
+
+      {showRefs && <RefsDrawer t={t} src={srcData} onClose={() => setShowRefs(false)}/>}
+      {showAccess && <EditAccessModal t={t} src={srcData} onClose={() => setShowAccess(false)} onSave={(lvl) => setSrcData(prev => ({ ...prev, accessLevel: lvl }))}/>}
     </div>
   );
 }
@@ -4037,6 +4246,8 @@ function ExportModal({ t, onClose, exportData }) {
   const [pageSize, setPageSize] = React.useState('A4');
   const [linkScope, setLinkScope] = React.useState('link');
   const [linkPwd, setLinkPwd] = React.useState('');
+  const [allowFollowUp, setAllowFollowUp] = React.useState(true);
+  const [showAnalytics, setShowAnalytics] = React.useState(false);
   const [status, setStatus] = React.useState('idle'); // idle | loading | done | error
   const [statusMsg, setStatusMsg] = React.useState('');
   const [copiedUrl, setCopiedUrl] = React.useState('');
@@ -4174,8 +4385,8 @@ function ExportModal({ t, onClose, exportData }) {
                       style={{ width: '100%', border: `1.5px solid ${t.ink}`, padding: '6px 10px', fontFamily: t.fontMono, fontSize: 12, background: t.paper, color: t.ink, outline: 'none' }}/>
                   </div>
                 )}
-                <OptionToggle t={t} label="允许追问 (Follow-up)" value={true} onChange={null}/>
-                <OptionToggle t={t} label="显示阅读统计 (Analytics)" value={false} onChange={null}/>
+                <OptionToggle t={t} label="允许追问 (Follow-up)" value={allowFollowUp} onChange={setAllowFollowUp}/>
+                <OptionToggle t={t} label="显示阅读统计 (Analytics)" value={showAnalytics} onChange={setShowAnalytics}/>
                 {copiedUrl && (
                   <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, wordBreak: 'break-all', padding: '8px 10px', background: t.faint, border: `1px solid ${t.accent}` }}>
                     {copiedUrl}
@@ -4420,7 +4631,12 @@ function App() {
             reportData={reportData}
             isFavorited={activeReport?.favorited || false}
             onToggleFavorite={activeReport ? () => savedReports.toggleFav(activeReportId) : null}
-            onRerun={activeReport ? () => { setPrompt(activeReport.prompt); goRun(); } : null}/>
+            onRerun={activeReport ? () => { setPrompt(activeReport.prompt); goRun(); } : null}
+            onFollowUp={(followText) => {
+              const base = activeReport?.prompt || prompt;
+              setPrompt(`【追问】在下面的报告基础上：${base}\n\n【新要求】${followText}`);
+              goRun();
+            }}/>
         )}
         {route === 'library' && (
           <Library t={t}
