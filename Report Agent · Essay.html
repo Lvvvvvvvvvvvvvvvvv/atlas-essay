@@ -2094,13 +2094,21 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
   const sourceNote = selectedSources?.size > 0
     ? `\n5. 参考数据源：${[...selectedSources].join('、')}`
     : '';
+  // For very short targets, give a sensible floor so the model doesn't produce empty output
+  const displayLength = targetLength;
+  const minLen = Math.max(targetLength, 50);
+  const maxLen = Math.max(Math.round(targetLength * 1.15), minLen + 20);
+  const lengthInstr = targetLength < 100
+    ? `目标字数：约 ${displayLength} 字（尽量精简，控制在 ${minLen}–${maxLen} 字左右即可）`
+    : `目标字数：${displayLength} 字（严格控制在 ${Math.round(targetLength * 0.9)}–${Math.round(targetLength * 1.1)} 字以内）`;
+
   const systemPrompt = `你是一个专业的商业分析师，擅长撰写深度行业报告。
-请用中文撰写一篇结构清晰的分析报告，严格遵守以下要求：
+请用中文撰写一篇分析报告，严格遵守以下要求：
 1. 写作风格：${toneCN}（全程必须体现这种风格，不得偏离）
-2. 目标字数：${targetLength} 字（必须严格控制在 ${Math.round(targetLength * 0.9)}–${Math.round(targetLength * 1.1)} 字以内）
-3. 结构：第一句为一句话导语（总结核心观点），随后分段展开
+2. ${lengthInstr}
+3. 结构：开头一句导语（一句话总结核心观点），随后视字数分段展开
 4. 引用格式：重要数据用 §1 §2 §3 标注脚注${sourceNote}
-直接输出报告正文，不要输出标题、前言或任何说明文字。`;
+直接输出报告正文，不要输出标题、前言或任何额外说明。`;
 
   // Build user message: prompt + optional attachment context
   const attachText = attachments?.length > 0
@@ -2108,8 +2116,9 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
     : '';
   const userContent = prompt + attachText;
 
-  // Set max_tokens based on requested length (generous: ~2 tokens per Chinese char + buffer)
-  const maxTokens = Math.min(Math.ceil(targetLength * 2.2) + 800, 16000);
+  // max_tokens: always at least 4000 so reasoning models have room to think + output
+  // For longer targets, scale up generously (2.5 tokens/char + 2000 buffer)
+  const maxTokens = Math.min(Math.max(Math.ceil(targetLength * 2.5) + 2000, 4000), 16000);
 
   const apiKey = model.apiKey || '';
   const apiUrl = (model.apiUrl || 'https://api.xiaomimimo.com/v1').replace(/\/$/, '');
@@ -2153,8 +2162,11 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
         if (trimmed.startsWith('data: ')) {
           try {
             const data = JSON.parse(trimmed.slice(6));
-            const delta = data.choices?.[0]?.delta?.content || '';
-            if (delta) onChunk(delta);
+            const delta = data.choices?.[0]?.delta;
+            // Support both standard content and reasoning-model content fields
+            // (e.g. MiMo/DeepSeek return reasoning_content separately)
+            const text = delta?.content || '';
+            if (text) onChunk(text);
           } catch {}
         }
       }
