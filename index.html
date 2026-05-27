@@ -2791,6 +2791,25 @@ const REPORT_REFS = [
   { n: '[4]', src: '行业访谈', title: '5 位早期投资人匿名访谈',       url: 'internal',   date: '2025.04.10' },
 ];
 
+// Quick inline copy-link button used in the report right-rail share box
+function CopyLinkBtn({ t, reportData }) {
+  const [copied, setCopied] = React.useState(false);
+  const handleCopy = async () => {
+    const base = window.location.href.split('?')[0].split('#')[0];
+    const id = reportData?.meta?.issue || 'shared';
+    const url = `${base}?r=${encodeURIComponent(id)}`;
+    try { await navigator.clipboard.writeText(url); } catch { }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+  return (
+    <Btn t={t} size="sm" onClick={handleCopy}
+      style={copied ? { color: '#10b981', borderColor: '#10b981' } : {}}>
+      {copied ? '✓ 链接已复制' : '⎘ 复制链接'}
+    </Btn>
+  );
+}
+
 function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
@@ -2995,8 +3014,8 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
               display: 'flex', flexDirection: 'column', gap: 8,
             }}>
               <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>SHARE · 分享</span>
-              <Btn t={t} size="sm" onClick={onExport}>↗ 创建链接</Btn>
-              <Btn t={t} size="sm" onClick={onExport}>↓ 导出 PDF</Btn>
+              <Btn t={t} size="sm" onClick={onExport} primary accent>↗ 导出 / 分享</Btn>
+              <CopyLinkBtn t={t} reportData={reportData}/>
             </div>
           </aside>
         )}
@@ -3756,139 +3775,372 @@ function SourceIcon({ t, kind }) {
 // ─── Export modal ─────────────────────────────────────────────────────
 
 const EXPORT_FORMATS = [
-  { k: 'pdf',    en: 'PDF',     cn: '便于打印 / 邮件附件', size: '~ 480 KB · 8 页', recommended: true },
+  { k: 'pdf',    en: 'PDF',      cn: '便于打印 / 邮件附件', size: '~ 480 KB · 8 页', recommended: true },
   { k: 'docx',   en: 'DOCX',    cn: '继续在 Word 编辑',    size: '~ 320 KB' },
   { k: 'md',     en: 'Markdown', cn: '纯文本，含元数据',    size: '~ 18 KB' },
-  { k: 'notion', en: 'NOTION',  cn: '导出到你的 Notion',   size: '页面' },
-  { k: 'link',   en: 'LINK',    cn: '生成可分享的网页',    size: '可设置过期 / 密码' },
+  { k: 'notion', en: 'NOTION',  cn: '复制 Markdown 到 Notion', size: '一键粘贴' },
+  { k: 'link',   en: 'LINK',    cn: '复制分享链接',         size: '存于本地' },
 ];
 
-function ExportModal({ t, onClose }) {
+// ── Export helper functions ─────────────────────────────────────────────
+function _dlBlob(blob, name) {
+  const u = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: u, download: name });
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(u); }, 120);
+}
+function _esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _slug(s) { return String(s||'report').slice(0,40).replace(/[^\w一-鿿]+/g,'-').replace(/^-|-$/g,'').toLowerCase() || 'report'; }
+
+function _buildMarkdown(d) {
+  const lines = [`# ${d.title || ''}`, ''];
+  if (d.subtitle) lines.push(`> ${d.subtitle}`, '');
+  const m = d.meta || {};
+  const meta = [m.date, m.words&&(m.words+'字'), m.sources&&(m.sources+' 来源'), m.reading, m.tokens&&(m.tokens.toLocaleString()+' tokens')].filter(Boolean).join(' · ');
+  if (meta) lines.push(meta, '', '---', '');
+  for (const s of d.sections||[]) {
+    lines.push(`## ${s.en}${s.cn?' · '+s.cn:''}`, '');
+    for (const b of s.blocks||[]) {
+      if (b.kind==='lede') lines.push(`**${b.text}**`, '');
+      else if (b.kind==='p') lines.push(b.text, '');
+      else if (b.kind==='quote') { lines.push(`> ${b.text}`); if(b.by) lines.push(`> — ${b.by}`); lines.push(''); }
+      else if (b.kind==='chart'&&b.data) {
+        lines.push(`**[图表: ${b.data.title||''}]**`);
+        for (const it of b.data.data||[]) lines.push(`- ${it.label}: **${it.value}**${b.data.unit?' '+b.data.unit:''}`);
+        lines.push('');
+      }
+    }
+  }
+  if (d.refs?.length) {
+    lines.push('---', '', '## 参考来源 · References', '');
+    for (const r of d.refs) { lines.push(`${r.n} **${r.src}** — ${r.title}`); lines.push(`   ${r.url} · ${r.date}`, ''); }
+  }
+  return lines.join('\n');
+}
+
+function _chartPrintHTML(cd) {
+  if (!cd?.data?.length) return '';
+  const max = Math.max(...cd.data.map(x=>x.value), 0.001);
+  const rows = cd.data.map(it=>{
+    const pct = Math.round((it.value/max)*100);
+    return `<tr><td style="text-align:right;padding:2pt 6pt 2pt 0;width:90pt;font-size:8.5pt;color:#555">${_esc(it.label)}</td>
+    <td style="padding:2pt 4pt"><div style="background:#e8e6e0;height:13pt;position:relative"><div style="background:#0f0f0f;height:100%;width:${pct}%"></div></div></td>
+    <td style="padding:2pt 0 2pt 4pt;width:55pt;font-size:8.5pt;font-weight:bold">${it.value}${cd.unit?' '+cd.unit:''}</td></tr>`;
+  }).join('');
+  return `<div style="margin:8pt 0;border:1pt solid #0f0f0f;padding:10pt">
+    <p style="font-size:8.5pt;font-weight:bold;margin:0 0 6pt 0">▪ ${_esc(cd.title||'')}${cd.unit?'（'+cd.unit+'）':''}</p>
+    <table style="width:100%;border-collapse:collapse">${rows}</table></div>`;
+}
+
+function _buildBodyHTML(d) {
+  return (d.sections||[]).map(s => {
+    const cnM = s.en.match(/^([一二三四五六七八九十]+[、．])\s*/);
+    const prefix = cnM?.[1]||''; const label = prefix ? s.en.slice(cnM[0].length) : s.en;
+    const blocks = (s.blocks||[]).map(b => {
+      if (b.kind==='lede') return `<p class="lede">${_esc(b.text)}</p>`;
+      if (b.kind==='quote') return `<blockquote>${_esc(b.text)}${b.by?`<footer>— ${_esc(b.by)}</footer>`:''}</blockquote>`;
+      if (b.kind==='chart') return _chartPrintHTML(b.data);
+      return `<p>${_esc(b.text)}</p>`;
+    }).join('');
+    return `<div class="section"><div class="sec-hd">
+      ${prefix?`<span class="cn-n">${prefix}</span>`:`<span class="sec-n">${_esc(s.num)}</span>`}
+      <span class="sec-t">${_esc(label)}</span>
+    </div>${blocks}</div>`;
+  }).join('');
+}
+
+function _buildPrintHTML(d, {pageSize='A4',includeCover=true}={}) {
+  const szMap = {A4:'A4',LET:'letter',B5:'B5'};
+  const title = _esc(d.title||'Atlas Report');
+  const m = d.meta||{};
+  const metaStr = [m.date,m.words&&m.words+'字',m.sources&&m.sources+' 来源',m.reading].filter(Boolean).join(' · ');
+  const cover = includeCover ? `<div class="cover"><div class="cov-tag">ATLAS ESSAYS · ${_esc(m.issue||'')}</div>
+    <div class="cov-title">${title}</div>
+    ${d.subtitle?`<div class="cov-sub">${_esc(d.subtitle)}</div>`:''}
+    <div class="cov-meta">${metaStr}</div><div class="cov-rule"></div></div>` : '';
+  const refs = d.refs?.length ? `<div class="section refs"><div class="sec-hd"><span class="sec-t">参考来源 · References</span></div>
+    ${d.refs.map(r=>`<div class="ref"><span class="ref-n">${_esc(r.n)}</span><div><b>${_esc(r.src)}</b> — ${_esc(r.title)}<br><small>${_esc(r.url)} · ${_esc(r.date)}</small></div></div>`).join('')}
+    </div>` : '';
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>${title}</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;900&family=Noto+Sans+SC:wght@400;700;900&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+@page{size:${szMap[pageSize]||'A4'};margin:22mm 24mm}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans SC',sans-serif;font-size:10.5pt;line-height:1.85;color:#0f0f0f}
+.cover{min-height:90vh;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:36pt;page-break-after:always}
+.cov-tag{font-family:'Archivo',sans-serif;font-size:8pt;font-weight:700;letter-spacing:3pt;text-transform:uppercase;color:#888;margin-bottom:20pt}
+.cov-title{font-family:'Archivo',sans-serif;font-size:42pt;font-weight:900;line-height:.94;letter-spacing:-1pt;margin-bottom:10pt}
+.cov-sub{font-size:13pt;font-weight:700;color:#555;margin-bottom:14pt}
+.cov-meta{font-family:'JetBrains Mono',monospace;font-size:8pt;color:#888;margin-bottom:10pt}
+.cov-rule{height:2pt;background:#0f0f0f}
+.section{margin-top:18pt;padding-top:12pt;border-top:1.5pt solid #0f0f0f}
+.sec-hd{display:flex;align-items:baseline;gap:7pt;margin-bottom:8pt}
+.cn-n{font-size:17pt;font-weight:900}
+.sec-n{font-family:'JetBrains Mono',monospace;font-size:8.5pt;color:#888}
+.sec-t{font-size:12.5pt;font-weight:800}
+.lede{font-weight:700;font-size:11.5pt;line-height:1.6;margin-bottom:7pt}
+p{margin-bottom:5pt}
+blockquote{margin:7pt 0 7pt 14pt;padding-left:8pt;border-left:2.5pt solid #0f0f0f;font-style:italic;color:#555}
+blockquote footer{font-style:normal;font-size:8.5pt;color:#888;margin-top:2pt}
+.refs .ref{display:flex;gap:7pt;margin-bottom:7pt;padding-bottom:7pt;border-bottom:.5pt dashed #ccc;font-size:9pt}
+.ref-n{font-family:'JetBrains Mono',monospace;font-size:8.5pt;font-weight:700;color:#c8a84b;min-width:24pt}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+${cover}${_buildBodyHTML(d)}${refs}
+</body></html>`;
+}
+
+function _buildWordHTML(d) {
+  const title = _esc(d.title||'Atlas Report');
+  const m = d.meta||{};
+  const metaLine = [m.date,m.words&&m.words+'字',m.sources&&m.sources+' 来源',m.reading].filter(Boolean).join(' · ');
+  const body = (d.sections||[]).map(s => {
+    const blocks = (s.blocks||[]).map(b => {
+      if (b.kind==='lede') return `<p><b>${_esc(b.text)}</b></p>`;
+      if (b.kind==='quote') return `<blockquote style="margin-left:18pt;font-style:italic;color:#555">${_esc(b.text)}${b.by?`<br>— ${_esc(b.by)}`:''}</blockquote>`;
+      if (b.kind==='chart'&&b.data) { const its=(b.data.data||[]).map(i=>`<li>${_esc(i.label)}: <b>${i.value}${b.data.unit?' '+b.data.unit:''}</b></li>`).join(''); return `<p><b>【图表: ${_esc(b.data.title||'')}】</b></p><ul>${its}</ul>`; }
+      return `<p>${_esc(b.text)}</p>`;
+    }).join('');
+    return `<h2 style="font-size:13pt;margin-top:18pt;padding-top:10pt;border-top:1.5pt solid #0f0f0f">${_esc(s.en)}${s.cn?' · '+_esc(s.cn):''}</h2>${blocks}`;
+  }).join('');
+  const refs = d.refs?.length ? `<hr/><h2>参考来源</h2>${d.refs.map(r=>`<p><b>${_esc(r.n)} ${_esc(r.src)}</b> — ${_esc(r.title)} <small>(${_esc(r.url)}, ${_esc(r.date)})</small></p>`).join('')}` : '';
+  return `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${title}</title>
+<style>body{font-family:"Noto Sans SC",sans-serif;font-size:11pt;line-height:1.85;color:#0f0f0f}h1{font-size:20pt;font-weight:900;line-height:.94;margin-bottom:8pt}p{margin:5pt 0}blockquote{color:#555}</style>
+</head><body><h1>${title}</h1>${d.subtitle?`<p style="color:#555;font-size:12pt;font-weight:700">${_esc(d.subtitle)}</p>`:''}<p style="font-size:8.5pt;color:#888">${metaLine}</p><hr/>${body}${refs}</body></html>`;
+}
+
+function ExportModal({ t, onClose, exportData }) {
   const [format, setFormat] = React.useState('pdf');
-  const [includeMarginalia, setIncludeMarginalia] = React.useState(true);
   const [includeCover, setIncludeCover] = React.useState(true);
+  const [includeMarginalia, setIncludeMarginalia] = React.useState(true);
   const [pageSize, setPageSize] = React.useState('A4');
-  const [linkScope, setLinkScope] = React.useState('team');
+  const [linkScope, setLinkScope] = React.useState('link');
+  const [linkPwd, setLinkPwd] = React.useState('');
+  const [status, setStatus] = React.useState('idle'); // idle | loading | done | error
+  const [statusMsg, setStatusMsg] = React.useState('');
+  const [copiedUrl, setCopiedUrl] = React.useState('');
+
+  // Fall back to static report data if no exportData provided
+  const d = exportData || {
+    title: 'Cold brew, hotter capital.',
+    subtitle: '2025 Q1 国内咖啡赛道融资速记',
+    sections: REPORT_SECTIONS,
+    refs: REPORT_REFS,
+    meta: REPORT_META,
+  };
+  const displayTitle = d.title || 'Atlas Report';
+
+  const setDone = (msg) => { setStatus('done'); setStatusMsg(msg); setTimeout(() => setStatus('idle'), 3500); };
+  const setErr  = (msg) => { setStatus('error'); setStatusMsg(msg); setTimeout(() => setStatus('idle'), 5000); };
+
+  const handleAction = async () => {
+    setStatus('loading');
+    try {
+      if (format === 'md') {
+        const text = _buildMarkdown(d);
+        _dlBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), _slug(d.title) + '.md');
+        setDone('✓ Markdown 文件已下载');
+
+      } else if (format === 'pdf') {
+        const html = _buildPrintHTML(d, { pageSize, includeCover });
+        const win = window.open('', '_blank');
+        if (!win) { setErr('请在浏览器中允许弹出窗口，然后重试'); return; }
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => { try { win.print(); } catch(e){} }, 900);
+        setDone('✓ 打印对话框已打开，选择「存储为 PDF」');
+
+      } else if (format === 'docx') {
+        const html = _buildWordHTML(d);
+        _dlBlob(new Blob(['﻿', html], { type: 'application/vnd.ms-word;charset=utf-8' }), _slug(d.title) + '.doc');
+        setDone('✓ Word 文档已下载（.doc 格式，可用 Word / WPS 打开）');
+
+      } else if (format === 'notion') {
+        const md = _buildMarkdown(d);
+        await navigator.clipboard.writeText(md);
+        setDone('✓ 已复制 Markdown → 在 Notion 新建页面后直接 Cmd+V 粘贴');
+
+      } else if (format === 'link') {
+        const base = window.location.href.split('?')[0].split('#')[0];
+        const param = btoa(encodeURIComponent(JSON.stringify({ id: d.id || 'shared', title: d.title, ts: Date.now() }))).slice(0, 32);
+        const url = `${base}?r=${param}`;
+        await navigator.clipboard.writeText(url);
+        setCopiedUrl(url);
+        setDone('✓ 链接已复制到剪贴板');
+      }
+    } catch (err) {
+      setErr('✕ 操作失败：' + (err.message || String(err)));
+    }
+  };
 
   const selected = EXPORT_FORMATS.find(f => f.k === format);
+  const isLink = format === 'link';
+  const isNotion = format === 'notion';
+  const btnLabel = status === 'loading' ? '处理中…'
+    : isLink ? '复制链接 ↗'
+    : isNotion ? '复制 Markdown ↗'
+    : `下载 ${selected?.en} ↓`;
 
   return (
     <div style={{
       position: 'absolute', inset: 0, zIndex: 100,
-      background: 'rgba(15,15,15,0.45)',
+      background: 'rgba(15,15,15,0.5)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 40,
-    }}
-      onClick={onClose}>
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: '100%', maxWidth: 880, maxHeight: '100%',
-          background: t.paper, border: `1.5px solid ${t.ink}`,
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        }}>
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 900, maxHeight: '90vh',
+        background: t.paper, border: `1.5px solid ${t.ink}`,
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
         {/* Header */}
-        <div style={{
-          padding: '16px 22px', borderBottom: `1.5px solid ${t.ink}`, display: 'flex', alignItems: 'center', gap: 14,
-        }}>
+        <div style={{ padding: '14px 22px', borderBottom: `1.5px solid ${t.ink}`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
           <Tag t={t} accent>◆ EXPORT · 导出 / 分享</Tag>
-          <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 16, letterSpacing: 0.5 }}>
-            Issue № {REPORT_META.issue}
+          <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 15, letterSpacing: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+            {displayTitle}
           </span>
-          <span style={{ flex: 1 }}/>
           <button type="button" onClick={onClose} style={{
             border: `1px solid ${t.ink}`, background: t.paper, padding: '4px 9px',
-            fontFamily: t.fontMono, fontSize: 11, cursor: 'pointer',
+            fontFamily: t.fontMono, fontSize: 11, cursor: 'pointer', color: t.ink, flexShrink: 0,
           }}>ESC</button>
         </div>
-        {/* Body */}
-        <div style={{
-          flex: 1, minHeight: 0, display: 'grid',
-          gridTemplateColumns: '260px 1fr 240px',
-        }}>
-          {/* Format list */}
-          <div style={{ borderRight: `1px solid ${t.rule}`, padding: '14px 0' }}>
-            <div style={{ padding: '0 18px 6px', fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>FORMAT · 格式</div>
+
+        {/* Body: 3 columns */}
+        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '220px 1fr 220px' }}>
+
+          {/* Left: format picker */}
+          <div style={{ borderRight: `1px solid ${t.rule}`, overflowY: 'auto' }}>
+            <div style={{ padding: '10px 16px 4px', fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>FORMAT · 格式</div>
             {EXPORT_FORMATS.map(f => (
-              <button key={f.k}
-                type="button"
-                onClick={() => setFormat(f.k)}
-                style={{
-                  display: 'block', textAlign: 'left', background: format === f.k ? t.faint : 'transparent',
-                  borderLeft: format === f.k ? `3px solid ${t.accent}` : `3px solid transparent`,
-                  border: 'none', padding: '10px 18px', width: '100%', cursor: 'pointer',
-                  fontFamily: t.fontBody,
-                }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <span style={{
-                    fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase',
-                  }}>{f.en}</span>
+              <button key={f.k} type="button" onClick={() => { setFormat(f.k); setStatus('idle'); }} style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                background: format === f.k ? t.faint : 'transparent',
+                borderLeft: format === f.k ? `3px solid ${t.accent}` : '3px solid transparent',
+                border: 'none', borderLeft: format === f.k ? `3px solid ${t.accent}` : `3px solid transparent`,
+                padding: '10px 16px', cursor: 'pointer',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 12, letterSpacing: 1 }}>{f.en}</span>
                   {f.recommended && <Tag t={t} accent>推荐</Tag>}
                 </div>
-                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, marginTop: 2 }}>{f.cn}</div>
-                <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginTop: 2 }}>{f.size}</div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.inkSoft, marginTop: 2 }}>{f.cn}</div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>{f.size}</div>
               </button>
             ))}
           </div>
 
-          {/* Options */}
-          <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14, overflow: 'auto' }}>
-            <div style={{
-              fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4,
-              borderBottom: `1px solid ${t.rule}`, paddingBottom: 6,
-            }}>OPTIONS · 选项</div>
+          {/* Center: options */}
+          <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, borderBottom: `1px solid ${t.rule}`, paddingBottom: 6 }}>OPTIONS · 选项</div>
 
-            <OptionToggle t={t} label="包含杂志封面 (Cover sheet)" value={includeCover} onChange={setIncludeCover}/>
-            <OptionToggle t={t} label="包含边注与流程 (Marginalia + ledger)" value={includeMarginalia} onChange={setIncludeMarginalia}/>
+            {!isLink && !isNotion && (
+              <>
+                <OptionToggle t={t} label="包含杂志封面 (Cover sheet)" value={includeCover} onChange={setIncludeCover}/>
+                <OptionToggle t={t} label="包含边注 (Marginalia)" value={includeMarginalia} onChange={setIncludeMarginalia}/>
+              </>
+            )}
 
             {format === 'pdf' && (
               <OptionRadio t={t} label="纸张大小" value={pageSize} onChange={setPageSize}
                 options={[['A4','A4'],['LET','Letter'],['B5','B5']]}/>
             )}
 
-            {format === 'link' && (
+            {isLink && (
               <>
                 <OptionRadio t={t} label="访问范围" value={linkScope} onChange={setLinkScope}
-                  options={[['team','团队内'],['link','凡有链接者'],['pwd','需要密码']]}/>
-                <OptionToggle t={t} label="允许追问 (let viewers ask follow-ups)" value={true}/>
-                <OptionToggle t={t} label="显示阅读热度 (analytics)" value={false}/>
+                  options={[['link','公开'],['team','团队'],['pwd','密码']]}/>
+                {linkScope === 'pwd' && (
+                  <div>
+                    <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, marginBottom: 6 }}>访问密码</div>
+                    <input value={linkPwd} onChange={e => setLinkPwd(e.target.value)}
+                      placeholder="设置密码…"
+                      style={{ width: '100%', border: `1.5px solid ${t.ink}`, padding: '6px 10px', fontFamily: t.fontMono, fontSize: 12, background: t.paper, color: t.ink, outline: 'none' }}/>
+                  </div>
+                )}
+                <OptionToggle t={t} label="允许追问 (Follow-up)" value={true} onChange={null}/>
+                <OptionToggle t={t} label="显示阅读统计 (Analytics)" value={false} onChange={null}/>
+                {copiedUrl && (
+                  <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, wordBreak: 'break-all', padding: '8px 10px', background: t.faint, border: `1px solid ${t.accent}` }}>
+                    {copiedUrl}
+                  </div>
+                )}
               </>
             )}
 
+            {isNotion && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.inkSoft, lineHeight: 1.7 }}>
+                  点击下方按钮将报告复制为 Notion 兼容的 Markdown 格式。
+                </div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, lineHeight: 1.7 }}>
+                  1. 点击「复制 Markdown」<br/>
+                  2. 在 Notion 中新建页面<br/>
+                  3. 直接 <strong>Cmd+V</strong>（Mac）或 <strong>Ctrl+V</strong>（Win）粘贴<br/>
+                  4. Notion 会自动解析标题和段落结构
+                </div>
+              </div>
+            )}
+
+            {/* Status feedback */}
+            {status !== 'idle' && (
+              <div style={{
+                padding: '10px 14px', marginTop: 4,
+                background: status === 'error' ? 'rgba(229,37,29,0.08)' : status === 'done' ? 'rgba(16,185,129,0.08)' : t.faint,
+                border: `1px solid ${status === 'error' ? '#e5251d' : status === 'done' ? '#10b981' : t.rule}`,
+                fontFamily: t.fontCN, fontSize: 12,
+                color: status === 'error' ? '#e5251d' : status === 'done' ? '#10b981' : t.inkSoft,
+                lineHeight: 1.5,
+              }}>
+                {status === 'loading' ? '⏳ 正在处理，请稍候…' : statusMsg}
+              </div>
+            )}
+
+            {/* Action buttons */}
             <div style={{ marginTop: 'auto', paddingTop: 14, borderTop: `1px solid ${t.rule}`, display: 'flex', gap: 8 }}>
               <span style={{ flex: 1 }}/>
               <Btn t={t} size="md" onClick={onClose}>取消 · Cancel</Btn>
-              <Btn t={t} size="md" primary accent>
-                {format === 'link' ? '生成链接 ↗' : `下载 ${selected.en} ↓`}
+              <Btn t={t} size="md" primary accent onClick={handleAction} disabled={status === 'loading'}>
+                {btnLabel}
               </Btn>
             </div>
           </div>
 
-          {/* Preview */}
-          <div style={{ background: t.paperAlt, padding: '18px', borderLeft: `1px solid ${t.rule}`, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Right: preview */}
+          <div style={{ background: t.paperAlt, padding: '16px', borderLeft: `1px solid ${t.rule}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>PREVIEW · 预览</div>
             <div style={{
               flex: 1, background: '#fff', border: `1px solid ${t.ink}`,
-              boxShadow: `4px 4px 0 ${t.ink}`,
-              padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 6,
-              fontFamily: t.fontDisplay,
+              boxShadow: `3px 3px 0 ${t.ink}`,
+              padding: '13px 11px', display: 'flex', flexDirection: 'column', gap: 5,
             }}>
-              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.4, color: '#0f0f0f' }}>ISSUE № 241</div>
-              <div style={{ fontSize: 18, fontWeight: 900, lineHeight: 0.95, letterSpacing: -0.5, color: '#0f0f0f' }}>Cold brew,<br/>hotter capital.</div>
-              <div style={{ fontFamily: t.fontCN, fontSize: 9, lineHeight: 1.3, color: '#0f0f0f' }}>2025 Q1 咖啡赛道融资速记</div>
-              <div style={{ height: 1, background: '#0f0f0f', margin: '4px 0' }}/>
-              <div style={{ background: '#f0eee9', height: 10 }}/>
-              <div style={{ background: '#f0eee9', height: 5, width: '70%' }}/>
-              <div style={{ background: '#f0eee9', height: 5, width: '90%' }}/>
-              <div style={{ background: '#f0eee9', height: 5, width: '60%' }}/>
-              {includeMarginalia && <div style={{ fontFamily: 'JetBrains Mono', fontSize: 6, color: '#767368', marginTop: 4 }}>§ marginalia included</div>}
+              {includeCover && !isLink && !isNotion ? (
+                <>
+                  <div style={{ fontFamily: 'Archivo', fontSize: 7, fontWeight: 700, letterSpacing: 2, color: '#888', textTransform: 'uppercase' }}>ATLAS · {d.meta?.issue||''}</div>
+                  <div style={{ fontFamily: 'Archivo', fontSize: 16, fontWeight: 900, lineHeight: 0.95, letterSpacing: -0.5, color: '#0f0f0f', marginTop: 4 }}>{displayTitle.slice(0,30)}{displayTitle.length>30?'…':''}</div>
+                  {d.subtitle && <div style={{ fontFamily: 'Noto Sans SC', fontSize: 8, lineHeight: 1.3, color: '#555', marginTop: 2 }}>{d.subtitle.slice(0,40)}</div>}
+                  <div style={{ height: 1.5, background: '#0f0f0f', margin: '5px 0' }}/>
+                </>
+              ) : (
+                <div style={{ fontFamily: 'Archivo', fontSize: 10, fontWeight: 800, color: '#0f0f0f', marginBottom: 4 }}>{displayTitle.slice(0,30)}</div>
+              )}
+              {(d.sections||[]).slice(0,3).map((s,i) => (
+                <div key={i} style={{ marginBottom: 3 }}>
+                  <div style={{ fontFamily: 'Archivo', fontSize: 7, fontWeight: 800, color: '#0f0f0f', letterSpacing: 0.5 }}>{s.en.slice(0,28)}</div>
+                  <div style={{ background: '#f0eee9', height: 4, width: `${75 - i*10}%`, marginTop: 2 }}/>
+                  <div style={{ background: '#f0eee9', height: 4, width: `${90 - i*5}%`, marginTop: 2 }}/>
+                </div>
+              ))}
+              {includeMarginalia && !isLink && !isNotion && (
+                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 5.5, color: '#aaa', marginTop: 3 }}>§ marginalia · references</div>
+              )}
             </div>
-            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
-              {format === 'pdf' && `${pageSize} · 8 页 · ~480 KB`}
-              {format === 'docx' && '8 页 · ~320 KB'}
-              {format === 'md' && '~ 18 KB · UTF-8'}
-              {format === 'notion' && 'atlas-team.notion.so'}
-              {format === 'link' && 'atlas.app/r/r-7841 · expires in 30d'}
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, lineHeight: 1.5 }}>
+              {format === 'pdf' && `${pageSize} · ~480 KB`}
+              {format === 'docx' && '~320 KB · Word/WPS'}
+              {format === 'md' && `~${Math.round((_buildMarkdown(d).length/1024))}KB · UTF-8`}
+              {format === 'notion' && 'Markdown 格式 · 可直接粘贴'}
+              {format === 'link' && `有效期 30d · ${linkScope==='pwd'?'密码保护':'公开访问'}`}
             </div>
           </div>
         </div>
@@ -4063,7 +4315,24 @@ function App() {
             }}/>
         )}
         {route === 'sources' && <Sources t={t}/>}
-        {showExport && <ExportModal t={t} onClose={() => setShowExport(false)}/>}
+        {showExport && (
+          <ExportModal t={t} onClose={() => setShowExport(false)}
+            exportData={activeReport ? {
+              id: activeReport.id,
+              title: activeReport.meta?.titleEn || activeReport.meta?.title?.en || activeReport.prompt?.slice(0,40),
+              subtitle: activeReport.meta?.subtitle || activeReport.prompt?.slice(0,80),
+              sections: activeReport.sections,
+              refs: [],
+              meta: activeReport.meta,
+            } : {
+              id: 'static-241',
+              title: 'Cold brew, hotter capital.',
+              subtitle: '2025 Q1 国内咖啡赛道融资速记',
+              sections: REPORT_SECTIONS,
+              refs: REPORT_REFS,
+              meta: REPORT_META,
+            }}/>
+        )}
       </main>
       <IssueFooter t={t} page={footer.page} section={footer.section}/>
 
