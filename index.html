@@ -668,6 +668,15 @@ const NAV_ITEMS = [
 ];
 
 function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241 }) {
+  const [now, setNow] = React.useState(() => new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const pad = n => String(n).padStart(2, '0');
+  const dateStr = `${now.getFullYear()}·${pad(now.getMonth()+1)}·${pad(now.getDate())}`;
+  const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
   return (
     <div style={{
       borderBottom: `1px solid ${t.ink}`, background: t.paper, flexShrink: 0,
@@ -717,7 +726,7 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241 }) {
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>
           VOL.04 · № {issueNum}
         </span>
-        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>2026·05·21</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{dateStr} · {timeStr}</span>
         <UserAvatar t={t}/>
       </div>
     </div>
@@ -1058,6 +1067,9 @@ const STARTERS = [
 function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
   const editorial = density === 'editorial';
   const headSize = editorial ? 'xxl' : 'xl';
+  const [now] = React.useState(() => new Date());
+  const DAY_CN = ['日','一','二','三','四','五','六'];
+  const coverDate = `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`;
 
   return (
     <div style={{
@@ -1090,7 +1102,7 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <Tag t={t} accent>◆ THE COVER STORY · 封面故事</Tag>
           <span style={{ flex: 1, height: 1, background: t.ink }}/>
-          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>5月21日 · THU</span>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>{coverDate}</span>
         </div>
 
         {/* Headline */}
@@ -2073,17 +2085,34 @@ const RUN_EVENTS = [
 const RUN_TOTAL = 26.0;
 
 // ── Live API streaming -----------------------------------------------
-async function streamReport({ model, prompt, onChunk, onDone, onError }) {
+async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError }) {
+  const { tone, length, selectedSources, attachments } = toolbarConfig || {};
+  const toneCN = tone?.cn || '分析性';
+  const targetLength = length || 2500;
+
+  // Dynamic system prompt: enforces tone + length strictly
+  const sourceNote = selectedSources?.size > 0
+    ? `\n5. 参考数据源：${[...selectedSources].join('、')}`
+    : '';
+  const systemPrompt = `你是一个专业的商业分析师，擅长撰写深度行业报告。
+请用中文撰写一篇结构清晰的分析报告，严格遵守以下要求：
+1. 写作风格：${toneCN}（全程必须体现这种风格，不得偏离）
+2. 目标字数：${targetLength} 字（必须严格控制在 ${Math.round(targetLength * 0.9)}–${Math.round(targetLength * 1.1)} 字以内）
+3. 结构：第一句为一句话导语（总结核心观点），随后分段展开
+4. 引用格式：重要数据用 §1 §2 §3 标注脚注${sourceNote}
+直接输出报告正文，不要输出标题、前言或任何说明文字。`;
+
+  // Build user message: prompt + optional attachment context
+  const attachText = attachments?.length > 0
+    ? '\n\n【附件参考资料】\n' + attachments.map(a => `《${a.name}》\n${a.content}`).join('\n\n---\n\n')
+    : '';
+  const userContent = prompt + attachText;
+
+  // Set max_tokens based on requested length (generous: ~2 tokens per Chinese char + buffer)
+  const maxTokens = Math.min(Math.ceil(targetLength * 2.2) + 800, 16000);
+
   const apiKey = model.apiKey || '';
   const apiUrl = (model.apiUrl || 'https://api.xiaomimimo.com/v1').replace(/\/$/, '');
-
-  const systemPrompt = `你是一个专业的商业分析师，擅长撰写深度行业报告。
-请用中文撰写一篇结构清晰的分析报告，要求：
-1. 开头用一句话总结核心观点（作为导语）
-2. 分 3-4 段展开分析，每段 200-300 字
-3. 行文风格：简洁、有洞察力、有数据支撑
-4. 引用格式：重要数据用 §1 §2 §3 标注脚注
-直接输出报告正文，不需要标题或前言。`;
 
   try {
     const resp = await fetch(`${apiUrl}/chat/completions`, {
@@ -2096,10 +2125,10 @@ async function streamReport({ model, prompt, onChunk, onDone, onError }) {
         model: model.id,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt },
+          { role: 'user', content: userContent },
         ],
         stream: true,
-        max_tokens: 2000,
+        max_tokens: maxTokens,
       }),
     });
 
@@ -2141,21 +2170,8 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
   const selectedModel = modelStore?.selected;
   const isLiveMode = !!(selectedModel?.apiKey);
 
-  // Build enriched prompt for live mode (prepend tone/length/sources/attachments)
-  const effectivePrompt = React.useMemo(() => {
-    if (!toolbarConfig || !isLiveMode) return prompt;
-    const { tone, length, selectedSources, attachments } = toolbarConfig;
-    const directives = [];
-    if (tone?.cn) directives.push(`请以「${tone.cn}」风格撰写。`);
-    if (length) directives.push(`目标字数约 ${length} 字。`);
-    if (selectedSources?.size > 0) directives.push(`参考数据源：${[...selectedSources].join('、')}。`);
-    const attachText = attachments?.length > 0
-      ? '\n\n附件内容：\n' + attachments.map(a => `【${a.name}】\n${a.content}`).join('\n\n')
-      : '';
-    return directives.length > 0
-      ? directives.join(' ') + '\n\n' + prompt + attachText
-      : prompt + attachText;
-  }, [prompt, toolbarConfig, isLiveMode]);
+  // effectivePrompt: just the raw user prompt (toolbar config is passed to streamReport directly)
+  const effectivePrompt = prompt;
 
   // ── LIVE MODE state ──────────────────────────────────────────────────
   const [liveText, setLiveText] = React.useState('');
@@ -2173,6 +2189,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
     streamReport({
       model: selectedModel,
       prompt: effectivePrompt,
+      toolbarConfig,
       onChunk: (chunk) => {
         setLiveStatus('streaming');
         setLiveText(prev => prev + chunk);
