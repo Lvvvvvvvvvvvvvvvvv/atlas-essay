@@ -202,17 +202,21 @@ const __TWEAKS_STYLE = `
 // Single source of truth for tweak values. setTweak persists via the host
 // (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
 function useTweaks(defaults) {
-  const [values, setValues] = React.useState(defaults);
-  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
-  // useState-style call doesn't write a "[object Object]" key into the persisted
-  // JSON block.
+  const [values, setValues] = React.useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('atlas_tweaks') || 'null');
+      return saved ? { ...defaults, ...saved } : defaults;
+    } catch { return defaults; }
+  });
   const setTweak = React.useCallback((keyOrEdits, val) => {
     const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
       ? keyOrEdits : { [keyOrEdits]: val };
-    setValues((prev) => ({ ...prev, ...edits }));
+    setValues((prev) => {
+      const next = { ...prev, ...edits };
+      try { localStorage.setItem('atlas_tweaks', JSON.stringify(next)); } catch {}
+      return next;
+    });
     window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
-    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
-    // can react — the parent message only reaches the host, not peers.
     window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
   }, []);
   return [values, setTweak];
@@ -764,7 +768,7 @@ function UMenuSliderRow({ label, value, min, max, step, onChange, formatVal, hin
 function UMenuReportModal({ visible, title, reports, selected, setSelected, onConfirm, onClose, confirmLabel, confirmDanger, t }) {
   if (!visible) return null;
   const allSel = reports.length > 0 && selected.size === reports.length;
-  const toggleAll = (e) => setSelected(e.target.checked ? new Set(reports.map(r => r._id)) : new Set());
+  const toggleAll = (e) => setSelected(e.target.checked ? new Set(reports.map(r => r.id)) : new Set());
   const toggleOne = (id, checked) => setSelected(prev => { const n = new Set(prev); checked ? n.add(id) : n.delete(id); return n; });
   return (
     <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.45)', zIndex:99999, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={onClose}>
@@ -783,8 +787,8 @@ function UMenuReportModal({ visible, title, reports, selected, setSelected, onCo
           {reports.length === 0
             ? <div style={{ padding:'28px 16px', fontFamily:'Noto Sans SC', fontSize:13, color:t.mute, textAlign:'center' }}>报告库为空</div>
             : reports.map(r => (
-              <label key={r._id} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'8px 16px', cursor:'pointer', borderBottom:`1px solid ${t.rule}`, userSelect:'none' }}>
-                <input type="checkbox" checked={selected.has(r._id)} onChange={e => toggleOne(r._id, e.target.checked)} style={{ marginTop:2, cursor:'pointer', flexShrink:0, width:14, height:14 }}/>
+              <label key={r.id} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'8px 16px', cursor:'pointer', borderBottom:`1px solid ${t.rule}`, userSelect:'none' }}>
+                <input type="checkbox" checked={selected.has(r.id)} onChange={e => toggleOne(r.id, e.target.checked)} style={{ marginTop:2, cursor:'pointer', flexShrink:0, width:14, height:14 }}/>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontFamily:'Noto Sans SC', fontSize:12, fontWeight:600, color:t.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title || r.prompt?.slice(0,44) || '无标题'}</div>
                   <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, marginTop:1 }}>
@@ -860,20 +864,20 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
   const openExport = () => {
     const r = loadReports();
     setModalReports(r);
-    setExportSelected(new Set(r.map(x => x._id)));
+    setExportSelected(new Set(r.map(x => x.id)));
     setExportModal(true);
     setOpen(false);
   };
   const openClear = () => {
     const r = loadReports();
     setModalReports(r);
-    setClearSelected(new Set(r.map(x => x._id)));
+    setClearSelected(new Set(r.map(x => x.id)));
     setClearModal(true);
     setOpen(false);
   };
   const doExport = () => {
     if (!window.confirm(`确认导出 ${exportSelected.size} 份报告？`)) return;
-    const data = modalReports.filter(r => exportSelected.has(r._id));
+    const data = modalReports.filter(r => exportSelected.has(r.id));
     const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -883,7 +887,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
   };
   const doClear = () => {
     if (!window.confirm(`确认删除 ${clearSelected.size} 份报告？此操作不可撤销。`)) return;
-    const keep = modalReports.filter(r => !clearSelected.has(r._id));
+    const keep = modalReports.filter(r => !clearSelected.has(r.id));
     try { localStorage.setItem('atlas_saved_reports', JSON.stringify(keep)); } catch {}
     setClearModal(false);
     window.location.reload();
