@@ -28,6 +28,19 @@
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  @keyframes pet-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  @keyframes pet-blink-shut {
+    0%, 90%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(0.08); }
+  }
+  @keyframes pet-happy {
+    0%,100% { transform: scale(1) rotate(0deg); }
+    25% { transform: scale(1.13) rotate(-7deg); }
+    75% { transform: scale(1.08) rotate(6deg); }
+  }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
@@ -3156,7 +3169,7 @@ const REPORT_REFS = [
 ];
 
 // ── Follow-up composer ──────────────────────────────────────────────────────
-function FollowUpComposer({ t, reportData, rSections, onFollowUp }) {
+function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }) {
   const [text, setText] = React.useState('');
   const [sent, setSent] = React.useState(false);
   const [chips, setChips] = React.useState([]);
@@ -3208,21 +3221,48 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp }) {
           padding: '4px 0', border: 'none', outline: 'none', resize: 'none',
           minHeight: 54, background: 'transparent',
         }}/>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        {chips.map(c => (
-          <button key={c.id} type="button" onClick={() => toggleChip(c.id)} style={{
-            padding: '3px 8px', border: `1px solid ${c.active ? t.accent : t.rule}`,
-            background: c.active ? t.accent : 'transparent',
-            color: c.active ? '#fff' : t.inkSoft,
-            fontFamily: t.fontMono, fontSize: 10, cursor: 'pointer', letterSpacing: 0.5,
-          }}>{c.label}</button>
-        ))}
+      {/* Section reference chips */}
+      {chips.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>引用节：</span>
+          {chips.map(c => (
+            <button key={c.id} type="button" onClick={() => toggleChip(c.id)} style={{
+              padding: '3px 8px', border: `1px solid ${c.active ? t.accent : t.rule}`,
+              background: c.active ? t.accent : 'transparent',
+              color: c.active ? '#fff' : t.inkSoft,
+              fontFamily: t.fontMono, fontSize: 10, cursor: 'pointer', letterSpacing: 0.5,
+            }}>{c.label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Bottom toolbar — mirrors PromptComposer */}
+      <div style={{
+        borderTop: `1px solid ${t.rule}`, paddingTop: 10, marginTop: 2,
+        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: t.paperAlt,
+        marginLeft: -22, marginRight: -22, paddingLeft: 22, paddingRight: 22,
+        paddingBottom: 10,
+      }}>
+        {toolbarStore ? (
+          <>
+            <SourcesPopover t={t} store={toolbarStore}/>
+            <AttachmentsPopover t={t} store={toolbarStore}/>
+            <TonePopover t={t} store={toolbarStore}/>
+            <LengthPopover t={t} store={toolbarStore}/>
+          </>
+        ) : (
+          <>
+            <Tag t={t}>＋ 数据源</Tag>
+            <Tag t={t}>语气 · 分析性</Tag>
+            <Tag t={t}>长度 · 深度</Tag>
+          </>
+        )}
         <span style={{ flex: 1 }}/>
-        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>⌘↵ 发送</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>⌘↵</span>
         <Btn t={t} size="sm" primary accent
           onClick={handleSend}
           style={sent ? { background: '#10b981', borderColor: '#10b981' } : (!text.trim() ? { opacity: 0.4 } : {})}>
-          {sent ? '✓ 已发送' : '↗ Send'}
+          {sent ? '✓ 已发送' : '↗ 发送追问'}
         </Btn>
       </div>
     </div>
@@ -3370,9 +3410,32 @@ function ReportCoverPlate({ t, title, category, isStatic, editorial }) {
   );
 }
 
-function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp }) {
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
+  const [editMode, setEditMode] = React.useState(false);
+  const [edits, setEdits] = React.useState({});
+
+  const getEdit = (key, fallback) => edits[key] !== undefined ? edits[key] : fallback;
+  const setEdit = (key, val) => setEdits(prev => ({ ...prev, [key]: val }));
+
+  const handleSaveEdits = () => {
+    if (!reportData) return;
+    const d = JSON.parse(JSON.stringify(reportData));
+    for (const [key, val] of Object.entries(edits)) {
+      const p = key.split('.');
+      if (p[0] === 'meta') { d.meta[p[1]] = val; }
+      else if (p[0].startsWith('s')) {
+        const si = +p[0].slice(1);
+        if (p[1] === 'title') d.sections[si].en = val;
+        else if (p[1].startsWith('b')) { const bi = +p[1].slice(1); d.sections[si].blocks[bi].text = val; }
+      }
+    }
+    if (onSaveReport) onSaveReport(d);
+    setEditMode(false);
+    setEdits({});
+  };
+  const handleCancelEdits = () => { setEditMode(false); setEdits({}); };
 
   // Data: use reportData prop if provided, else fall back to static constants
   const isStatic     = !reportData;
@@ -3439,6 +3502,13 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
           style={isFavorited ? { background: '#c8a84b', borderColor: '#c8a84b', color: '#fff' } : (!onToggleFavorite ? { opacity: 0.4 } : {})}>
           {isFavorited ? '★ 已收藏' : '☆ 收藏'}
         </Btn>
+        {!isStatic && !editMode && (
+          <Btn t={t} size="sm" onClick={() => setEditMode(true)}>✎ 编辑</Btn>
+        )}
+        {editMode && <>
+          <Btn t={t} size="sm" onClick={handleSaveEdits} primary accent>✓ 保存</Btn>
+          <Btn t={t} size="sm" onClick={handleCancelEdits}>✕ 取消</Btn>
+        </>}
         <Btn t={t} size="sm" primary accent onClick={onExport}>↗ 导出 / 分享</Btn>
       </div>
 
@@ -3598,11 +3668,17 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
           </header>
           {/* ════════════════════════════════════ */}
 
-          {rSections.map(s => {
-            // Extract Chinese numeral prefix like "一、" from the section title
-            const cnNumMatch = s.en.match(/^([一二三四五六七八九十]+[、．])\s*/);
+          {editMode && (
+            <div style={{ padding: '6px 12px', background: 'rgba(255,215,0,0.12)', border: `1px dashed ${t.accent}`, fontFamily: t.fontMono, fontSize: 10, color: t.accent, letterSpacing: 1 }}>
+              ✎ 编辑模式 — 点击文字框修改内容，完成后点击「保存」
+            </div>
+          )}
+          {rSections.map((s, sIdx) => {
+            const titleKey = `s${sIdx}.title`;
+            const rawTitle = getEdit(titleKey, s.en);
+            const cnNumMatch = rawTitle.match(/^([一二三四五六七八九十]+[、．])\s*/);
             const cnNumPrefix = cnNumMatch?.[1] || '';
-            const sectionTitle = cnNumPrefix ? s.en.slice(cnNumMatch[0].length) : s.en;
+            const sectionTitle = cnNumPrefix ? rawTitle.slice(cnNumMatch[0].length) : rawTitle;
             return (
             <section key={s.id} data-sec={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 28, scrollMarginTop: 80 }}>
               <div style={{ borderTop: `2px solid ${t.ink}`, paddingTop: 12 }}>
@@ -3612,19 +3688,28 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
                   ) : (
                     <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.accent, letterSpacing: 0.5 }}>§ {s.num}</span>
                   )}
-                  <span style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: editorial ? 18 : 16, letterSpacing: 0.5, color: t.ink }}>{sectionTitle}</span>
-                  {s.cn && <span style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 500, color: t.mute }}>· {s.cn}</span>}
+                  {editMode
+                    ? <input type="text" value={sectionTitle} onChange={e => setEdit(titleKey, cnNumPrefix + e.target.value)}
+                        style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: editorial ? 18 : 16, color: t.ink, border: '1.5px dashed currentColor', background: 'rgba(255,215,0,0.07)', padding: '2px 6px', outline: 'none', flex: 1 }}/>
+                    : <span style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: editorial ? 18 : 16, letterSpacing: 0.5, color: t.ink }}>{sectionTitle}</span>
+                  }
+                  {s.cn && !editMode && <span style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 500, color: t.mute }}>· {s.cn}</span>}
                 </div>
               </div>
               <div style={{ fontFamily: t.fontCN, fontSize: editorial ? 16 : 15, lineHeight: 1.85, color: t.inkSoft, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {s.blocks.map((b, i) => <ReportBlock key={i} block={b} t={t}/>)}
+                {s.blocks.map((b, bIdx) => {
+                  const bKey = `s${sIdx}.b${bIdx}`;
+                  const blockWithEdits = editMode ? { ...b, text: getEdit(bKey, b.text) } : b;
+                  return <ReportBlock key={bIdx} block={blockWithEdits} t={t}
+                    editMode={editMode} onChange={v => setEdit(bKey, v)}/>;
+                })}
               </div>
             </section>
             );
           })}
 
           {/* Follow-up composer */}
-          <FollowUpComposer t={t} reportData={reportData} rSections={rSections} onFollowUp={onFollowUp}/>
+          <FollowUpComposer t={t} reportData={reportData} rSections={rSections} onFollowUp={onFollowUp} toolbarStore={toolbarStore}/>
           {rAttachments.length > 0 && (
             <div style={{ marginTop: 48, borderTop: `2px solid ${t.ink}`, paddingTop: 28 }}>
               <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.6, marginBottom: 20 }}>
@@ -3751,28 +3836,36 @@ function DataChart({ t, data }) {
   );
 }
 
-function ReportBlock({ block, t }) {
+function EditableText({ editMode, value, onChange, multiline = true, style = {} }) {
+  if (!editMode) return null; // caller renders display; this only renders when editing
+  const base = {
+    width: '100%', boxSizing: 'border-box', background: 'rgba(255,215,0,0.07)',
+    border: '1.5px dashed currentColor', outline: 'none', borderRadius: 2,
+    padding: '3px 6px', fontFamily: 'inherit', fontSize: 'inherit',
+    color: 'inherit', lineHeight: 'inherit', resize: 'vertical', ...style,
+  };
+  if (multiline) {
+    const rows = Math.max(2, Math.ceil((value || '').length / 72));
+    return <textarea rows={rows} value={value || ''} onChange={e => onChange(e.target.value)} style={base}/>;
+  }
+  return <input type="text" value={value || ''} onChange={e => onChange(e.target.value)} style={{ ...base, resize: 'none' }}/>;
+}
+
+function ReportBlock({ block, t, editMode, onChange }) {
+  if (block.kind === 'chart') return <DataChart t={t} data={block.data}/>;
+  if (block.kind === 'figure') return <Figure t={t} type="chart" label={block.label} caption={block.caption} height={240}/>;
+
   if (block.kind === 'lede') {
-    return (
-      <p style={{ margin: 0, fontWeight: 700, fontSize: 19, lineHeight: 1.55, color: t.ink }}>
-        {renderFootnotes(block.text, t)}
-      </p>
-    );
-  }
-  if (block.kind === 'chart') {
-    return <DataChart t={t} data={block.data}/>;
-  }
-  if (block.kind === 'figure') {
-    return <Figure t={t} type="chart" label={block.label} caption={block.caption} height={240}/>;
+    if (editMode) return <EditableText editMode value={block.text} onChange={onChange}
+      style={{ fontWeight: 700, fontSize: 19, lineHeight: 1.55 }}/>;
+    return <p style={{ margin: 0, fontWeight: 700, fontSize: 19, lineHeight: 1.55, color: t.ink }}>{renderFootnotes(block.text, t)}</p>;
   }
   if (block.kind === 'quote') {
+    if (editMode) return <EditableText editMode value={block.text} onChange={onChange} style={{ fontStyle: 'italic' }}/>;
     return <PullQuote t={t} attribution={block.by}>{block.text}</PullQuote>;
   }
-  return (
-    <p style={{ margin: 0 }}>
-      {renderFootnotes(block.text, t)}
-    </p>
-  );
+  if (editMode) return <EditableText editMode value={block.text} onChange={onChange}/>;
+  return <p style={{ margin: 0 }}>{renderFootnotes(block.text, t)}</p>;
 }
 
 function renderMd(text, t) {
@@ -4682,7 +4775,7 @@ function _buildInlineBodyHTML(d, {includeCover=true}={}) {
   let html = '';
   if (includeCover) {
     const metaRow = [m.date, m.words&&m.words+'字', m.sources&&m.sources+' 来源', m.reading].filter(Boolean).join(' · ');
-    html += `<div style="min-height:700px;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:50px;margin-bottom:40px;border-bottom:3px solid #0f0f0f">
+    html += `<div style="padding:48px 0 36px;margin-bottom:40px;border-bottom:3px solid #0f0f0f">
       <div style="font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#999;margin-bottom:20px;font-family:monospace">${_esc(m.issue||'')} · ATLAS ESSAYS</div>
       <div style="font-size:44px;font-weight:900;line-height:.93;letter-spacing:-1.5px;margin-bottom:10px">${_esc(d.title||'')}</div>
       ${d.subtitle?`<div style="font-size:15px;font-weight:700;color:#555;margin-bottom:14px">${_esc(d.subtitle)}</div>`:''}
@@ -5187,6 +5280,148 @@ const FOOTER_CONTEXT = {
 
 const SAMPLE_FIRST_PROMPT = '梳理 2025 年 Q1 国内咖啡赛道的融资动态，重点说说 Manner、库迪和挪瓦的新动向，给一份 2000 字的内部分析。';
 
+// ── Pet Widget ────────────────────────────────────────────────────────────────
+function PetWidget({ t }) {
+  const [blink, setBlink] = React.useState(false);
+  const [mood, setMood] = React.useState('idle'); // idle | happy | sleepy
+  const [bubble, setBubble] = React.useState(null);
+  const [minimized, setMinimized] = React.useState(false);
+
+  // Random blink loop
+  React.useEffect(() => {
+    let tid;
+    const loop = () => {
+      const delay = 2200 + Math.random() * 3800;
+      tid = setTimeout(() => {
+        setBlink(true);
+        setTimeout(() => { setBlink(false); loop(); }, 160);
+      }, delay);
+    };
+    loop();
+    return () => clearTimeout(tid);
+  }, []);
+
+  // Random sleepy every ~30s idle
+  React.useEffect(() => {
+    if (mood !== 'idle') return;
+    const tid = setTimeout(() => setMood('sleepy'), 28000 + Math.random() * 12000);
+    return () => clearTimeout(tid);
+  }, [mood]);
+
+  const MESSAGES = [
+    '今天要写什么报告？✨', '数据已就绪 🎯', '我来帮你分析！', '嗯嗯，好主意！',
+    'Atlas 随时待命 ⚡', '要不要试试追问功能？', '报告生成中，稍等～', '我可以帮你导出 PDF！',
+  ];
+
+  const handleClick = () => {
+    const msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
+    setBubble(msg);
+    setMood('happy');
+    setTimeout(() => setBubble(null), 2800);
+    setTimeout(() => setMood('idle'), 3000);
+  };
+
+  const eyeH = blink ? 2 : 13;
+  const bodyAnim = mood === 'happy' ? 'pet-happy 0.5s ease' : 'pet-bob 2.2s ease-in-out infinite';
+
+  if (minimized) return (
+    <div onClick={() => setMinimized(false)} title="Atlas 小宠物" style={{
+      position: 'fixed', bottom: 24, right: 24, zIndex: 9990,
+      width: 36, height: 36, borderRadius: '50%', background: '#f5c842',
+      border: `2px solid #e8a800`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.18)', animation: 'pet-bob 2.2s ease-in-out infinite',
+    }}>
+      <span style={{ fontSize: 18 }}>🦕</span>
+    </div>
+  );
+
+  return (
+    <div style={{ position: 'fixed', bottom: 22, right: 22, zIndex: 9990, userSelect: 'none' }}>
+      {/* Minimize button */}
+      <button onClick={() => setMinimized(true)} title="隐藏" style={{
+        position: 'absolute', top: -8, right: -8, width: 18, height: 18, borderRadius: '50%',
+        background: 'rgba(0,0,0,0.18)', border: 'none', cursor: 'pointer', color: '#fff',
+        fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 2, lineHeight: 1,
+      }}>×</button>
+
+      {/* Speech bubble */}
+      {bubble && (
+        <div style={{
+          position: 'absolute', bottom: '100%', right: 0, marginBottom: 12,
+          background: (t && t.paper) || '#fff', border: `1.5px solid ${(t && t.ink) || '#222'}`,
+          padding: '8px 14px', fontSize: 12, fontFamily: (t && t.fontCN) || 'sans-serif',
+          whiteSpace: 'nowrap', color: (t && t.ink) || '#222', maxWidth: 200, lineHeight: 1.4,
+          boxShadow: `3px 3px 0 ${(t && t.ink) || '#222'}`, animation: 'essay-fadein 0.15s ease',
+          zIndex: 3,
+        }}>
+          {bubble}
+          <div style={{ position: 'absolute', bottom: -9, right: 22,
+            borderLeft: '7px solid transparent', borderRight: '7px solid transparent',
+            borderTop: `9px solid ${(t && t.ink) || '#222'}` }}/>
+          <div style={{ position: 'absolute', bottom: -7, right: 23,
+            borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
+            borderTop: `8px solid ${(t && t.paper) || '#fff'}` }}/>
+        </div>
+      )}
+
+      {/* Pet body */}
+      <div onClick={handleClick} title="点我！" style={{
+        position: 'relative', width: 64, height: 76, cursor: 'pointer',
+        animation: bodyAnim, transformOrigin: 'center bottom',
+        filter: mood === 'sleepy' ? 'brightness(0.9)' : 'none',
+      }}>
+        {/* Feet */}
+        <div style={{ position: 'absolute', bottom: 0, left: 8, width: 18, height: 9, background: '#e8a800', borderRadius: '30% 30% 50% 50%', zIndex: 0 }}/>
+        <div style={{ position: 'absolute', bottom: 0, right: 8, width: 18, height: 9, background: '#e8a800', borderRadius: '30% 30% 50% 50%', zIndex: 0 }}/>
+
+        {/* Body */}
+        <div style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', width: 42, height: 38, background: '#f5c842', borderRadius: '46% 46% 42% 42%', zIndex: 1 }}>
+          {/* Belly */}
+          <div style={{ position: 'absolute', bottom: 5, left: '50%', transform: 'translateX(-50%)', width: 26, height: 24, background: '#f5ede0', borderRadius: '50%' }}/>
+        </div>
+
+        {/* Left arm */}
+        <div style={{ position: 'absolute', bottom: 26, left: 3, width: 15, height: 20, background: '#f5c842', borderRadius: '50% 50% 45% 45%', transform: 'rotate(-18deg)', zIndex: 2 }}>
+          <div style={{ position: 'absolute', bottom: -1, left: 1, width: 4, height: 6, background: '#e8a800', borderRadius: '40%' }}/>
+          <div style={{ position: 'absolute', bottom: -2, left: 6, width: 4, height: 7, background: '#e8a800', borderRadius: '40%' }}/>
+        </div>
+
+        {/* Right arm */}
+        <div style={{ position: 'absolute', bottom: 26, right: 3, width: 15, height: 20, background: '#f5c842', borderRadius: '50% 50% 45% 45%', transform: 'rotate(18deg)', zIndex: 2 }}>
+          <div style={{ position: 'absolute', bottom: -1, right: 1, width: 4, height: 6, background: '#e8a800', borderRadius: '40%' }}/>
+          <div style={{ position: 'absolute', bottom: -2, right: 6, width: 4, height: 7, background: '#e8a800', borderRadius: '40%' }}/>
+        </div>
+
+        {/* Head */}
+        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 52, height: 50, background: '#f5c842', borderRadius: '50%', zIndex: 3 }}>
+          {/* Left eye socket */}
+          <div style={{ position: 'absolute', top: 17, left: 7, width: 15, height: eyeH, background: '#fff', borderRadius: '50%', border: '1px solid rgba(0,0,0,0.12)', overflow: 'hidden', transition: 'height 0.06s' }}>
+            {!blink && <div style={{ position: 'absolute', top: 2, left: 3, width: 9, height: 9, background: '#4caf50', borderRadius: '50%' }}>
+              <div style={{ position: 'absolute', top: 2, left: 2, width: 4, height: 4, background: '#1a4a1a', borderRadius: '50%' }}/>
+              <div style={{ position: 'absolute', top: 1, left: 1, width: 2, height: 2, background: 'rgba(255,255,255,0.7)', borderRadius: '50%' }}/>
+            </div>}
+          </div>
+          {/* Right eye socket */}
+          <div style={{ position: 'absolute', top: 17, right: 7, width: 15, height: eyeH, background: '#fff', borderRadius: '50%', border: '1px solid rgba(0,0,0,0.12)', overflow: 'hidden', transition: 'height 0.06s' }}>
+            {!blink && <div style={{ position: 'absolute', top: 2, left: 3, width: 9, height: 9, background: '#4caf50', borderRadius: '50%' }}>
+              <div style={{ position: 'absolute', top: 2, left: 2, width: 4, height: 4, background: '#1a4a1a', borderRadius: '50%' }}/>
+              <div style={{ position: 'absolute', top: 1, left: 1, width: 2, height: 2, background: 'rgba(255,255,255,0.7)', borderRadius: '50%' }}/>
+            </div>}
+          </div>
+          {/* Blush cheeks */}
+          <div style={{ position: 'absolute', top: 28, left: 4, width: 12, height: 7, background: '#f07070', borderRadius: '50%', opacity: 0.45 }}/>
+          <div style={{ position: 'absolute', top: 28, right: 4, width: 12, height: 7, background: '#f07070', borderRadius: '50%', opacity: 0.45 }}/>
+          {/* Sleeping z */}
+          {mood === 'sleepy' && (
+            <div style={{ position: 'absolute', top: -6, right: -4, fontFamily: 'serif', fontSize: 13, color: '#888', opacity: 0.8, animation: 'essay-fadein 0.5s ease' }}>z</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Saved Reports Store ──────────────────────────────────────────────────────
 const SAVED_REPORTS_KEY = 'atlas_saved_reports';
 
@@ -5286,6 +5521,8 @@ function App() {
             isFavorited={activeReport?.favorited || false}
             onToggleFavorite={activeReport ? () => savedReports.toggleFav(activeReportId) : null}
             onRerun={activeReport ? () => { setPrompt(activeReport.prompt); goRun(); } : null}
+            toolbarStore={toolbarStore}
+            onSaveReport={activeReport ? (updated) => savedReports.save({ ...updated, id: activeReport.id }) : null}
             onFollowUp={(followText) => {
               const base = activeReport?.prompt || prompt;
               setPrompt(`【追问】在下面的报告基础上：${base}\n\n【新要求】${followText}`);
@@ -5323,6 +5560,7 @@ function App() {
         )}
       </main>
       <IssueFooter t={t} page={footer.page} section={footer.section}/>
+      <PetWidget t={t}/>
 
       <TweaksPanel title="Tweaks · 微调">
         <TweakSection label="Color · 颜色">
