@@ -32,14 +32,62 @@
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-8px); }
   }
-  @keyframes pet-blink-shut {
-    0%, 90%, 100% { transform: scaleY(1); }
-    95% { transform: scaleY(0.08); }
+  @keyframes pet-walk {
+    0%, 100% { transform: translateY(0) rotate(-2.5deg); }
+    50% { transform: translateY(-5px) rotate(2.5deg); }
   }
   @keyframes pet-happy {
-    0%,100% { transform: scale(1) rotate(0deg); }
-    25% { transform: scale(1.13) rotate(-7deg); }
-    75% { transform: scale(1.08) rotate(6deg); }
+    0%,100% { transform: scale(1) translateY(0) rotate(0deg); }
+    25% { transform: scale(1.12) translateY(-9px) rotate(-7deg); }
+    75% { transform: scale(1.07) translateY(-4px) rotate(6deg); }
+  }
+  @keyframes pet-jump {
+    0%   { transform: translateY(0) scaleX(1) scaleY(1); }
+    25%  { transform: translateY(-26px) scaleX(0.9) scaleY(0.92); }
+    50%  { transform: translateY(-30px) scaleX(0.86) scaleY(0.88); }
+    68%  { transform: translateY(0) scaleX(1.16) scaleY(1.1); }
+    84%  { transform: translateY(-9px) scaleX(1) scaleY(1); }
+    100% { transform: translateY(0) scaleX(1) scaleY(1); }
+  }
+  @keyframes pet-dance {
+    0%   { transform: rotate(-13deg) translateY(0); }
+    25%  { transform: rotate(13deg) translateY(-11px); }
+    50%  { transform: rotate(-9deg) translateY(-15px); }
+    75%  { transform: rotate(10deg) translateY(-8px); }
+    100% { transform: rotate(-13deg) translateY(0); }
+  }
+  @keyframes pet-spin {
+    from { transform: rotateY(0deg); }
+    to   { transform: rotateY(360deg); }
+  }
+  @keyframes pet-strum {
+    0%,100% { transform: rotate(-4deg); }
+    50%     { transform: rotate(5deg) translateX(2px); }
+  }
+  @keyframes pet-work {
+    0%,80%,100% { transform: translateY(0) rotate(0deg); }
+    30% { transform: translateY(-4px) rotate(-4deg); }
+    60% { transform: translateY(-1px) rotate(2deg); }
+  }
+  @keyframes pet-arm-l-walk {
+    0%,100% { transform: rotate(-34deg); }
+    50%     { transform: rotate(18deg); }
+  }
+  @keyframes pet-arm-r-walk {
+    0%,100% { transform: rotate(18deg); }
+    50%     { transform: rotate(-34deg); }
+  }
+  @keyframes pet-leg-l {
+    0%,100% { transform: translateX(-4px) rotate(-12deg); }
+    50%     { transform: translateX(4px) rotate(12deg); }
+  }
+  @keyframes pet-leg-r {
+    0%,100% { transform: translateX(4px) rotate(12deg); }
+    50%     { transform: translateX(-4px) rotate(-12deg); }
+  }
+  @keyframes pet-float-note {
+    0%   { transform: translateY(0) scale(1); opacity: 0.8; }
+    100% { transform: translateY(-22px) scale(0.7); opacity: 0; }
   }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
@@ -5281,141 +5329,344 @@ const FOOTER_CONTEXT = {
 const SAMPLE_FIRST_PROMPT = '梳理 2025 年 Q1 国内咖啡赛道的融资动态，重点说说 Manner、库迪和挪瓦的新动向，给一份 2000 字的内部分析。';
 
 // ── Pet Widget ────────────────────────────────────────────────────────────────
+const PET_W = 78;
 function PetWidget({ t }) {
+  const [mood, setMood] = React.useState('idle');
   const [blink, setBlink] = React.useState(false);
-  const [mood, setMood] = React.useState('idle'); // idle | happy | sleepy
+  const [eyeDir, setEyeDir] = React.useState(0);
   const [bubble, setBubble] = React.useState(null);
+  const [inputOpen, setInputOpen] = React.useState(false);
+  const [inputVal, setInputVal] = React.useState('');
   const [minimized, setMinimized] = React.useState(false);
+  const [petLeft, setPetLeft] = React.useState(null);
+  const [facingRight, setFacingRight] = React.useState(false);
+  const animRef = React.useRef(null);
+  const petPosRef = React.useRef({ x: 0, ready: false });
+  const bubTimerRef = React.useRef(null);
+  const autoTimerRef = React.useRef(null);
 
-  // Random blink loop
+  // Init screen position ref
   React.useEffect(() => {
-    let tid;
-    const loop = () => {
-      const delay = 2200 + Math.random() * 3800;
-      tid = setTimeout(() => {
-        setBlink(true);
-        setTimeout(() => { setBlink(false); loop(); }, 160);
-      }, delay);
-    };
-    loop();
+    if (!petPosRef.current.ready) { petPosRef.current.x = window.innerWidth - PET_W - 22; petPosRef.current.ready = true; }
+  }, []);
+
+  // Blink loop
+  React.useEffect(() => {
+    let tid; const loop = () => { tid = setTimeout(() => { setBlink(true); setTimeout(() => { setBlink(false); loop(); }, 160); }, 2000 + Math.random() * 4000); }; loop();
     return () => clearTimeout(tid);
   }, []);
 
-  // Random sleepy every ~30s idle
+  // Eye wander
   React.useEffect(() => {
-    if (mood !== 'idle') return;
-    const tid = setTimeout(() => setMood('sleepy'), 28000 + Math.random() * 12000);
+    let tid; const loop = () => { tid = setTimeout(() => { setEyeDir([-1,0,0,1,0][Math.floor(Math.random()*5)]); loop(); }, 3000 + Math.random()*5000); }; loop();
     return () => clearTimeout(tid);
+  }, []);
+
+  // Autonomous behaviour
+  React.useEffect(() => {
+    if (!['idle','sleep'].includes(mood)) return;
+    const isSleeping = mood === 'sleep';
+    const opts = isSleeping
+      ? [['sleep',3],['idle',1]]
+      : [['idle',5],['walk',2],['bounce',1],['think',1],['sleep',0.4]];
+    const total = opts.reduce((s,[,w])=>s+w,0);
+    let rnd = Math.random()*total, chosen = opts[0][0];
+    for (const [b,w] of opts) { rnd-=w; if (rnd<=0){chosen=b;break;} }
+    const delay = isSleeping ? 12000+Math.random()*8000 : 5000+Math.random()*9000;
+    autoTimerRef.current = setTimeout(()=>executeBehavior(chosen), delay);
+    return ()=>clearTimeout(autoTimerRef.current);
   }, [mood]);
 
-  const MESSAGES = [
-    '今天要写什么报告？✨', '数据已就绪 🎯', '我来帮你分析！', '嗯嗯，好主意！',
-    'Atlas 随时待命 ⚡', '要不要试试追问功能？', '报告生成中，稍等～', '我可以帮你导出 PDF！',
-  ];
-
-  const handleClick = () => {
-    const msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
+  const showBubble = (msg, ms=2800) => {
+    if (bubTimerRef.current) clearTimeout(bubTimerRef.current);
     setBubble(msg);
-    setMood('happy');
-    setTimeout(() => setBubble(null), 2800);
-    setTimeout(() => setMood('idle'), 3000);
+    bubTimerRef.current = setTimeout(()=>setBubble(null), ms);
+  };
+  const stopAnim = () => { if (animRef.current){cancelAnimationFrame(animRef.current);animRef.current=null;} };
+
+  const returnToCorner = () => {
+    stopAnim();
+    const tx = window.innerWidth - PET_W - 22;
+    if (Math.abs(petPosRef.current.x - tx) < 6) { setPetLeft(null); setFacingRight(false); setMood('idle'); return; }
+    setFacingRight(true); setMood('walk');
+    const tick = () => {
+      const d = tx - petPosRef.current.x;
+      if (Math.abs(d) < 4) { petPosRef.current.x = tx; setPetLeft(null); setFacingRight(false); setMood('idle'); animRef.current=null; return; }
+      petPosRef.current.x += (d>0?1:-1)*2.6; setPetLeft(petPosRef.current.x);
+      animRef.current = requestAnimationFrame(tick);
+    };
+    animRef.current = requestAnimationFrame(tick);
   };
 
-  const eyeH = blink ? 2 : 13;
-  const bodyAnim = mood === 'happy' ? 'pet-happy 0.5s ease' : 'pet-bob 2.2s ease-in-out infinite';
+  const startMoving = (fast) => {
+    stopAnim();
+    if (!petPosRef.current.ready) { petPosRef.current.x = window.innerWidth - PET_W - 22; petPosRef.current.ready=true; }
+    setMood(fast?'run':'walk'); setFacingRight(false);
+    const speed = fast?3.3:1.8, steps=80+Math.floor(Math.random()*100);
+    let dir=-1, i=0;
+    const tick = () => {
+      i++; petPosRef.current.x += dir*speed;
+      const mn=14, mx=window.innerWidth-PET_W-14;
+      if (petPosRef.current.x<=mn){petPosRef.current.x=mn;dir=1;setFacingRight(true);}
+      if (petPosRef.current.x>=mx){petPosRef.current.x=mx;dir=-1;setFacingRight(false);}
+      setPetLeft(petPosRef.current.x);
+      if (i<steps){animRef.current=requestAnimationFrame(tick);}else{animRef.current=null;returnToCorner();}
+    };
+    animRef.current = requestAnimationFrame(tick);
+  };
+
+  const executeBehavior = (b) => {
+    if (b==='walk'){startMoving(false);return;}
+    if (b==='run'){startMoving(true);return;}
+    if (b==='bounce'){setMood('bounce');showBubble(['嘿！','跳！','耶！'][Math.floor(Math.random()*3)],1800);setTimeout(()=>setMood('idle'),2000);}
+    else if (b==='think'){setMood('think');showBubble(['该写啥报告？🤔','数据真有趣...','嗯嗯~'][Math.floor(Math.random()*3)],3200);setTimeout(()=>setMood('idle'),3600);}
+    else if (b==='sleep'){setMood('sleep');showBubble('呼呼... 💤',8000);}
+    else setMood('idle');
+  };
+
+  const handleCommand = (raw) => {
+    setInputOpen(false); setInputVal('');
+    const cmd = raw.trim(); if(!cmd)return;
+    if(autoTimerRef.current)clearTimeout(autoTimerRef.current);
+    stopAnim();
+    if(/散步|走走|溜达/.test(cmd)){showBubble('好嘞，去溜达！🐾');setTimeout(()=>startMoving(false),400);}
+    else if(/跑|冲|奔/.test(cmd)){showBubble('冲冲冲！💨');setTimeout(()=>startMoving(true),400);}
+    else if(/睡觉|休息/.test(cmd)){executeBehavior('sleep');}
+    else if(/起来|醒|起床/.test(cmd)){setMood('idle');showBubble('哈欠~ 起来啦！☀️');}
+    else if(/吉他|弹|摇滚|guitar/.test(cmd)){setMood('guitar');showBubble('🎸 叮叮叮！',4500);setTimeout(()=>setMood('idle'),5000);}
+    else if(/跳舞|舞|dance/.test(cmd)){setMood('dance');showBubble('🕺 耶耶！',3500);setTimeout(()=>setMood('idle'),4000);}
+    else if(/转圈|转/.test(cmd)){setMood('spin');showBubble('dizzy~ 转！',2200);setTimeout(()=>setMood('idle'),2600);}
+    else if(/分析|报告|工作|帮我/.test(cmd)){setMood('work');showBubble('📊 正在分析...',3800);setTimeout(()=>{setMood('idle');showBubble('✨ 完成！');},4300);}
+    else if(/回来|回家|过来/.test(cmd)){showBubble('回来啦！');returnToCorner();}
+    else if(/跳|蹦/.test(cmd)){executeBehavior('bounce');}
+    else{showBubble(['好的！🐾','嗯！','收到！','啊？😅'][Math.floor(Math.random()*4)]);}
+  };
+
+  const isWalking = mood==='walk'||mood==='run';
+  const isAsleep  = mood==='sleep';
+  const wSpd = mood==='run'?'0.26s':'0.5s';
+  const eyeH = isAsleep||blink?2:15;
+  const eyeX = eyeDir*2;
+  const blushOp = ['happy','bounce','dance','guitar'].includes(mood)?0.68:0.38;
+  const bodyAnimMap = {
+    idle:'pet-bob 2.2s ease-in-out infinite', walk:'pet-walk 0.5s ease-in-out infinite',
+    run:'pet-walk 0.26s ease-in-out infinite', sleep:'pet-bob 5s ease-in-out infinite',
+    happy:'pet-happy 0.6s ease-in-out infinite', bounce:'pet-jump 0.65s ease forwards',
+    think:'pet-work 2s ease-in-out infinite', guitar:'pet-strum 0.38s ease-in-out infinite',
+    dance:'pet-dance 0.55s ease-in-out infinite', spin:'pet-spin 0.65s linear 3',
+    work:'pet-work 1s ease-in-out infinite',
+  };
 
   if (minimized) return (
-    <div onClick={() => setMinimized(false)} title="Atlas 小宠物" style={{
-      position: 'fixed', bottom: 24, right: 24, zIndex: 9990,
-      width: 36, height: 36, borderRadius: '50%', background: '#f5c842',
-      border: `2px solid #e8a800`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.18)', animation: 'pet-bob 2.2s ease-in-out infinite',
-    }}>
-      <span style={{ fontSize: 18 }}>🦕</span>
-    </div>
+    <div onClick={()=>setMinimized(false)} title="唤醒宠物" style={{
+      position:'fixed',bottom:24,right:24,zIndex:9990,width:44,height:44,borderRadius:'50%',
+      background:'#f5c542',border:'2.5px solid #c8940a',cursor:'pointer',
+      display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,
+      boxShadow:'0 3px 12px rgba(0,0,0,0.2)',animation:'pet-bob 2.2s ease-in-out infinite',
+    }}>🦕</div>
   );
 
+  const posStyle = petLeft!==null
+    ? {position:'fixed',left:petLeft,bottom:22,zIndex:9990,userSelect:'none'}
+    : {position:'fixed',right:22,bottom:22,zIndex:9990,userSelect:'none'};
+
   return (
-    <div style={{ position: 'fixed', bottom: 22, right: 22, zIndex: 9990, userSelect: 'none' }}>
-      {/* Minimize button */}
-      <button onClick={() => setMinimized(true)} title="隐藏" style={{
-        position: 'absolute', top: -8, right: -8, width: 18, height: 18, borderRadius: '50%',
-        background: 'rgba(0,0,0,0.18)', border: 'none', cursor: 'pointer', color: '#fff',
-        fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 2, lineHeight: 1,
+    <div style={posStyle}>
+      {/* Minimize */}
+      <button onClick={e=>{e.stopPropagation();setMinimized(true);}} style={{
+        position:'absolute',top:-10,right:-10,zIndex:12,width:22,height:22,borderRadius:'50%',
+        background:'rgba(0,0,0,0.22)',border:'none',cursor:'pointer',color:'#fff',
+        fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',
       }}>×</button>
 
-      {/* Speech bubble */}
-      {bubble && (
-        <div style={{
-          position: 'absolute', bottom: '100%', right: 0, marginBottom: 12,
-          background: (t && t.paper) || '#fff', border: `1.5px solid ${(t && t.ink) || '#222'}`,
-          padding: '8px 14px', fontSize: 12, fontFamily: (t && t.fontCN) || 'sans-serif',
-          whiteSpace: 'nowrap', color: (t && t.ink) || '#222', maxWidth: 200, lineHeight: 1.4,
-          boxShadow: `3px 3px 0 ${(t && t.ink) || '#222'}`, animation: 'essay-fadein 0.15s ease',
-          zIndex: 3,
+      {/* Command panel */}
+      {inputOpen&&(
+        <div onClick={e=>e.stopPropagation()} style={{
+          position:'absolute',bottom:'108%',right:0,background:t?.paper||'#fff',
+          border:`2px solid ${t?.ink||'#111'}`,padding:'10px 12px',width:224,
+          boxShadow:`3px 3px 0 ${t?.ink||'#111'}`,animation:'essay-fadein 0.15s ease',zIndex:11,
         }}>
-          {bubble}
-          <div style={{ position: 'absolute', bottom: -9, right: 22,
-            borderLeft: '7px solid transparent', borderRight: '7px solid transparent',
-            borderTop: `9px solid ${(t && t.ink) || '#222'}` }}/>
-          <div style={{ position: 'absolute', bottom: -7, right: 23,
-            borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
-            borderTop: `8px solid ${(t && t.paper) || '#fff'}` }}/>
+          <div style={{fontFamily:t?.fontMono||'monospace',fontSize:9,color:t?.mute||'#888',marginBottom:6,letterSpacing:1.5}}>ATLAS PET · 发指令</div>
+          <input autoFocus value={inputVal} onChange={e=>setInputVal(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter')handleCommand(inputVal);if(e.key==='Escape')setInputOpen(false);}}
+            placeholder="散步、弹吉他、跳舞、工作..."
+            style={{width:'100%',border:`1.5px solid ${t?.rule||'#ddd'}`,padding:'6px 8px',fontFamily:t?.fontCN||'sans-serif',
+              fontSize:12,color:t?.ink||'#111',background:t?.faint||'#f9f9f9',outline:'none',boxSizing:'border-box'}}/>
+          <div style={{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
+            {['散步','跑步','弹吉他','跳舞','转圈','工作','睡觉','回来'].map(h=>(
+              <button key={h} onClick={()=>handleCommand(h)} style={{
+                padding:'2px 7px',fontFamily:t?.fontMono||'monospace',fontSize:8.5,
+                border:`1px solid ${t?.rule||'#ddd'}`,background:'transparent',cursor:'pointer',
+                color:t?.inkSoft||'#555',letterSpacing:0.5,
+              }}>{h}</button>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Pet body */}
-      <div onClick={handleClick} title="点我！" style={{
-        position: 'relative', width: 64, height: 76, cursor: 'pointer',
-        animation: bodyAnim, transformOrigin: 'center bottom',
-        filter: mood === 'sleepy' ? 'brightness(0.9)' : 'none',
-      }}>
-        {/* Feet */}
-        <div style={{ position: 'absolute', bottom: 0, left: 8, width: 18, height: 9, background: '#e8a800', borderRadius: '30% 30% 50% 50%', zIndex: 0 }}/>
-        <div style={{ position: 'absolute', bottom: 0, right: 8, width: 18, height: 9, background: '#e8a800', borderRadius: '30% 30% 50% 50%', zIndex: 0 }}/>
-
-        {/* Body */}
-        <div style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', width: 42, height: 38, background: '#f5c842', borderRadius: '46% 46% 42% 42%', zIndex: 1 }}>
-          {/* Belly */}
-          <div style={{ position: 'absolute', bottom: 5, left: '50%', transform: 'translateX(-50%)', width: 26, height: 24, background: '#f5ede0', borderRadius: '50%' }}/>
+      {/* Speech bubble */}
+      {bubble&&!inputOpen&&(
+        <div style={{
+          position:'absolute',bottom:'108%',right:0,background:t?.paper||'#fff',
+          border:`1.5px solid ${t?.ink||'#111'}`,padding:'8px 14px',fontSize:12.5,
+          fontFamily:t?.fontCN||'sans-serif',whiteSpace:'nowrap',color:t?.ink||'#111',
+          boxShadow:`3px 3px 0 ${t?.ink||'#111'}`,animation:'essay-fadein 0.15s ease',
+          zIndex:10,pointerEvents:'none',maxWidth:220,
+        }}>
+          {bubble}
+          <div style={{position:'absolute',bottom:-9,right:24,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:`9px solid ${t?.ink||'#111'}`}}/>
+          <div style={{position:'absolute',bottom:-7,right:25,borderLeft:'6px solid transparent',borderRight:'6px solid transparent',borderTop:`8px solid ${t?.paper||'#fff'}`}}/>
         </div>
+      )}
 
-        {/* Left arm */}
-        <div style={{ position: 'absolute', bottom: 26, left: 3, width: 15, height: 20, background: '#f5c842', borderRadius: '50% 50% 45% 45%', transform: 'rotate(-18deg)', zIndex: 2 }}>
-          <div style={{ position: 'absolute', bottom: -1, left: 1, width: 4, height: 6, background: '#e8a800', borderRadius: '40%' }}/>
-          <div style={{ position: 'absolute', bottom: -2, left: 6, width: 4, height: 7, background: '#e8a800', borderRadius: '40%' }}/>
-        </div>
+      {/* Flip wrapper (direction) */}
+      <div style={{transform:`scaleX(${facingRight?-1:1})`,display:'inline-block',transformOrigin:'center bottom'}}>
+        {/* Anim wrapper */}
+        <div style={{animation:bodyAnimMap[mood]||'pet-bob 2.2s ease-in-out infinite',transformOrigin:'center bottom',display:'inline-block'}}
+          onClick={()=>setInputOpen(o=>!o)} title="点我发指令！">
+          <div style={{position:'relative',width:PET_W,height:92,cursor:'pointer'}}>
 
-        {/* Right arm */}
-        <div style={{ position: 'absolute', bottom: 26, right: 3, width: 15, height: 20, background: '#f5c842', borderRadius: '50% 50% 45% 45%', transform: 'rotate(18deg)', zIndex: 2 }}>
-          <div style={{ position: 'absolute', bottom: -1, right: 1, width: 4, height: 6, background: '#e8a800', borderRadius: '40%' }}/>
-          <div style={{ position: 'absolute', bottom: -2, right: 6, width: 4, height: 7, background: '#e8a800', borderRadius: '40%' }}/>
-        </div>
+            {/* Ground shadow */}
+            <div style={{position:'absolute',bottom:-5,left:'50%',transform:'translateX(-50%)',width:52,height:10,background:'rgba(0,0,0,0.08)',borderRadius:'50%',filter:'blur(4px)'}}/>
 
-        {/* Head */}
-        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 52, height: 50, background: '#f5c842', borderRadius: '50%', zIndex: 3 }}>
-          {/* Left eye socket */}
-          <div style={{ position: 'absolute', top: 17, left: 7, width: 15, height: eyeH, background: '#fff', borderRadius: '50%', border: '1px solid rgba(0,0,0,0.12)', overflow: 'hidden', transition: 'height 0.06s' }}>
-            {!blink && <div style={{ position: 'absolute', top: 2, left: 3, width: 9, height: 9, background: '#4caf50', borderRadius: '50%' }}>
-              <div style={{ position: 'absolute', top: 2, left: 2, width: 4, height: 4, background: '#1a4a1a', borderRadius: '50%' }}/>
-              <div style={{ position: 'absolute', top: 1, left: 1, width: 2, height: 2, background: 'rgba(255,255,255,0.7)', borderRadius: '50%' }}/>
-            </div>}
+            {/* LEFT FOOT */}
+            <div style={{position:'absolute',bottom:0,left:5,width:24,height:14,background:'#e8a700',borderRadius:'35% 35% 55% 55%',
+              animation:isWalking?`pet-leg-l ${wSpd} ease-in-out infinite`:'none',transformOrigin:'top center'}}>
+              <div style={{position:'absolute',bottom:-2,left:0,width:8,height:6,background:'#d49800',borderRadius:'50%'}}/>
+              <div style={{position:'absolute',bottom:-3,left:8,width:8,height:6,background:'#d49800',borderRadius:'50%'}}/>
+              <div style={{position:'absolute',bottom:-2,right:0,width:7,height:5,background:'#d49800',borderRadius:'50%'}}/>
+            </div>
+
+            {/* RIGHT FOOT */}
+            <div style={{position:'absolute',bottom:0,right:5,width:24,height:14,background:'#e8a700',borderRadius:'35% 35% 55% 55%',
+              animation:isWalking?`pet-leg-r ${wSpd} ease-in-out infinite`:'none',transformOrigin:'top center'}}>
+              <div style={{position:'absolute',bottom:-2,left:0,width:8,height:6,background:'#d49800',borderRadius:'50%'}}/>
+              <div style={{position:'absolute',bottom:-3,left:8,width:8,height:6,background:'#d49800',borderRadius:'50%'}}/>
+              <div style={{position:'absolute',bottom:-2,right:0,width:7,height:5,background:'#d49800',borderRadius:'50%'}}/>
+            </div>
+
+            {/* BODY */}
+            <div style={{position:'absolute',bottom:12,left:'50%',transform:'translateX(-50%)',width:54,height:48,background:'#f5c542',
+              borderRadius:'50% 50% 42% 42%',boxShadow:'inset 0 -8px 14px rgba(0,0,0,0.08),inset 5px 5px 14px rgba(255,255,255,0.25)'}}>
+              <div style={{position:'absolute',bottom:7,left:'50%',transform:'translateX(-50%)',width:34,height:32,background:'#f7e8c0',borderRadius:'50%',boxShadow:'inset 0 2px 6px rgba(0,0,0,0.06)'}}/>
+              <div style={{position:'absolute',top:5,left:'30%',width:14,height:7,background:'rgba(255,255,255,0.22)',borderRadius:'50%',filter:'blur(2px)'}}/>
+            </div>
+
+            {/* GUITAR */}
+            {mood==='guitar'&&(
+              <div style={{position:'absolute',bottom:16,left:-20,zIndex:6,transform:'rotate(-5deg)'}}>
+                <svg width="40" height="58" viewBox="0 0 40 58" fill="none">
+                  <rect x="16" y="0" width="6" height="36" rx="3" fill="#6B3A2A" transform="rotate(-4 19 18)"/>
+                  <ellipse cx="19" cy="46" rx="14" ry="11" fill="#c0392b"/>
+                  <ellipse cx="19" cy="46" rx="10.5" ry="8.5" fill="#e74c3c"/>
+                  <circle cx="19" cy="46" r="4" fill="#800"/>
+                  <line x1="14" y1="6" x2="14" y2="38" stroke="#eee" strokeWidth="0.7"/>
+                  <line x1="17" y1="5" x2="17" y2="38" stroke="#eee" strokeWidth="0.7"/>
+                  <line x1="20" y1="5" x2="20" y2="38" stroke="#eee" strokeWidth="0.7"/>
+                  <line x1="23" y1="6" x2="23" y2="38" stroke="#eee" strokeWidth="0.7"/>
+                  <circle cx="10" cy="3" r="2.2" fill="#f0a500"/><circle cx="15" cy="1.5" r="2.2" fill="#f0a500"/>
+                  <circle cx="21" cy="2" r="2.2" fill="#f0a500"/><circle cx="26" cy="4" r="2.2" fill="#f0a500"/>
+                </svg>
+              </div>
+            )}
+
+            {/* LEFT ARM */}
+            <div style={{position:'absolute',bottom:32,left:-1,width:18,height:26,background:'#f5c542',borderRadius:'50% 50% 46% 46%',
+              transform:mood==='guitar'?'rotate(-52deg) translateY(-5px)':mood==='dance'?'rotate(-58deg)':'rotate(-18deg)',
+              transformOrigin:'top center',transition:'transform 0.32s ease',
+              animation:isWalking?`pet-arm-l-walk ${wSpd} ease-in-out infinite`:'none',
+              boxShadow:'inset 0 -4px 8px rgba(0,0,0,0.07)',zIndex:2}}>
+              <div style={{position:'absolute',bottom:-2,left:0,width:6,height:9,background:'#e8a700',borderRadius:'40% 40% 60% 60%'}}/>
+              <div style={{position:'absolute',bottom:-3,left:7,width:6,height:10,background:'#e8a700',borderRadius:'40% 40% 60% 60%'}}/>
+              <div style={{position:'absolute',bottom:-2,right:1,width:5,height:8,background:'#e8a700',borderRadius:'40% 40% 60% 60%'}}/>
+            </div>
+
+            {/* RIGHT ARM */}
+            <div style={{position:'absolute',bottom:32,right:-1,width:18,height:26,background:'#f5c542',borderRadius:'50% 50% 46% 46%',
+              transform:mood==='guitar'?'rotate(25deg)':mood==='dance'?'rotate(58deg)':'rotate(18deg)',
+              transformOrigin:'top center',transition:'transform 0.32s ease',
+              animation:isWalking?`pet-arm-r-walk ${wSpd} ease-in-out infinite`:'none',
+              boxShadow:'inset 0 -4px 8px rgba(0,0,0,0.07)',zIndex:2}}>
+              <div style={{position:'absolute',bottom:-2,left:0,width:6,height:9,background:'#e8a700',borderRadius:'40% 40% 60% 60%'}}/>
+              <div style={{position:'absolute',bottom:-3,left:7,width:6,height:10,background:'#e8a700',borderRadius:'40% 40% 60% 60%'}}/>
+              <div style={{position:'absolute',bottom:-2,right:1,width:5,height:8,background:'#e8a700',borderRadius:'40% 40% 60% 60%'}}/>
+            </div>
+
+            {/* HEAD */}
+            <div style={{position:'absolute',top:0,left:'50%',transform:'translateX(-50%)',width:66,height:64,background:'#f5c542',
+              borderRadius:'50%',boxShadow:'inset 0 -10px 20px rgba(0,0,0,0.06),inset 7px 7px 18px rgba(255,255,255,0.28),0 2px 8px rgba(0,0,0,0.08)',zIndex:5}}>
+              {/* Shine */}
+              <div style={{position:'absolute',top:8,left:'27%',width:21,height:12,background:'rgba(255,255,255,0.22)',borderRadius:'50%',filter:'blur(3px)'}}/>
+
+              {/* LEFT EYE */}
+              <div style={{position:'absolute',top:22,left:8,width:20,height:eyeH,background:'#fff',borderRadius:'50%',
+                border:'0.8px solid rgba(0,0,0,0.1)',overflow:'hidden',transition:'height 0.07s',boxShadow:'0 1px 4px rgba(0,0,0,0.12)'}}>
+                {!isAsleep&&!blink&&(
+                  <div style={{position:'absolute',top:1,left:2+eyeX,width:14,height:14,background:'#3ea040',borderRadius:'50%'}}>
+                    <div style={{position:'absolute',top:3,left:3,width:7,height:7,background:'#1a3218',borderRadius:'50%'}}/>
+                    <div style={{position:'absolute',top:1.5,left:1.5,width:4,height:4,background:'rgba(255,255,255,0.78)',borderRadius:'50%'}}/>
+                  </div>
+                )}
+              </div>
+
+              {/* RIGHT EYE */}
+              <div style={{position:'absolute',top:22,right:8,width:20,height:eyeH,background:'#fff',borderRadius:'50%',
+                border:'0.8px solid rgba(0,0,0,0.1)',overflow:'hidden',transition:'height 0.07s',boxShadow:'0 1px 4px rgba(0,0,0,0.12)'}}>
+                {!isAsleep&&!blink&&(
+                  <div style={{position:'absolute',top:1,left:2+eyeX,width:14,height:14,background:'#3ea040',borderRadius:'50%'}}>
+                    <div style={{position:'absolute',top:3,left:3,width:7,height:7,background:'#1a3218',borderRadius:'50%'}}/>
+                    <div style={{position:'absolute',top:1.5,left:1.5,width:4,height:4,background:'rgba(255,255,255,0.78)',borderRadius:'50%'}}/>
+                  </div>
+                )}
+              </div>
+
+              {/* Sleeping closed eyes */}
+              {isAsleep&&<>
+                <div style={{position:'absolute',top:25,left:9,width:20,height:7,borderBottom:'2px solid rgba(80,80,80,0.4)',borderRadius:'0 0 50% 50%'}}/>
+                <div style={{position:'absolute',top:25,right:9,width:20,height:7,borderBottom:'2px solid rgba(80,80,80,0.4)',borderRadius:'0 0 50% 50%'}}/>
+              </>}
+
+              {/* BLUSH */}
+              <div style={{position:'absolute',top:38,left:4,width:16,height:10,background:'#f07070',borderRadius:'50%',opacity:blushOp,transition:'opacity 0.4s'}}/>
+              <div style={{position:'absolute',top:38,right:4,width:16,height:10,background:'#f07070',borderRadius:'50%',opacity:blushOp,transition:'opacity 0.4s'}}/>
+
+              {/* NOSTRILS */}
+              <div style={{position:'absolute',bottom:14,left:'50%',transform:'translateX(-50%)',display:'flex',gap:5}}>
+                <div style={{width:4,height:4,background:'rgba(0,0,0,0.18)',borderRadius:'50%'}}/>
+                <div style={{width:4,height:4,background:'rgba(0,0,0,0.18)',borderRadius:'50%'}}/>
+              </div>
+
+              {/* Sleeping Zs */}
+              {isAsleep&&(
+                <div style={{position:'absolute',top:-16,right:-8,display:'flex',flexDirection:'column',alignItems:'flex-start'}}>
+                  <span style={{fontSize:11,color:'#c0c0c0',fontFamily:'serif',lineHeight:1.2}}>z</span>
+                  <span style={{fontSize:16,color:'#b0b0b0',fontFamily:'serif',marginLeft:8,lineHeight:1.2}}>Z</span>
+                </div>
+              )}
+
+              {/* Think bubble */}
+              {mood==='think'&&(
+                <div style={{position:'absolute',top:-24,right:-16,display:'flex',gap:3,alignItems:'flex-end'}}>
+                  <div style={{width:4,height:4,background:'#ccc',borderRadius:'50%'}}/>
+                  <div style={{width:6,height:6,background:'#bbb',borderRadius:'50%'}}/>
+                  <div style={{width:17,height:15,background:'#f2f2f2',borderRadius:'50%',border:'1px solid #bbb',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#888'}}>?</div>
+                </div>
+              )}
+
+              {/* Work tablet */}
+              {mood==='work'&&(
+                <div style={{position:'absolute',top:-24,right:-24,width:30,height:22,background:'#222',borderRadius:3,border:'1.5px solid #555',padding:4,display:'flex',flexDirection:'column',gap:2.5}}>
+                  {[70,90,60].map((w,i)=><div key={i} style={{height:3,background:'#4caf50',borderRadius:2,width:w+'%'}}/>)}
+                </div>
+              )}
+
+              {/* Guitar note */}
+              {mood==='guitar'&&(
+                <div style={{position:'absolute',top:-18,right:-14,fontSize:18,animation:'pet-float-note 0.8s ease-out infinite',opacity:0.75}}>♪</div>
+              )}
+            </div>
+
           </div>
-          {/* Right eye socket */}
-          <div style={{ position: 'absolute', top: 17, right: 7, width: 15, height: eyeH, background: '#fff', borderRadius: '50%', border: '1px solid rgba(0,0,0,0.12)', overflow: 'hidden', transition: 'height 0.06s' }}>
-            {!blink && <div style={{ position: 'absolute', top: 2, left: 3, width: 9, height: 9, background: '#4caf50', borderRadius: '50%' }}>
-              <div style={{ position: 'absolute', top: 2, left: 2, width: 4, height: 4, background: '#1a4a1a', borderRadius: '50%' }}/>
-              <div style={{ position: 'absolute', top: 1, left: 1, width: 2, height: 2, background: 'rgba(255,255,255,0.7)', borderRadius: '50%' }}/>
-            </div>}
-          </div>
-          {/* Blush cheeks */}
-          <div style={{ position: 'absolute', top: 28, left: 4, width: 12, height: 7, background: '#f07070', borderRadius: '50%', opacity: 0.45 }}/>
-          <div style={{ position: 'absolute', top: 28, right: 4, width: 12, height: 7, background: '#f07070', borderRadius: '50%', opacity: 0.45 }}/>
-          {/* Sleeping z */}
-          {mood === 'sleepy' && (
-            <div style={{ position: 'absolute', top: -6, right: -4, fontFamily: 'serif', fontSize: 13, color: '#888', opacity: 0.8, animation: 'essay-fadein 0.5s ease' }}>z</div>
-          )}
         </div>
       </div>
     </div>
