@@ -3258,6 +3258,118 @@ function parseCSV(text) {
   const rows = lines.slice(1).map(l => l.split(sep).map(c => c.trim().replace(/^"|"$/g,'')));
   return { headers, rows };
 }
+function ReportCoverPlate({ t, title, category, isStatic, editorial }) {
+  // Deterministic seed from title/category string
+  const srcStr = (title || category || 'atlas').slice(0, 48);
+  let seed = 0;
+  for (let i = 0; i < srcStr.length; i++) seed = (seed * 31 + srcStr.charCodeAt(i)) | 0;
+  seed = Math.abs(seed);
+  const r = (n) => { const x = Math.sin((seed + n) * 9301.1 + n * 49.3) * 43758.5453; return x - Math.floor(x); };
+
+  const VH = editorial ? 200 : 168;
+  const PANEL = 188; // left accent panel width (in 800-unit viewBox)
+
+  // Grid-based pattern: 10 cols × 4 rows in the right zone
+  const COLS = 10, ROWS = 4;
+  const cw = (800 - PANEL) / COLS, rh = VH / ROWS;
+  const gridCells = [];
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const idx = row * COLS + col;
+      const v = r(idx);
+      if (v > 0.62) {
+        const span = r(idx + 100) > 0.7 ? 2 : 1;
+        gridCells.push({
+          x: PANEL + col * cw,
+          y: row * rh,
+          w: Math.min(span * cw, (800 - PANEL) - col * cw) - 1,
+          h: rh - 1,
+          useAccent: r(idx + 200) > 0.4,
+          opacity: 0.07 + r(idx + 300) * 0.20,
+        });
+      }
+    }
+  }
+
+  const bigLetter = (title || category || 'A').replace(/\s/g, '').charAt(0).toUpperCase();
+  const catText = (category || (isStatic ? 'INDUSTRY' : 'AI · GEN')).replace(/\s*·.*$/, '').trim().toUpperCase().slice(0, 13);
+  const subText = isStatic ? '№ 241' : 'AI · GENERATED';
+
+  return (
+    <div style={{ width: '100%', marginBottom: 22, overflow: 'hidden', borderBottom: `2px solid ${t.ink}` }}>
+      <svg viewBox={`0 0 800 ${VH}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        <defs>
+          <clipPath id={`cp-right-${seed}`}>
+            <rect x={PANEL} y={0} width={800 - PANEL} height={VH}/>
+          </clipPath>
+        </defs>
+
+        {/* Right zone background */}
+        <rect x={PANEL} width={800 - PANEL} height={VH} fill={t.faint}/>
+
+        {/* Horizontal grid rules (right zone only) */}
+        {[0.25, 0.5, 0.75].map((p, i) => (
+          <line key={i} x1={PANEL} y1={p * VH} x2={800} y2={p * VH} stroke={t.rule} strokeWidth={0.7}/>
+        ))}
+
+        {/* Giant watermark letter */}
+        <text x={(PANEL + 800) / 2} y={VH * 0.82} textAnchor="middle"
+          fontFamily="'Archivo', sans-serif" fontSize={VH * 1.5} fontWeight={900}
+          fill={t.ink} fillOpacity={0.033} clipPath={`url(#cp-right-${seed})`}>
+          {bigLetter}
+        </text>
+
+        {/* Grid pattern cells */}
+        {gridCells.map((c, i) => (
+          <rect key={i} x={c.x} y={c.y} width={c.w} height={c.h}
+            fill={c.useAccent ? t.accent : t.ink} fillOpacity={c.opacity}/>
+        ))}
+
+        {/* Thin accent diagonal stripe */}
+        <line x1={PANEL} y1={VH} x2={PANEL + VH * 0.6} y2={0} stroke={t.accent} strokeWidth={1} opacity={0.25}/>
+
+        {/* Left accent panel */}
+        <rect x={0} y={0} width={PANEL} height={VH} fill={t.accent}/>
+
+        {/* Panel inner rule lines */}
+        {[0.33, 0.67].map((p, i) => (
+          <line key={i} x1={0} y1={p * VH} x2={PANEL} y2={p * VH} stroke="rgba(255,255,255,0.12)" strokeWidth={0.8}/>
+        ))}
+
+        {/* ATLAS label top-left */}
+        <text x={14} y={20} fontFamily="'JetBrains Mono', monospace" fontSize={7}
+          fill="rgba(255,255,255,0.55)" fontWeight={700} letterSpacing={3.5}>
+          ATLAS
+        </text>
+
+        {/* Large decorative "AI" or "01" ghost text */}
+        <text x={12} y={VH * 0.78} fontFamily="'Archivo', sans-serif" fontSize={VH * 0.62} fontWeight={900}
+          fill="rgba(255,255,255,0.09)" letterSpacing={-3}>
+          {isStatic ? '01' : 'AI'}
+        </text>
+
+        {/* Category label */}
+        <text x={14} y={VH - 30} fontFamily="'JetBrains Mono', monospace" fontSize={9.5}
+          fill="white" fontWeight={700} letterSpacing={1.8}>
+          {catText}
+        </text>
+
+        {/* Sub-label */}
+        <text x={14} y={VH - 13} fontFamily="'JetBrains Mono', monospace" fontSize={7.5}
+          fill="rgba(255,255,255,0.52)" fontWeight={400} letterSpacing={1}>
+          {subText}
+        </text>
+
+        {/* Panel separator */}
+        <line x1={PANEL} y1={0} x2={PANEL} y2={VH} stroke={t.ink} strokeWidth={1.5}/>
+
+        {/* Bottom accent strip */}
+        <rect x={0} y={VH - 4} width={800} height={4} fill={t.accent}/>
+      </svg>
+    </div>
+  );
+}
+
 function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
@@ -3392,6 +3504,13 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
         <article style={{ padding: '32px 0 80px', display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* ═══════════════ COVER ═══════════════ */}
           <header style={{ display: 'flex', flexDirection: 'column', paddingBottom: 0, marginBottom: 8 }}>
+
+            {/* Cover plate visual */}
+            <ReportCoverPlate t={t}
+              title={rMeta.titleEn || rMeta.title?.en || rMeta.subtitle || ''}
+              category={rMeta.category || ''}
+              isStatic={isStatic}
+              editorial={editorial}/>
 
             {/* Row 1 · category / date / byline */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 12, borderBottom: `1px solid ${t.rule}`, marginBottom: 22 }}>
