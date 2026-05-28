@@ -1410,6 +1410,13 @@ function useModelStore() {
   });
   const [effort, setEffort] = React.useState('High');
   const [fastMode, setFastMode] = React.useState(false);
+  const [temperature, setTemperatureState] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem('atlas_temperature'));
+    return isNaN(v) ? 0.7 : v;
+  });
+  const [systemPromptExtra, setSystemPromptExtraState] = React.useState(
+    () => localStorage.getItem('atlas_system_prompt_extra') || ''
+  );
 
   // Merge builtin keys + custom URLs into allModels
   const allModels = [
@@ -1444,7 +1451,9 @@ function useModelStore() {
     setCustomModels(updated);
     try { localStorage.setItem('atlas_custom_models', JSON.stringify(updated)); } catch {}
   };
-  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, setBuiltinKey, builtinKeys };
+  const setTemperature = (v) => { setTemperatureState(v); try { localStorage.setItem('atlas_temperature', String(v)); } catch {} };
+  const setSystemPromptExtra = (v) => { setSystemPromptExtraState(v); try { localStorage.setItem('atlas_system_prompt_extra', v); } catch {} };
+  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra };
 }
 
 function ModelSelector({ t, store }) {
@@ -2278,7 +2287,7 @@ const RUN_TOTAL = 26.0;
 
 // ── Live API streaming -----------------------------------------------
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError }) {
-  const { tone, length, selectedSources, attachments } = toolbarConfig || {};
+  const { tone, length, selectedSources, attachments, temperature, systemPromptExtra } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
   const targetLength = length || 2500;
 
@@ -2304,8 +2313,12 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
 4. 数据可视化：当某一段分析涉及多个可对比的数据点（如市场份额、增长率、排名等），在该段后插入一个图表数据块，格式为：
    [CHART:{"type":"bar","title":"图表标题","unit":"单位","data":[{"label":"标签","value":数值},{"label":"标签","value":数值}]}]
    图表数据须真实反映正文中提到的数字，最多 6 个数据项。每篇报告插入 1-2 个图表即可，不要过度使用。
-5. 引用格式：重要数据用 §1 §2 §3 标注脚注${sourceNote}
-直接输出报告正文，不要输出任何多余的前言、后记或额外说明。`;
+5. 引用格式：重要数据用 §1 §2 §3 标注脚注。报告所有章节结束后，必须输出引用列表，格式：
+   [REFS]
+   [1] 来源机构名 — 文献名 — 网址 — YYYY.MM
+   [/REFS]
+   条数与正文 §N 标注一致。${sourceNote}${systemPromptExtra ? '\n' + systemPromptExtra : ''}
+输出格式：第一行必须是 [TITLE: 精炼标题（20字以内）]，然后空行，再输出各章节，最后输出 [REFS]...[/REFS]。不要任何其他前言后记。`;
 
   // Build user message: prompt + optional attachment context
   const attachText = attachments?.length > 0
@@ -2335,6 +2348,7 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
         ],
         stream: true,
         max_tokens: maxTokens,
+        temperature: (temperature !== undefined && !isNaN(Number(temperature))) ? Number(temperature) : 0.7,
       }),
     });
 
@@ -2400,17 +2414,21 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
     if (liveStatus === 'done' && liveText && isLiveMode && !savedRef.current && onSaveReport) {
       savedRef.current = true;
       const sections = parseMarkdownReport(liveText);
-      const wordCount = liveText.replace(/\s+/g,' ').trim().length;
-      const refs = [...new Set((liveText.match(/§\d+/g) || []))].length;
+      const cleanForCount = liveText.replace(/^\[TITLE:[^\]]*\]\s*/m,'').replace(/\[REFS\][\s\S]*?\[\/REFS\]/g,'');
+      const wordCount = cleanForCount.replace(/\s+/g,' ').trim().length;
+      const refsArr = extractRefsFromText(liveText);
+      const refs = refsArr.length || [...new Set((liveText.match(/§\d+/g) || []))].length;
       const readMins = Math.max(1, Math.ceil(wordCount / 300));
       const now = new Date();
       const DAY_CN = ['日','一','二','三','四','五','六'];
 
       // Title: use first line of prompt (before comma/newline), cleaned up
-      const promptFirstLine = prompt.split(/[\n\r,，。.]/)[0].trim()
+      const aiTitle = extractTitleFromText(liveText);
+      const firstSectionTitle = sections?.[0]?.en?.replace(/^[一二三四五六七八九十]+[、．]\s*/, '').trim();
+      const promptFallback = prompt.split(/[\n\r,，。.]/)[0].trim()
         .replace(/^(请|帮我|调研|分析|写一篇|生成|撰写|输出)\s*/,'')
         .replace(/[「」【】『』《》""'']/g,' ').trim();
-      const titleEn = promptFirstLine.slice(0, 52) || 'AI 分析报告';
+      const titleEn = aiTitle || firstSectionTitle || promptFallback.slice(0, 52) || 'AI 分析报告';
 
       // Subtitle: remainder of first prompt line or next segment
       const subtitleRaw = prompt.replace(/^[^\n,，。.]{0,80}[,，。.\n]/, '').trim().split('\n')[0].trim();
@@ -2421,6 +2439,8 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
         prompt,
         text: liveText,
         sections,
+        refs: refsArr,
+        attachments: (toolbarConfig?.attachments || []).map(a => ({ id: a.id, name: a.name, size: a.size, type: a.type, content: a.content })),
         meta: {
           titleEn,
           titleCn: '',
@@ -2893,6 +2913,16 @@ function CopyLinkBtn({ t, reportData }) {
   );
 }
 
+function parseCSV(text) {
+  if (!text || typeof text !== 'string') return null;
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  if (lines.length < 2) return null;
+  const sep = lines[0].includes('\t') ? '\t' : ',';
+  if (lines[0].split(sep).length < 2) return null;
+  const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g,''));
+  const rows = lines.slice(1).map(l => l.split(sep).map(c => c.trim().replace(/^"|"$/g,'')));
+  return { headers, rows };
+}
 function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
@@ -2903,6 +2933,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
   const rMetrics     = reportData?.metrics  || REPORT_METRICS;
   const rSections    = reportData?.sections || REPORT_SECTIONS;
   const rRefs        = reportData?.refs     || REPORT_REFS;
+  const rAttachments = reportData?.attachments || [];
 
   // Teaser: first lede block sentence from first section
   const teaser = React.useMemo(() => {
@@ -3267,14 +3298,34 @@ function renderMd(text, t) {
 // Keep alias for backward compat
 const renderFootnotes = renderMd;
 
+function extractRefsFromText(rawText) {
+  const refsBlock = rawText.match(/\[REFS\]([\s\S]*?)\[\/REFS\]/);
+  if (!refsBlock) return [];
+  const lines = refsBlock[1].trim().split('\n').filter(l => l.trim());
+  const refs = [];
+  for (const line of lines) {
+    const rm = line.match(/^\[(\d+)\]\s*(.+)/);
+    if (!rm) continue;
+    const parts = rm[2].split('—').map(s => s.trim());
+    refs.push({ n: '['+rm[1]+']', src: parts[0]||'来源', title: parts[1]||parts[0]||'参考资料', url: parts[2]||'', date: parts[3]||'' });
+  }
+  return refs;
+}
+function extractTitleFromText(rawText) {
+  const tm = rawText.match(/^\[TITLE:\s*(.+?)\]/m);
+  return tm ? tm[1].trim() : null;
+}
 // ── Markdown → Report Sections parser ───────────────────────────────────────
 function parseMarkdownReport(rawText) {
   if (!rawText?.trim()) return [];
   const NUMS = ['01','02','03','04','05','06','07','08','09','10'];
+  const cleanText = rawText
+    .replace(/^\[TITLE:[^\]]*\]\s*/m, '')
+    .replace(/\[REFS\][\s\S]*?\[\/REFS\]/g, '');
 
   // Tokenize line by line
   const tokens = [];
-  for (const raw of rawText.split('\n')) {
+  for (const raw of cleanText.split('\n')) {
     const line = raw.trim();
     if (!line) { tokens.push({ type: 'blank' }); continue; }
     // Chart data block: [CHART:{...}]
@@ -4684,7 +4735,7 @@ function App() {
   }, [savedReports]);
 
   const activeReport = activeReportId ? savedReports.reports.find(r => r.id === activeReportId) : null;
-  const reportData = activeReport ? { meta: activeReport.meta, metrics: [], sections: activeReport.sections, refs: [] } : null;
+  const reportData = activeReport ? { meta: activeReport.meta, metrics: [], sections: activeReport.sections, refs: activeReport.refs || [], attachments: activeReport.attachments || [] } : null;
 
   const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
 
@@ -4720,6 +4771,8 @@ function App() {
               length: toolbarStore.effectiveLength,
               selectedSources: toolbarStore.selectedSources,
               attachments: toolbarStore.attachments,
+              temperature: modelStore.temperature,
+              systemPromptExtra: modelStore.systemPromptExtra,
             }}
             onSaveReport={handleSaveReport}/>
         )}
@@ -4754,7 +4807,7 @@ function App() {
               title: activeReport.meta?.titleEn || activeReport.meta?.title?.en || activeReport.prompt?.slice(0,40),
               subtitle: activeReport.meta?.subtitle || activeReport.prompt?.slice(0,80),
               sections: activeReport.sections,
-              refs: [],
+              refs: activeReport.refs || [],
               meta: activeReport.meta,
             } : {
               id: 'static-241',
