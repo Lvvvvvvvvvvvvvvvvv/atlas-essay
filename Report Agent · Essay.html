@@ -667,7 +667,7 @@ const NAV_ITEMS = [
   { k: 'sources', en: 'SOURCES', cn: '数据源' },
 ];
 
-function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore }) {
+function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241 }) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -728,303 +728,19 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks,
           VOL.04 · № {issueNum}
         </span>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{dateStr} · {timeStr}</span>
-        <UserMenu t={t} tweaks={tweaks || {}} setTweak={setTweak || (() => {})} modelStore={modelStore}/>
+        <UserAvatar t={t}/>
       </div>
     </div>
   );
 }
 
-// ── UserMenu helpers ────────────────────────────────────────────────────────
-function MenuRowItem({ t, icon, label, sub, open, onClick, danger }) {
+function UserAvatar({ t }) {
   return (
-    <div onClick={onClick} style={{
-      display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px',
-      cursor: 'pointer', background: open ? t.faint : 'transparent',
-      userSelect: 'none',
-      transition: 'background 0.1s',
-    }}
-    onMouseEnter={e => { if (!open) e.currentTarget.style.background = t.faint; }}
-    onMouseLeave={e => { if (!open) e.currentTarget.style.background = 'transparent'; }}>
-      <span style={{ fontSize: 13, width: 18, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: 'Noto Sans SC', fontSize: 12, fontWeight: 600, color: danger ? '#dc2626' : t.ink, lineHeight: 1.3 }}>{label}</div>
-        {sub && <div style={{ fontFamily: t.fontMono, fontSize: 9, color: danger ? '#dc262699' : t.mute, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
-      </div>
-      {open !== undefined && (
-        <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, flexShrink: 0 }}>{open ? '▲' : '▼'}</span>
-      )}
-    </div>
-  );
-}
-
-function ProfilePanel({ t, profile, onSave }) {
-  const [name, setName] = React.useState(profile.displayName || '');
-  const [email, setEmail] = React.useState(profile.email || '');
-  const fileRef = React.useRef(null);
-  const [avatarPreview, setAvatarPreview] = React.useState(profile.avatarUrl || null);
-
-  const handleAvatarFile = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setAvatarPreview(ev.target.result);
-      onSave({ ...profile, avatarUrl: ev.target.result, displayName: name, email });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  return (
-    <div style={{ padding: '10px 16px 14px', background: t.faint, borderTop: `1px solid ${t.rule}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <div onClick={() => fileRef.current?.click()} style={{
-          width: 42, height: 42, borderRadius: '50%', border: `1.5px dashed ${t.rule}`,
-          background: t.paper, overflow: 'hidden', cursor: 'pointer', flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 14, color: t.ink,
-        }}>
-          {avatarPreview ? <img src={avatarPreview} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : (name.slice(0,2).toUpperCase() || 'JL')}
-        </div>
-        <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>点击更换头像</div>
-        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFile}/>
-      </div>
-      {[
-        { label: '显示名称', val: name, set: setName, ph: 'Atlas User', mono: false },
-        { label: '邮箱', val: email, set: setEmail, ph: 'user@example.com', mono: true },
-      ].map(({ label, val, set, ph, mono }) => (
-        <div key={label} style={{ marginBottom: 8 }}>
-          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1, marginBottom: 3 }}>{label.toUpperCase()}</div>
-          <input value={val} onChange={e => set(e.target.value)} placeholder={ph}
-            style={{ width: '100%', padding: '5px 8px', fontFamily: mono ? t.fontMono : 'Noto Sans SC', fontSize: 12, border: `1px solid ${t.rule}`, background: t.paper, color: t.ink, outline: 'none', boxSizing: 'border-box' }}/>
-        </div>
-      ))}
-      <button onClick={() => onSave({ ...profile, displayName: name, email, avatarUrl: avatarPreview })}
-        style={{ marginTop: 6, padding: '5px 14px', background: t.ink, color: t.paper, border: 'none', fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', cursor: 'pointer' }}>
-        保存
-      </button>
-    </div>
-  );
-}
-
-function ModelAdvPanel({ t, modelStore }) {
-  const [temp, setTemp] = React.useState(modelStore.temperature ?? 0.7);
-  const [sysExtra, setSysExtra] = React.useState(modelStore.systemPromptExtra || '');
-
-  return (
-    <div style={{ padding: '10px 16px 14px', background: t.faint, borderTop: `1px solid ${t.rule}` }}>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
-          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1 }}>TEMPERATURE</div>
-          <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, fontWeight: 700 }}>{parseFloat(temp).toFixed(1)}</div>
-        </div>
-        <input type="range" min="0" max="2" step="0.1" value={temp}
-          onChange={e => { const v = parseFloat(e.target.value); setTemp(v); modelStore.setTemperature(v); }}
-          style={{ width: '100%', accentColor: t.accent, cursor: 'pointer' }}/>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 2 }}>
-          <span>精确 0.0</span><span>均衡 0.7</span><span>创意 2.0</span>
-        </div>
-      </div>
-      <div>
-        <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1, marginBottom: 5 }}>SYSTEM PROMPT 附加指令</div>
-        <textarea value={sysExtra}
-          onChange={e => { setSysExtra(e.target.value); modelStore.setSystemPromptExtra(e.target.value); }}
-          placeholder="在基础 prompt 之后追加的自定义指令，如语气、格式要求等（可选）"
-          style={{
-            width: '100%', minHeight: 80, resize: 'vertical',
-            fontFamily: 'Noto Sans SC', fontSize: 11, padding: '7px 9px',
-            border: `1px solid ${t.rule}`, background: t.paper, color: t.ink,
-            outline: 'none', boxSizing: 'border-box', lineHeight: 1.6,
-          }}/>
-        <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 4 }}>
-          当前模型：{modelStore.selected?.name || '未选择'} · 接口：{(modelStore.selected?.apiUrl || '').replace('https://','').split('/')[0] || '—'}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UserMenu({ t, tweaks, setTweak, modelStore }) {
-  const [open, setOpen] = React.useState(false);
-  const [section, setSection] = React.useState(null);
-  const ref = React.useRef(null);
-
-  const [profile, setProfile] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('atlas_user_profile') || '{}'); } catch { return {}; }
-  });
-  const saveProfile = (p) => {
-    setProfile(p);
-    try { localStorage.setItem('atlas_user_profile', JSON.stringify(p)); } catch {}
-  };
-
-  const initials = profile.displayName
-    ? profile.displayName.slice(0, 2).toUpperCase()
-    : 'JL';
-
-  React.useEffect(() => {
-    if (!open) return;
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setSection(null); } };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [open]);
-
-  const toggleSection = (key) => setSection(s => s === key ? null : key);
-
-  const ACCENT_OPTS = [
-    { v: 'red', hex: '#e5251d' }, { v: 'amber', hex: '#c2540a' },
-    { v: 'forest', hex: '#1f6f44' }, { v: 'cobalt', hex: '#1d4ed8' },
-  ];
-
-  return (
-    <div ref={ref} style={{ position: 'relative', userSelect: 'none' }}>
-      {/* Circular avatar trigger */}
-      <div onClick={() => { setOpen(o => !o); if (open) setSection(null); }} style={{
-        width: 30, height: 30, borderRadius: '50%',
-        border: `1.5px solid ${open ? t.accent : t.ink}`,
-        background: open ? t.accent : t.paper,
-        color: open ? t.paper : t.ink,
-        fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 10, letterSpacing: 0.4,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer', overflow: 'hidden', transition: 'all 0.15s', flexShrink: 0,
-      }}>
-        {profile.avatarUrl
-          ? <img src={profile.avatarUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-          : initials}
-      </div>
-
-      {/* Dropdown panel */}
-      {open && (
-        <div style={{
-          position: 'absolute', top: 38, right: 0, width: 264,
-          background: t.paper, border: `1.5px solid ${t.ink}`,
-          boxShadow: `3px 3px 0 ${t.ink}40`, zIndex: 9999,
-        }}>
-          {/* Profile header */}
-          <div style={{ padding: '13px 16px 11px', borderBottom: `1px solid ${t.rule}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%', border: `1.5px solid ${t.rule}`,
-                background: t.accent, color: t.paper,
-                fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 12,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
-              }}>
-                {profile.avatarUrl ? <img src={profile.avatarUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : initials}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 13, color: t.ink, letterSpacing: 0.3 }}>
-                  {profile.displayName || 'Atlas User'}
-                </div>
-                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {profile.email || 'lvhaocheng0726@gmail.com'}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Menu body */}
-          <div style={{ padding: '4px 0' }}>
-            {/* 外观偏好 */}
-            <MenuRowItem t={t} icon="🎨" label="外观偏好"
-              sub={`${tweaks.theme === 'cream' ? '浅色' : '深色'} · ${tweaks.accent}`}
-              open={section === 'appearance'}
-              onClick={() => toggleSection('appearance')}/>
-            {section === 'appearance' && (
-              <div style={{ padding: '10px 16px 14px', background: t.faint, borderTop: `1px solid ${t.rule}` }}>
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1, marginBottom: 6 }}>THEME</div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {[{ v: 'cream', label: '浅色 CREAM' }, { v: 'slate', label: '深色 SLATE' }].map(opt => (
-                      <div key={opt.v} onClick={() => setTweak('theme', opt.v)} style={{
-                        flex: 1, padding: '5px 6px', textAlign: 'center', cursor: 'pointer',
-                        border: `1.5px solid ${tweaks.theme === opt.v ? t.accent : t.rule}`,
-                        background: tweaks.theme === opt.v ? t.accent : 'transparent',
-                        color: tweaks.theme === opt.v ? t.paper : t.ink,
-                        fontFamily: t.fontDisplay, fontSize: 9, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase',
-                      }}>{opt.label}</div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1, marginBottom: 6 }}>ACCENT COLOR</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {ACCENT_OPTS.map(a => (
-                      <div key={a.v} onClick={() => setTweak('accent', a.v)} style={{
-                        width: 26, height: 26, background: a.hex, cursor: 'pointer', borderRadius: 2,
-                        border: tweaks.accent === a.v ? `3px solid ${t.ink}` : '3px solid transparent',
-                        boxShadow: tweaks.accent === a.v ? `0 0 0 1px ${a.hex}` : 'none',
-                        transition: 'all 0.1s',
-                      }}/>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1, marginBottom: 6 }}>DENSITY</div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {[{ v: 'editorial', label: '标准' }, { v: 'compact', label: '紧凑' }].map(opt => (
-                      <div key={opt.v} onClick={() => setTweak('density', opt.v)} style={{
-                        flex: 1, padding: '5px 6px', textAlign: 'center', cursor: 'pointer',
-                        border: `1.5px solid ${tweaks.density === opt.v ? t.accent : t.rule}`,
-                        background: tweaks.density === opt.v ? t.accent : 'transparent',
-                        color: tweaks.density === opt.v ? t.paper : t.ink,
-                        fontFamily: t.fontDisplay, fontSize: 9, fontWeight: 700, letterSpacing: 0.8,
-                      }}>{opt.label}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 模型高级设置 */}
-            <MenuRowItem t={t} icon="🤖" label="模型高级设置"
-              sub={`Temp ${(modelStore?.temperature ?? 0.7).toFixed(1)} · ${modelStore?.selected?.name || '未选择'}`}
-              open={section === 'model'}
-              onClick={() => toggleSection('model')}/>
-            {section === 'model' && modelStore && (
-              <ModelAdvPanel t={t} modelStore={modelStore}/>
-            )}
-
-            <div style={{ height: 1, background: t.rule, margin: '4px 0' }}/>
-
-            {/* 编辑资料 */}
-            <MenuRowItem t={t} icon="✏️" label="编辑资料"
-              sub={profile.displayName || 'Atlas User'}
-              open={section === 'profile'}
-              onClick={() => toggleSection('profile')}/>
-            {section === 'profile' && (
-              <ProfilePanel t={t} profile={profile} onSave={saveProfile}/>
-            )}
-
-            <div style={{ height: 1, background: t.rule, margin: '4px 0' }}/>
-
-            {/* 导出全部报告 */}
-            <MenuRowItem t={t} icon="📦" label="导出全部报告" sub="JSON 格式打包下载"
-              onClick={() => {
-                const data = localStorage.getItem('atlas_saved_reports') || '[]';
-                const blob = new Blob([data], { type: 'application/json' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = `atlas-reports-${new Date().toISOString().slice(0, 10)}.json`;
-                a.click();
-                setOpen(false);
-              }}/>
-
-            {/* 清除本地数据 */}
-            <MenuRowItem t={t} icon="🗑️" label="清除本地数据" sub="清空报告库、设置和缓存" danger
-              onClick={() => {
-                if (window.confirm('确认清除所有本地数据？此操作不可撤销。')) {
-                  ['atlas_saved_reports','atlas_custom_models','atlas_builtin_keys','atlas_builtin_urls',
-                   'atlas_selected_model','atlas_user_profile','atlas_temperature','atlas_system_prompt_extra'].forEach(k => localStorage.removeItem(k));
-                  window.location.reload();
-                }
-              }}/>
-          </div>
-
-          {/* Footer */}
-          <div style={{ borderTop: `1px solid ${t.rule}`, padding: '7px 16px', fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 0.8 }}>
-            ATLAS ESSAYS · VOL.04 · © 2026
-          </div>
-        </div>
-      )}
-    </div>
+    <div style={{
+      width: 28, height: 28, border: `1.5px solid ${t.ink}`, background: t.paper, color: t.ink,
+      fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 11, letterSpacing: 0.4,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>JL</div>
   );
 }
 
@@ -1694,14 +1410,6 @@ function useModelStore() {
   });
   const [effort, setEffort] = React.useState('High');
   const [fastMode, setFastMode] = React.useState(false);
-  // Advanced model settings
-  const [temperature, setTemperatureState] = React.useState(() => {
-    const v = parseFloat(localStorage.getItem('atlas_temperature'));
-    return isNaN(v) ? 0.7 : v;
-  });
-  const [systemPromptExtra, setSystemPromptExtraState] = React.useState(
-    () => localStorage.getItem('atlas_system_prompt_extra') || ''
-  );
 
   // Merge builtin keys + custom URLs into allModels
   const allModels = [
@@ -1736,15 +1444,7 @@ function useModelStore() {
     setCustomModels(updated);
     try { localStorage.setItem('atlas_custom_models', JSON.stringify(updated)); } catch {}
   };
-  const setTemperature = (v) => {
-    setTemperatureState(v);
-    try { localStorage.setItem('atlas_temperature', String(v)); } catch {}
-  };
-  const setSystemPromptExtra = (v) => {
-    setSystemPromptExtraState(v);
-    try { localStorage.setItem('atlas_system_prompt_extra', v); } catch {}
-  };
-  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra };
+  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, setBuiltinKey, builtinKeys };
 }
 
 function ModelSelector({ t, store }) {
@@ -2578,13 +2278,13 @@ const RUN_TOTAL = 26.0;
 
 // ── Live API streaming -----------------------------------------------
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError }) {
-  const { tone, length, selectedSources, attachments, temperature, systemPromptExtra } = toolbarConfig || {};
+  const { tone, length, selectedSources, attachments } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
   const targetLength = length || 2500;
 
   // Dynamic system prompt: enforces tone + length strictly
   const sourceNote = selectedSources?.size > 0
-    ? `\n6. 参考数据源：${[...selectedSources].join('、')}`
+    ? `\n5. 参考数据源：${[...selectedSources].join('、')}`
     : '';
   // For very short targets, give a sensible floor so the model doesn't produce empty output
   const displayLength = targetLength;
@@ -2604,17 +2304,8 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
 4. 数据可视化：当某一段分析涉及多个可对比的数据点（如市场份额、增长率、排名等），在该段后插入一个图表数据块，格式为：
    [CHART:{"type":"bar","title":"图表标题","unit":"单位","data":[{"label":"标签","value":数值},{"label":"标签","value":数值}]}]
    图表数据须真实反映正文中提到的数字，最多 6 个数据项。每篇报告插入 1-2 个图表即可，不要过度使用。
-5. 引用格式：重要数据用 §1 §2 §3 标注脚注。报告所有章节结束后，必须输出引用列表（不写其他说明文字），格式：
-   [REFS]
-   [1] 来源机构名 — 文献/报告名 — 网址域名 — YYYY.MM
-   [2] 来源机构名 — 文献/报告名 — 网址域名 — YYYY.MM
-   [/REFS]
-   引用条数须与正文中 §N 标注数量一致。${sourceNote}${systemPromptExtra ? '\n' + systemPromptExtra : ''}
-输出格式要求（严格执行）：
-- 第一行必须是报告标题行：[TITLE: 精炼标题（20字以内，直接体现报告核心主题或结论）]
-- 标题行之后空一行，再输出各章节正文
-- 所有章节之后跟引用列表 [REFS]...[/REFS]
-- 不要输出任何其他前言、后记或额外说明`;
+5. 引用格式：重要数据用 §1 §2 §3 标注脚注${sourceNote}
+直接输出报告正文，不要输出任何多余的前言、后记或额外说明。`;
 
   // Build user message: prompt + optional attachment context
   const attachText = attachments?.length > 0
@@ -2625,7 +2316,6 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
   // max_tokens: always at least 4000 so reasoning models have room to think + output
   // For longer targets, scale up generously (2.5 tokens/char + 2000 buffer)
   const maxTokens = Math.min(Math.max(Math.ceil(targetLength * 2.5) + 2000, 4000), 16000);
-  const tempVal = (temperature !== undefined && !isNaN(temperature)) ? temperature : 0.7;
 
   const apiKey = model.apiKey || '';
   const apiUrl = (model.apiUrl || 'https://api.xiaomimimo.com/v1').replace(/\/$/, '');
@@ -2645,7 +2335,6 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
         ],
         stream: true,
         max_tokens: maxTokens,
-        temperature: tempVal,
       }),
     });
 
@@ -2711,25 +2400,19 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
     if (liveStatus === 'done' && liveText && isLiveMode && !savedRef.current && onSaveReport) {
       savedRef.current = true;
       const sections = parseMarkdownReport(liveText);
-      // Strip TITLE/REFS from word count
-      const cleanForCount = liveText.replace(/^\[TITLE:[^\]]*\]\s*/m,'').replace(/\[REFS\][\s\S]*?\[\/REFS\]/g,'');
-      const wordCount = cleanForCount.replace(/\s+/g,' ').trim().length;
-      const refsArr = extractRefsFromText(liveText);
-      const inlineRefs = [...new Set((liveText.match(/§\d+/g) || []))].length;
-      const refCount = refsArr.length || inlineRefs;
+      const wordCount = liveText.replace(/\s+/g,' ').trim().length;
+      const refs = [...new Set((liveText.match(/§\d+/g) || []))].length;
       const readMins = Math.max(1, Math.ceil(wordCount / 300));
       const now = new Date();
       const DAY_CN = ['日','一','二','三','四','五','六'];
 
-      // Title: prefer AI-generated [TITLE:...], fallback to first section heading, then prompt
-      const aiTitle = extractTitleFromText(liveText);
-      const firstSectionTitle = sections?.[0]?.en?.replace(/^[一二三四五六七八九十]+[、．]\s*/, '').trim();
-      const promptFallback = prompt.split(/[\n\r,，。.]/)[0].trim()
+      // Title: use first line of prompt (before comma/newline), cleaned up
+      const promptFirstLine = prompt.split(/[\n\r,，。.]/)[0].trim()
         .replace(/^(请|帮我|调研|分析|写一篇|生成|撰写|输出)\s*/,'')
         .replace(/[「」【】『』《》""'']/g,' ').trim();
-      const titleEn = aiTitle || firstSectionTitle || promptFallback.slice(0, 52) || 'AI 分析报告';
+      const titleEn = promptFirstLine.slice(0, 52) || 'AI 分析报告';
 
-      // Subtitle: use prompt summary (cleaned first line if different from title)
+      // Subtitle: remainder of first prompt line or next segment
       const subtitleRaw = prompt.replace(/^[^\n,，。.]{0,80}[,，。.\n]/, '').trim().split('\n')[0].trim();
       const subtitle = subtitleRaw.slice(0, 80) || prompt.slice(0, 80);
 
@@ -2738,10 +2421,6 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
         prompt,
         text: liveText,
         sections,
-        refs: refsArr,
-        attachments: (toolbarConfig?.attachments || []).map(a => ({
-          id: a.id, name: a.name, size: a.size, type: a.type, content: a.content,
-        })),
         meta: {
           titleEn,
           titleCn: '',
@@ -2749,7 +2428,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
           subtitle,
           date: `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`,
           words: wordCount.toLocaleString(),
-          sources: refCount,
+          sources: refs,
           reading: `${readMins} min`,
           category: `AI · ${selectedModel?.name || '生成'}`,
           issue: 'AI',
@@ -3214,31 +2893,16 @@ function CopyLinkBtn({ t, reportData }) {
   );
 }
 
-// Parse CSV text into { headers, rows } for table rendering
-function parseCSV(text) {
-  if (!text || typeof text !== 'string') return null;
-  const lines = text.trim().split('\n').filter(l => l.trim());
-  if (lines.length < 2) return null;
-  const sep = lines[0].includes('\t') ? '\t' : ',';
-  // Check if it actually looks like tabular data
-  const firstCols = lines[0].split(sep).length;
-  if (firstCols < 2) return null;
-  const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ''));
-  const rows = lines.slice(1).map(l => l.split(sep).map(c => c.trim().replace(/^"|"$/g, '')));
-  return { headers, rows };
-}
-
 function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
 
   // Data: use reportData prop if provided, else fall back to static constants
   const isStatic     = !reportData;
-  const rMeta        = reportData?.meta        || REPORT_META;
-  const rMetrics     = reportData?.metrics     || REPORT_METRICS;
-  const rSections    = reportData?.sections    || REPORT_SECTIONS;
-  const rRefs        = reportData?.refs        || REPORT_REFS;
-  const rAttachments = reportData?.attachments || [];
+  const rMeta        = reportData?.meta     || REPORT_META;
+  const rMetrics     = reportData?.metrics  || REPORT_METRICS;
+  const rSections    = reportData?.sections || REPORT_SECTIONS;
+  const rRefs        = reportData?.refs     || REPORT_REFS;
 
   // Teaser: first lede block sentence from first section
   const teaser = React.useMemo(() => {
@@ -3476,72 +3140,6 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
 
           {/* Follow-up composer */}
           <FollowUpComposer t={t} reportData={reportData} rSections={rSections} onFollowUp={onFollowUp}/>
-
-          {/* Attachments appendix */}
-          {rAttachments.length > 0 && (
-            <div style={{ marginTop: 48, borderTop: `2px solid ${t.ink}`, paddingTop: 28 }}>
-              <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.6, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span>APPENDIX · 附件</span>
-                <span style={{ display: 'inline-block', padding: '1px 6px', border: `1px solid ${t.rule}`, borderRadius: 2, background: t.faint }}>
-                  {rAttachments.length}
-                </span>
-              </div>
-              {rAttachments.map((att) => {
-                const csvData = parseCSV(att.content);
-                const isText = typeof att.content === 'string' && att.content !== '[binary]';
-                return (
-                  <div key={att.id} style={{ marginBottom: 32 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                      <span style={{ color: t.accent, fontSize: 15 }}>📎</span>
-                      <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 13, letterSpacing: 0.8 }}>{att.name}</span>
-                      <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, padding: '2px 6px', border: `1px solid ${t.rule}` }}>
-                        {att.content === '[binary]' ? 'BINARY' : csvData ? 'CSV/TABLE' : 'TEXT'} · {(att.size / 1024).toFixed(1)} KB
-                      </span>
-                    </div>
-                    {csvData ? (
-                      <div style={{ overflowX: 'auto', border: `1px solid ${t.rule}` }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: t.fontCN, fontSize: 12 }}>
-                          <thead>
-                            <tr>
-                              {csvData.headers.map((h, j) => (
-                                <th key={j} style={{ padding: '7px 12px', borderBottom: `1.5px solid ${t.ink}`, borderRight: `1px solid ${t.rule}`, background: t.faint, fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {csvData.rows.slice(0, 100).map((row, j) => (
-                              <tr key={j} style={{ background: j % 2 === 0 ? t.paper : t.faint }}>
-                                {row.map((cell, k) => (
-                                  <td key={k} style={{ padding: '5px 12px', borderBottom: `1px solid ${t.rule}`, borderRight: `1px solid ${t.rule}`, color: t.inkSoft }}>{cell}</td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {csvData.rows.length > 100 && (
-                          <div style={{ padding: '6px 12px', fontFamily: t.fontMono, fontSize: 9, color: t.mute, borderTop: `1px solid ${t.rule}` }}>
-                            仅显示前 100 行，共 {csvData.rows.length} 行
-                          </div>
-                        )}
-                      </div>
-                    ) : isText ? (
-                      <pre style={{
-                        fontFamily: t.fontMono, fontSize: 11, color: t.inkSoft, lineHeight: 1.6,
-                        background: t.faint, padding: '14px 16px', borderLeft: `3px solid ${t.accent}`,
-                        overflow: 'auto', maxHeight: 320, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0,
-                      }}>
-                        {att.content.slice(0, 3000)}{att.content.length > 3000 ? '\n…（内容已截断）' : ''}
-                      </pre>
-                    ) : (
-                      <div style={{ padding: '12px 16px', background: t.faint, fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>
-                        [二进制文件，无法预览]
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </article>
 
         {/* Right rail: references */}
@@ -3670,46 +3268,13 @@ function renderMd(text, t) {
 const renderFootnotes = renderMd;
 
 // ── Markdown → Report Sections parser ───────────────────────────────────────
-// Parse ref entries from [REFS]...[/REFS] block in raw AI text
-function extractRefsFromText(rawText) {
-  const refsBlock = rawText.match(/\[REFS\]([\s\S]*?)\[\/REFS\]/);
-  if (!refsBlock) return [];
-  const lines = refsBlock[1].trim().split('\n').filter(l => l.trim());
-  const refs = [];
-  for (const line of lines) {
-    const m = line.match(/^\[(\d+)\]\s*(.+)/);
-    if (!m) continue;
-    const n = `[${m[1]}]`;
-    const parts = m[2].split('—').map(s => s.trim());
-    refs.push({
-      n,
-      src: parts[0] || '来源',
-      title: parts[1] || parts[0] || '参考资料',
-      url: parts[2] || '',
-      date: parts[3] || '',
-    });
-  }
-  return refs;
-}
-
-// Extract [TITLE: ...] tag from raw AI text
-function extractTitleFromText(rawText) {
-  const m = rawText.match(/^\[TITLE:\s*(.+?)\]/m);
-  return m ? m[1].trim() : null;
-}
-
 function parseMarkdownReport(rawText) {
   if (!rawText?.trim()) return [];
   const NUMS = ['01','02','03','04','05','06','07','08','09','10'];
 
-  // Strip [TITLE:...] line and [REFS]...[/REFS] block before tokenizing
-  const cleanText = rawText
-    .replace(/^\[TITLE:[^\]]*\]\s*/m, '')
-    .replace(/\[REFS\][\s\S]*?\[\/REFS\]/g, '');
-
   // Tokenize line by line
   const tokens = [];
-  for (const raw of cleanText.split('\n')) {
+  for (const raw of rawText.split('\n')) {
     const line = raw.trim();
     if (!line) { tokens.push({ type: 'blank' }); continue; }
     // Chart data block: [CHART:{...}]
@@ -5119,13 +4684,7 @@ function App() {
   }, [savedReports]);
 
   const activeReport = activeReportId ? savedReports.reports.find(r => r.id === activeReportId) : null;
-  const reportData = activeReport ? {
-    meta: activeReport.meta,
-    metrics: [],
-    sections: activeReport.sections,
-    refs: activeReport.refs || [],
-    attachments: activeReport.attachments || [],
-  } : null;
+  const reportData = activeReport ? { meta: activeReport.meta, metrics: [], sections: activeReport.sections, refs: [] } : null;
 
   const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
 
@@ -5144,8 +4703,7 @@ function App() {
       background: t.paper, color: t.ink,
     }}>
       <TopBar t={t} route={route} setRoute={setRoute}
-        runState={route === 'running' && !runDone ? 'running' : 'idle'}
-        tweaks={tweaks} setTweak={setTweak} modelStore={modelStore}/>
+        runState={route === 'running' && !runDone ? 'running' : 'idle'}/>
       <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
         {route === 'home' && (
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
@@ -5162,8 +4720,6 @@ function App() {
               length: toolbarStore.effectiveLength,
               selectedSources: toolbarStore.selectedSources,
               attachments: toolbarStore.attachments,
-              temperature: modelStore.temperature,
-              systemPromptExtra: modelStore.systemPromptExtra,
             }}
             onSaveReport={handleSaveReport}/>
         )}
@@ -5198,7 +4754,7 @@ function App() {
               title: activeReport.meta?.titleEn || activeReport.meta?.title?.en || activeReport.prompt?.slice(0,40),
               subtitle: activeReport.meta?.subtitle || activeReport.prompt?.slice(0,80),
               sections: activeReport.sections,
-              refs: activeReport.refs || [],
+              refs: [],
               meta: activeReport.meta,
             } : {
               id: 'static-241',
