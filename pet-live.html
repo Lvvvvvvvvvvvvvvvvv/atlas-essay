@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Pet · Live Animation Preview</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f0f0f;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:'SF Mono',ui-monospace,monospace;color:#fff;padding:40px 20px;gap:32px}
+
+/* ── KEYFRAMES: all layer animations ──────────────────────── */
+@keyframes breathe{0%,100%{transform:scaleY(1) scaleX(1)}50%{transform:scaleY(1.022) scaleX(0.988)}}
+@keyframes drift{0%,100%{transform:translateY(0px)}50%{transform:translateY(-9px)}}
+@keyframes sway{0%,25%,100%{transform:rotate(0deg)}40%{transform:rotate(-1.4deg)}70%{transform:rotate(1deg)}}
+@keyframes arm-l-idle{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(5deg)}}
+@keyframes arm-r-idle{0%,100%{transform:rotate(7deg)}50%{transform:rotate(-5deg)}}
+@keyframes head-idle{0%,100%{transform:translate(0,0) rotate(0deg)}28%{transform:translate(0,-2px) rotate(-0.8deg)}70%{transform:translate(0,-1px) rotate(0.5deg)}}
+@keyframes leg-idle{0%,100%{transform:rotate(0deg)}50%{transform:rotate(1.5deg)}}
+
+/* Walk */
+@keyframes walk-bounce{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-5px) rotate(-2deg)}75%{transform:translateY(-3px) rotate(2deg)}}
+@keyframes arm-l-walk{0%,100%{transform:rotate(-28deg)}50%{transform:rotate(22deg)}}
+@keyframes arm-r-walk{0%,100%{transform:rotate(22deg)}50%{transform:rotate(-28deg)}}
+@keyframes leg-l-walk{0%,100%{transform:rotate(-20deg)}50%{transform:rotate(16deg)}}
+@keyframes leg-r-walk{0%,100%{transform:rotate(16deg)}50%{transform:rotate(-20deg)}}
+
+/* Run */
+@keyframes run-bounce{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-12px) rotate(-3deg)}}
+@keyframes arm-l-run{0%,100%{transform:rotate(-50deg)}50%{transform:rotate(30deg)}}
+@keyframes arm-r-run{0%,100%{transform:rotate(30deg)}50%{transform:rotate(-50deg)}}
+
+/* Dance */
+@keyframes dance-body{0%,100%{transform:rotate(-5deg) translateY(0)}50%{transform:rotate(5deg) translateY(-11px)}}
+@keyframes arm-l-dance{0%,100%{transform:rotate(-72deg)}50%{transform:rotate(-45deg)}}
+@keyframes arm-r-dance{0%,100%{transform:rotate(72deg)}50%{transform:rotate(45deg)}}
+@keyframes leg-l-dance{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(20deg)}}
+@keyframes leg-r-dance{0%,100%{transform:rotate(5deg)}50%{transform:rotate(-20deg)}}
+
+/* Scratch */
+@keyframes arm-r-scratch{0%,100%{transform:rotate(-62deg)}50%{transform:rotate(-74deg)}}
+
+/* Wave */
+@keyframes arm-r-wave{0%,100%{transform:rotate(-80deg)}50%{transform:rotate(-48deg)}}
+
+/* Stretch */
+@keyframes arm-l-stretch{0%,50%{transform:rotate(0)}30%{transform:rotate(-80deg)}100%{transform:rotate(0)}}
+@keyframes arm-r-stretch{0%,50%{transform:rotate(0)}30%{transform:rotate(80deg)}100%{transform:rotate(0)}}
+
+/* Sleep */
+@keyframes sleep-drift{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-3px) rotate(-5deg)}}
+@keyframes arm-l-sleep{0%,100%{transform:rotate(12deg)}}
+@keyframes arm-r-sleep{0%,100%{transform:rotate(-12deg)}}
+
+/* Spin */
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+
+/* Bounce */
+@keyframes jump{0%,100%{transform:translateY(0) scaleY(1) scaleX(1)}30%{transform:translateY(-22px) scaleY(1.06) scaleX(0.95)}90%{transform:translateY(0) scaleY(0.92) scaleX(1.06)}}
+
+/* Status label */
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── LAYOUT ────────────────────────────────────────────────── */
+.header{font-size:9px;letter-spacing:3px;color:#444;text-transform:uppercase}
+.stage{display:flex;flex-direction:column;align-items:center;gap:20px;position:relative}
+.status{font-size:9px;letter-spacing:2px;color:#666;text-transform:uppercase;min-height:18px;animation:fadein 0.3s ease}
+.controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:420px}
+.btn{font-family:inherit;font-size:8.5px;letter-spacing:1.5px;text-transform:uppercase;border:1px solid #2a2a2a;background:transparent;color:#555;padding:6px 12px;cursor:pointer;transition:all 0.15s}
+.btn:hover{border-color:#555;color:#ccc}
+.btn.active{border-color:#f5c030;color:#f5c030}
+
+.layers{display:flex;flex-direction:column;gap:6px;position:absolute;right:-180px;top:20px;width:160px}
+.layer{display:flex;align-items:center;gap:8px}
+.layer-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.layer-info{font-size:8px;letter-spacing:0.5px;color:#444;line-height:1.5}
+.layer-info span{display:block;color:#333;font-size:7px}
+
+/* ── SVG ───────────────────────────────────────────────────── */
+#pet{display:block;cursor:pointer}
+
+/* All animated groups */
+.layer-breathe{animation:breathe 3.8s cubic-bezier(0.45,0,0.55,1) infinite;transform-origin:55px 110px}
+.layer-drift  {animation:drift   2.6s ease-in-out infinite}
+.layer-sway   {animation:sway    7s   ease-in-out infinite;transform-origin:55px 110px}
+.layer-head   {animation:head-idle 4s ease-in-out -0.7s infinite}
+.layer-arm-l  {animation:arm-l-idle 2.8s ease-in-out -0.9s infinite}
+.layer-arm-r  {animation:arm-r-idle 2.8s ease-in-out 0s infinite}
+.layer-leg-l  {animation:leg-idle 3.2s ease-in-out -1.1s infinite}
+.layer-leg-r  {animation:leg-idle 3.2s ease-in-out 0s infinite}
+
+/* State overrides */
+.s-walk  .layer-drift  {animation:walk-bounce  0.6s ease-in-out infinite}
+.s-walk  .layer-arm-l  {animation:arm-l-walk   0.6s ease-in-out -0.3s infinite}
+.s-walk  .layer-arm-r  {animation:arm-r-walk   0.6s ease-in-out 0s infinite}
+.s-walk  .layer-leg-l  {animation:leg-l-walk   0.6s ease-in-out -0.3s infinite}
+.s-walk  .layer-leg-r  {animation:leg-r-walk   0.6s ease-in-out 0s infinite}
+.s-walk  .layer-sway   {animation:none}
+
+.s-run   .layer-drift  {animation:run-bounce   0.32s ease-in-out infinite}
+.s-run   .layer-arm-l  {animation:arm-l-run    0.32s ease-in-out -0.16s infinite}
+.s-run   .layer-arm-r  {animation:arm-r-run    0.32s ease-in-out 0s infinite}
+.s-run   .layer-leg-l  {animation:leg-l-walk   0.32s ease-in-out -0.16s infinite}
+.s-run   .layer-leg-r  {animation:leg-r-walk   0.32s ease-in-out 0s infinite}
+.s-run   .layer-sway   {animation:none;transform:rotate(-5deg)}
+
+.s-dance .layer-drift  {animation:dance-body   0.56s ease-in-out infinite}
+.s-dance .layer-arm-l  {animation:arm-l-dance  0.56s ease-in-out infinite}
+.s-dance .layer-arm-r  {animation:arm-r-dance  0.56s ease-in-out infinite}
+.s-dance .layer-leg-l  {animation:leg-l-dance  0.56s ease-in-out -0.28s infinite}
+.s-dance .layer-leg-r  {animation:leg-r-dance  0.56s ease-in-out 0s infinite}
+
+.s-scratch .layer-arm-r{animation:arm-r-scratch 0.28s ease-in-out infinite}
+.s-wave    .layer-arm-r{animation:arm-r-wave    0.5s ease-in-out infinite}
+.s-stretch .layer-arm-l{animation:arm-l-stretch 2.5s ease-in-out 1 forwards}
+.s-stretch .layer-arm-r{animation:arm-r-stretch 2.5s ease-in-out 1 forwards}
+
+.s-sleep .layer-drift  {animation:sleep-drift  5s ease-in-out infinite}
+.s-sleep .layer-arm-l  {animation:none;transform:rotate(12deg)}
+.s-sleep .layer-arm-r  {animation:none;transform:rotate(-12deg)}
+.s-sleep .layer-sway   {animation:none;transform:rotate(-4deg)}
+
+.s-spin  .layer-sway   {animation:spin 0.7s linear 3 forwards}
+.s-jump  .layer-drift  {animation:jump 0.65s ease forwards}
+
+/* Eye blink clip */
+.eye-lid{transition:transform 0.07s;transform-origin:center center}
+.blink .eye-lid{transform:scaleY(0.06)}
+/* Sleep eyes */
+.s-sleep .eye-open{display:none}
+.s-sleep .eye-closed{display:block}
+.eye-closed{display:none}
+/* Excited eyes (dance) */
+.eye-normal{display:block}
+.eye-star{display:none}
+.s-dance .eye-normal{display:none}
+.s-dance .eye-star{display:block}
+/* Guitar sunglasses */
+.sunglasses{display:none}
+.s-guitar .sunglasses{display:block}
+/* Guitar prop */
+.guitar-prop{display:none}
+.s-guitar .guitar-prop{display:block}
+/* Think bubble */
+.think-bubble{display:none}
+.s-think .think-bubble{display:block}
+/* Work tablet */
+.work-tablet{display:none}
+.s-work .work-tablet{display:block}
+/* Zzz */
+.zzz{display:none;font-family:Georgia,serif}
+.s-sleep .zzz{display:block}
+/* Drool */
+.drool{display:none}
+.s-sleep .drool{display:block}
+</style>
+</head>
+<body>
+
+<div class="header">Atlas Pet · Live Animation Preview · 连续分层动画演示</div>
+
+<div class="stage">
+
+  <svg id="pet" viewBox="0 0 110 152" width="200" height="277">
+    <defs>
+      <!-- mouth paths for different states -->
+    </defs>
+
+    <!-- shadow (always) -->
+    <ellipse cx="55" cy="150" rx="28" ry="4.5" fill="rgba(255,255,255,0.06)"/>
+
+    <!-- LAYER: breathe (outermost) -->
+    <g class="layer-breathe">
+    <!-- LAYER: drift (vertical float) -->
+    <g class="layer-drift">
+    <!-- LAYER: sway (body tilt) -->
+    <g class="layer-sway">
+
+      <!-- Left leg, pivot at (44,108) -->
+      <g transform="translate(44,108)">
+        <g class="layer-leg-l" style="transform-origin:0px 0px">
+          <path d="M0 0 Q-5 10 -7 20" stroke="#f8f4ec" stroke-width="12.5" fill="none" stroke-linecap="round"/>
+          <path d="M0 0 Q-5 10 -7 20" stroke="#1c1c1c" stroke-width="14.5" fill="none" stroke-linecap="round" opacity="0.1"/>
+          <circle cx="-7" cy="20" r="9" fill="#f8f4ec" stroke="#1c1c1c" stroke-width="2.5"/>
+        </g>
+      </g>
+      <!-- Right leg, pivot at (66,108) -->
+      <g transform="translate(66,108)">
+        <g class="layer-leg-r" style="transform-origin:0px 0px">
+          <path d="M0 0 Q5 10 7 20" stroke="#f8f4ec" stroke-width="12.5" fill="none" stroke-linecap="round"/>
+          <path d="M0 0 Q5 10 7 20" stroke="#1c1c1c" stroke-width="14.5" fill="none" stroke-linecap="round" opacity="0.1"/>
+          <circle cx="7" cy="20" r="9" fill="#f8f4ec" stroke="#1c1c1c" stroke-width="2.5"/>
+        </g>
+      </g>
+
+      <!-- Body -->
+      <ellipse cx="55" cy="85" rx="26" ry="27" fill="#f8f4ec" stroke="#1c1c1c" stroke-width="2.8"/>
+
+      <!-- Guitar prop (behind head, in front of body) -->
+      <g class="guitar-prop" transform="translate(2,52) rotate(-10,16,28)">
+        <rect x="14" y="0" width="5.5" height="36" rx="2.5" fill="#5c3320" stroke="#1c1c1c" stroke-width="1.2"/>
+        <ellipse cx="16.5" cy="47" rx="14" ry="11.5" fill="#c0392b" stroke="#1c1c1c" stroke-width="1.5"/>
+        <ellipse cx="16.5" cy="47" rx="10" ry="8" fill="#e74c3c"/>
+        <circle cx="16.5" cy="47" r="4.5" fill="#8B0000"/>
+        <line x1="12" y1="8" x2="21" y2="8" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+        <line x1="12" y1="16" x2="21" y2="16" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+        <line x1="12" y1="24" x2="21" y2="24" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+        <line x1="13" y1="1" x2="13" y2="37" stroke="rgba(220,220,220,0.6)" stroke-width="0.7"/>
+        <line x1="16.5" y1="1" x2="16.5" y2="37" stroke="rgba(220,220,220,0.6)" stroke-width="0.7"/>
+        <line x1="20" y1="1" x2="20" y2="37" stroke="rgba(220,220,220,0.6)" stroke-width="0.7"/>
+        <circle cx="9" cy="2" r="2.2" fill="#f0a500"/>
+        <circle cx="14" cy="0" r="2.2" fill="#f0a500"/>
+        <circle cx="19" cy="0" r="2.2" fill="#f0a500"/>
+        <circle cx="24" cy="2" r="2.2" fill="#f0a500"/>
+      </g>
+
+      <!-- Work tablet -->
+      <g class="work-tablet">
+        <rect x="25" y="88" width="60" height="40" rx="4" fill="#1e1e2e" stroke="#1c1c1c" stroke-width="1.8"/>
+        <rect x="41" y="84" width="28" height="8" rx="4" fill="#888" stroke="#1c1c1c" stroke-width="1.5"/>
+        <rect x="29" y="95" width="32" height="3" rx="1.5" fill="#4ade80" opacity="0.85"/>
+        <rect x="29" y="101" width="44" height="3" rx="1.5" fill="#4ade80" opacity="0.7"/>
+        <rect x="29" y="107" width="26" height="3" rx="1.5" fill="#22d3ee" opacity="0.85"/>
+        <rect x="29" y="113" width="36" height="3" rx="1.5" fill="#4ade80" opacity="0.6"/>
+        <rect x="29" y="119" width="20" height="3" rx="1.5" fill="#f59e0b" opacity="0.8"/>
+        <circle cx="71" cy="98" r="5" fill="#f59e0b" opacity="0.9"/>
+      </g>
+
+      <!-- Left arm, pivot at (30,80) -->
+      <g transform="translate(30,80)">
+        <g class="layer-arm-l" style="transform-origin:0px 0px">
+          <path d="M0 0 Q-2 12 0 23" stroke="#f8f4ec" stroke-width="12.5" fill="none" stroke-linecap="round"/>
+          <path d="M0 0 Q-2 12 0 23" stroke="#1c1c1c" stroke-width="14.5" fill="none" stroke-linecap="round" opacity="0.1"/>
+          <circle cx="0" cy="23" r="9" fill="#f8f4ec" stroke="#1c1c1c" stroke-width="2.5"/>
+        </g>
+      </g>
+      <!-- Right arm, pivot at (80,80) -->
+      <g transform="translate(80,80)">
+        <g class="layer-arm-r" style="transform-origin:0px 0px">
+          <path d="M0 0 Q2 12 0 23" stroke="#f8f4ec" stroke-width="12.5" fill="none" stroke-linecap="round"/>
+          <path d="M0 0 Q2 12 0 23" stroke="#1c1c1c" stroke-width="14.5" fill="none" stroke-linecap="round" opacity="0.1"/>
+          <circle cx="0" cy="23" r="9" fill="#f8f4ec" stroke="#1c1c1c" stroke-width="2.5"/>
+        </g>
+      </g>
+
+      <!-- Think bubble -->
+      <g class="think-bubble">
+        <circle cx="78" cy="30" r="3" fill="#f8f4ec" stroke="#1c1c1c" stroke-width="1.5"/>
+        <circle cx="86" cy="20" r="5" fill="#f8f4ec" stroke="#1c1c1c" stroke-width="1.8"/>
+        <circle cx="97" cy="8" r="10" fill="#f8f4ec" stroke="#1c1c1c" stroke-width="2"/>
+        <text x="93" y="13" font-size="12" fill="#1c1c1c">?</text>
+      </g>
+
+      <!-- HEAD, layer-head -->
+      <g class="layer-head">
+        <circle cx="55" cy="41" r="34" fill="#f8f4ec" stroke="#1c1c1c" stroke-width="2.8"/>
+
+        <!-- Zzz (sleep) -->
+        <text class="zzz" x="76" y="22" font-size="11" fill="#b0b0b0">z</text>
+        <text class="zzz" x="84" y="13" font-size="16" fill="#a0a0a0">Z</text>
+        <text class="zzz" x="93" y="4"  font-size="20" fill="#909090">Z</text>
+
+        <!-- Drool -->
+        <path class="drool" d="M55 62 Q56.5 70 56 75" stroke="rgba(150,200,255,0.5)" stroke-width="4" fill="none" stroke-linecap="round"/>
+
+        <!-- LEFT EYE -->
+        <g class="eye-open">
+          <!-- sclera+pupil clip group for blink -->
+          <g class="eye-lid-group-l" style="transform-origin:41px 37px">
+            <circle cx="41" cy="37" r="12.5" fill="white" stroke="#1c1c1c" stroke-width="2"/>
+            <circle class="pupil-l" cx="41" cy="39" r="7" fill="#1c1c1c"/>
+            <circle cx="38" cy="35" r="3" fill="white"/>
+          </g>
+          <!-- eyelid overlay (blink mask) -->
+          <ellipse class="eye-lid lid-l" cx="41" cy="26" rx="13" ry="10" fill="#f8f4ec"/>
+        </g>
+        <g class="eye-normal"><!-- placeholder for star override --></g>
+
+        <!-- RIGHT EYE -->
+        <g class="eye-open">
+          <g class="eye-lid-group-r" style="transform-origin:69px 37px">
+            <circle cx="69" cy="37" r="12.5" fill="white" stroke="#1c1c1c" stroke-width="2"/>
+            <circle class="pupil-r" cx="69" cy="39" r="7" fill="#1c1c1c"/>
+            <circle cx="66" cy="35" r="3" fill="white"/>
+          </g>
+          <ellipse class="eye-lid lid-r" cx="69" cy="26" rx="13" ry="10" fill="#f8f4ec"/>
+        </g>
+
+        <!-- SLEEP eyes (shown instead when sleeping) -->
+        <g class="eye-closed">
+          <path d="M28 40 Q41 54 54 40" fill="none" stroke="#1c1c1c" stroke-width="3" stroke-linecap="round"/>
+          <path d="M56 40 Q69 54 82 40" fill="none" stroke="#1c1c1c" stroke-width="3" stroke-linecap="round"/>
+        </g>
+
+        <!-- STAR eyes (dance) -->
+        <g class="eye-star">
+          <circle cx="41" cy="37" r="12.5" fill="white" stroke="#1c1c1c" stroke-width="2"/>
+          <text x="33" y="43" font-size="14" fill="#1c1c1c">★</text>
+          <circle cx="69" cy="37" r="12.5" fill="white" stroke="#1c1c1c" stroke-width="2"/>
+          <text x="61" y="43" font-size="14" fill="#1c1c1c">★</text>
+        </g>
+
+        <!-- SUNGLASSES (guitar) -->
+        <g class="sunglasses">
+          <rect x="27" y="28" width="28" height="16" rx="8" fill="rgba(10,10,10,0.88)"/>
+          <rect x="55" y="28" width="28" height="16" rx="8" fill="rgba(10,10,10,0.88)"/>
+          <line x1="27" y1="36" x2="55" y2="36" stroke="rgba(10,10,10,0.88)" stroke-width="5"/>
+        </g>
+
+        <!-- Brows (id for JS expression changes) -->
+        <g id="brows">
+          <path id="brow-l" d="M30 22 Q41 16 52 21" fill="none" stroke="#1c1c1c" stroke-width="2.5" stroke-linecap="round"/>
+          <path id="brow-r" d="M58 21 Q69 16 80 22" fill="none" stroke="#1c1c1c" stroke-width="2.5" stroke-linecap="round"/>
+        </g>
+
+        <!-- Blush -->
+        <ellipse id="blush-l" cx="24" cy="50" rx="7" ry="4.5" fill="#ff9090" opacity="0.3"/>
+        <ellipse id="blush-r" cx="86" cy="50" rx="7" ry="4.5" fill="#ff9090" opacity="0.3"/>
+
+        <!-- Mouth (id for expression changes) -->
+        <path id="mouth" d="M42 55 Q55 62 68 55" fill="none" stroke="#1c1c1c" stroke-width="2.2" stroke-linecap="round"/>
+
+        <!-- Guitar music notes -->
+        <g class="guitar-prop">
+          <text x="88" y="20" font-family="Georgia,serif" font-size="18" fill="rgba(200,140,30,0.85)"
+            style="animation:drift 0.5s ease-in-out infinite">♪</text>
+          <text x="96" y="11" font-family="Georgia,serif" font-size="13" fill="rgba(200,140,30,0.7)"
+            style="animation:drift 0.5s ease-in-out -0.25s infinite">♩</text>
+        </g>
+      </g>
+
+    </g><!-- /sway -->
+    </g><!-- /drift -->
+    </g><!-- /breathe -->
+  </svg>
+
+  <div class="status" id="status">待机 · 6层动画叠加运行中</div>
+</div>
+
+<!-- Controls -->
+<div class="controls">
+  <button class="btn" onclick="setState('idle')">待机</button>
+  <button class="btn" onclick="setState('walk')">走路</button>
+  <button class="btn" onclick="setState('run')">跑步</button>
+  <button class="btn" onclick="setState('dance')">跳舞</button>
+  <button class="btn" onclick="setState('wave')">挥手</button>
+  <button class="btn" onclick="setState('scratch')">挠头</button>
+  <button class="btn" onclick="setState('stretch')">伸懒腰</button>
+  <button class="btn" onclick="setState('guitar')">弹吉他</button>
+  <button class="btn" onclick="setState('work')">工作</button>
+  <button class="btn" onclick="setState('think')">思考</button>
+  <button class="btn" onclick="setState('sleep')">睡觉</button>
+  <button class="btn" onclick="setState('spin')">转圈</button>
+  <button class="btn" onclick="setState('jump')">蹦跶</button>
+  <button class="btn" id="btn-auto" onclick="toggleAuto()">⟳ 自动</button>
+</div>
+
+<div style="font-size:8px;letter-spacing:1.5px;color:#333;text-align:center;line-height:1.8;max-width:500px">
+  IDLE LAYERS: 呼吸 3.8s · 漂浮 2.6s · 摆动 7s · 左臂 2.8s · 右臂 2.8s · 头部 4s<br>
+  各层时间错开，永不重叠 → 有机感连续运动
+</div>
+
+<script>
+const pet = document.getElementById('pet');
+const statusEl = document.getElementById('status');
+let autoMode = false;
+let autoTimer = null;
+let blinkTimer = null;
+let eyeTimer = null;
+let currentState = 'idle';
+
+const STATES = {
+  idle:    { label:'待机 · 6层动画叠加运行中', mouth:'M42 55 Q55 62 68 55', blush:0.3, browL:'M30 22 Q41 16 52 21', browR:'M58 21 Q69 16 80 22' },
+  walk:    { label:'走路 · 四肢橡皮管摆动', mouth:'M42 55 Q55 62 68 55', blush:0.4 },
+  run:     { label:'跑步 · 速度感前倾', mouth:'M38 54 Q55 67 72 54', blush:0.65, browL:'M30 18 Q41 12 52 17', browR:'M58 17 Q69 12 80 18' },
+  dance:   { label:'跳舞 · 星星眼嗨起来', mouth:'M38 54 Q55 68 72 54', blush:0.7, browL:'M30 19 Q41 13 52 18', browR:'M58 18 Q69 13 80 19' },
+  wave:    { label:'挥手 · 右臂循环摆动', mouth:'M40 55 Q55 64 70 55', blush:0.55 },
+  scratch: { label:'挠头 · 右手挠挠', mouth:'M44 57 Q55 60 66 57', blush:0.25, browL:'M30 22 Q41 20 52 24', browR:'M58 24 Q69 20 80 22' },
+  stretch: { label:'伸懒腰 · 一次性动作', mouth:'M42 54 Q55 61 68 54', blush:0.3 },
+  guitar:  { label:'弹吉他 · 自动墨镜+吉他', mouth:'M46 56 Q62 60 68 53', blush:0.45 },
+  work:    { label:'工作分析 · 盯着屏幕', mouth:'M44 56 Q55 59 66 56', blush:0.2, browL:'M30 24 Q41 28 52 24', browR:'M58 24 Q69 28 80 24' },
+  think:   { label:'思考 · 眼神上飘', mouth:'M46 57 Q56 54 66 56', blush:0.22, browL:'M30 21 Q41 15 52 20', browR:'M58 20 Q69 15 80 21' },
+  sleep:   { label:'睡觉 · 呼噜声 ZZZ', blush:0.18 },
+  spin:    { label:'转圈 dizzy~', mouth:'M44 55 Q55 62 66 55', blush:0.5 },
+  jump:    { label:'蹦蹦跳！', mouth:'M40 54 Q55 65 70 54', blush:0.65, browL:'M30 19 Q41 13 52 18', browR:'M58 18 Q69 13 80 19' },
+};
+
+const AUTO_POOL = [
+  { state:'walk',   dur:3500 },
+  { state:'wave',   dur:2800 },
+  { state:'scratch',dur:2600 },
+  { state:'stretch',dur:2800 },
+  { state:'dance',  dur:3200 },
+  { state:'think',  dur:3500 },
+  { state:'jump',   dur:1800 },
+];
+
+function setState(s) {
+  // Remove all state classes
+  pet.classList.remove(...Object.keys(STATES).map(k=>'s-'+k));
+  pet.classList.add('s-'+s);
+  currentState = s;
+
+  // Update UI
+  const cfg = STATES[s] || {};
+  statusEl.textContent = cfg.label || s;
+  statusEl.style.animation = 'none';
+  requestAnimationFrame(()=>{ statusEl.style.animation = 'fadein 0.25s ease'; });
+
+  // Mouth
+  if (cfg.mouth) document.getElementById('mouth').setAttribute('d', cfg.mouth);
+
+  // Blush
+  const bl = cfg.blush ?? 0.32;
+  document.getElementById('blush-l').setAttribute('opacity', bl);
+  document.getElementById('blush-r').setAttribute('opacity', bl);
+
+  // Brows
+  if (cfg.browL) document.getElementById('brow-l').setAttribute('d', cfg.browL);
+  else document.getElementById('brow-l').setAttribute('d', 'M30 22 Q41 16 52 21');
+  if (cfg.browR) document.getElementById('brow-r').setAttribute('d', cfg.browR);
+  else document.getElementById('brow-r').setAttribute('d', 'M58 21 Q69 16 80 22');
+
+  // Think: pupils look up
+  if (s === 'think') {
+    document.querySelector('.pupil-l').setAttribute('cy', '35');
+    document.querySelector('.pupil-l').setAttribute('cx', '43');
+    document.querySelector('.pupil-r').setAttribute('cy', '35');
+    document.querySelector('.pupil-r').setAttribute('cx', '71');
+  } else {
+    document.querySelector('.pupil-l').setAttribute('cy', '39');
+    document.querySelector('.pupil-l').setAttribute('cx', '41');
+    document.querySelector('.pupil-r').setAttribute('cy', '39');
+    document.querySelector('.pupil-r').setAttribute('cx', '69');
+  }
+
+  // Active button highlight
+  document.querySelectorAll('.btn').forEach(b=>b.classList.remove('active'));
+  const activeBtn = [...document.querySelectorAll('.btn')].find(b=>b.textContent===Object.keys(STATES).find(k=>k===s));
+  if(activeBtn) activeBtn.classList.add('active');
+
+  // Auto-return to idle for one-shot behaviors
+  if (['spin','jump','stretch'].includes(s)) {
+    setTimeout(()=>{ if(currentState===s) setState('idle'); }, 2600);
+  }
+}
+
+function toggleAuto() {
+  autoMode = !autoMode;
+  document.getElementById('btn-auto').textContent = autoMode ? '■ 停止' : '⟳ 自动';
+  document.getElementById('btn-auto').style.color = autoMode ? '#f5c030' : '';
+  if (autoMode) scheduleNext();
+  else { clearTimeout(autoTimer); setState('idle'); }
+}
+
+function scheduleNext() {
+  if (!autoMode) return;
+  const delay = 3500 + Math.random() * 4000;
+  autoTimer = setTimeout(() => {
+    const pick = AUTO_POOL[Math.floor(Math.random()*AUTO_POOL.length)];
+    setState(pick.state);
+    setTimeout(() => { if(autoMode && currentState===pick.state) { setState('idle'); setTimeout(scheduleNext, 1200); } }, pick.dur);
+  }, delay);
+}
+
+// Blink
+function scheduleBlink() {
+  const delay = 1800 + Math.random() * 4500;
+  blinkTimer = setTimeout(() => {
+    if (!['sleep','dance'].includes(currentState)) {
+      const lids = document.querySelectorAll('.eye-lid');
+      lids.forEach(l=>{ l.style.transform='translateY(14px)'; });
+      setTimeout(()=>{ lids.forEach(l=>{ l.style.transform=''; }); scheduleBlink(); }, 130);
+    } else scheduleBlink();
+  }, delay);
+}
+
+// Eye wander
+function scheduleEyeWander() {
+  const delay = 3000 + Math.random() * 6000;
+  eyeTimer = setTimeout(() => {
+    if (!['sleep','dance','think'].includes(currentState)) {
+      const dirs = [[-2,0],[2,0],[0,-2],[0,0],[0,0]];
+      const [dx,dy] = dirs[Math.floor(Math.random()*dirs.length)];
+      document.querySelector('.pupil-l').setAttribute('cx', 41+dx);
+      document.querySelector('.pupil-l').setAttribute('cy', 39+dy);
+      document.querySelector('.pupil-r').setAttribute('cx', 69+dx);
+      document.querySelector('.pupil-r').setAttribute('cy', 39+dy);
+      setTimeout(()=>{
+        if (!['think'].includes(currentState)) {
+          document.querySelector('.pupil-l').setAttribute('cx',41);
+          document.querySelector('.pupil-l').setAttribute('cy',39);
+          document.querySelector('.pupil-r').setAttribute('cx',69);
+          document.querySelector('.pupil-r').setAttribute('cy',39);
+        }
+        scheduleEyeWander();
+      }, 1200 + Math.random()*600);
+    } else scheduleEyeWander();
+  }, delay);
+}
+
+setState('idle');
+scheduleBlink();
+scheduleEyeWander();
+</script>
+</body>
+</html>
