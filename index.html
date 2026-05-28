@@ -613,10 +613,17 @@ Object.assign(window, {
 // Tokens vary by tweak (theme + accent). Returns a consistent palette.
 function essayTokens({ theme = 'cream', accent = 'red' }) {
   const accents = {
-    red:    { hex: '#e5251d', soft: '#fde4e2', name: 'SIGNAL RED' },
-    amber:  { hex: '#c2540a', soft: '#fbe7d2', name: 'CINNABAR' },
-    forest: { hex: '#1f6f44', soft: '#daece1', name: 'EDITORIAL SAGE' },
-    cobalt: { hex: '#1d4ed8', soft: '#dee5fb', name: 'PRESS BLUE' },
+    red:          { hex: '#e5251d', soft: '#fde4e2', name: 'SIGNAL RED' },
+    amber:        { hex: '#c2540a', soft: '#fbe7d2', name: 'CINNABAR' },
+    forest:       { hex: '#1f6f44', soft: '#daece1', name: 'EDITORIAL SAGE' },
+    cobalt:       { hex: '#1d4ed8', soft: '#dee5fb', name: 'PRESS BLUE' },
+    rose:         { hex: '#e11d48', soft: '#ffe1eb', name: 'ROSE BLUSH' },
+    violet:       { hex: '#7c3aed', soft: '#ede9fe', name: 'VIOLET MIST' },
+    teal:         { hex: '#0d9488', soft: '#d1faf5', name: 'ATLAS TEAL' },
+    gold:         { hex: '#b45309', soft: '#fef3c7', name: 'ATLAS GOLD' },
+    grad_sunset:  { hex: '#dc4e0c', soft: '#fbe7d2', gradient: 'linear-gradient(135deg, #f97316 0%, #e11d48 100%)', name: 'SUNSET' },
+    grad_aurora:  { hex: '#0f7855', soft: '#daece1', gradient: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)', name: 'AURORA' },
+    grad_ocean:   { hex: '#1a55c0', soft: '#dee5fb', gradient: 'linear-gradient(135deg, #0ea5e9 0%, #4338ca 100%)', name: 'OCEAN DEEP' },
   };
   const a = accents[accent] || accents.red;
 
@@ -649,6 +656,7 @@ function essayTokens({ theme = 'cream', accent = 'red' }) {
   return {
     ...palette,
     accent: a.hex,
+    accentGradient: a.gradient || a.hex,
     accentSoft: a.soft,
     accentName: a.name,
     theme,
@@ -734,6 +742,72 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks,
   );
 }
 
+function UMenuSliderRow({ label, value, min, max, step, onChange, formatVal, hints, t }) {
+  return (
+    <div style={{ marginBottom:12 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+        <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1 }}>{label}</div>
+        <div style={{ fontFamily:t.fontMono, fontSize:10, color:t.accent, fontWeight:700 }}>{formatVal ? formatVal(value) : value}</div>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        style={{ width:'100%', cursor:'pointer' }}/>
+      {hints && (
+        <div style={{ display:'flex', justifyContent:'space-between', fontFamily:t.fontMono, fontSize:8, color:t.mute, marginTop:2 }}>
+          {hints.map((h, i) => <span key={i}>{h}</span>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UMenuReportModal({ visible, title, reports, selected, setSelected, onConfirm, onClose, confirmLabel, confirmDanger, t }) {
+  if (!visible) return null;
+  const allSel = reports.length > 0 && selected.size === reports.length;
+  const toggleAll = (e) => setSelected(e.target.checked ? new Set(reports.map(r => r._id)) : new Set());
+  const toggleOne = (id, checked) => setSelected(prev => { const n = new Set(prev); checked ? n.add(id) : n.delete(id); return n; });
+  return (
+    <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.45)', zIndex:99999, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background:t.paper, border:`1.5px solid ${t.ink}`, width:420, maxHeight:'72vh', display:'flex', flexDirection:'column', boxShadow:`4px 4px 0 rgba(0,0,0,0.15)` }}>
+        <div style={{ padding:'11px 16px', borderBottom:`1px solid ${t.rule}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+          <span style={{ fontFamily:t.fontDisplay, fontWeight:800, fontSize:13, color:t.ink }}>{title}</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', fontFamily:t.fontMono, fontSize:16, color:t.mute, lineHeight:1, padding:'0 2px' }}>×</button>
+        </div>
+        <div style={{ padding:'7px 16px 6px', borderBottom:`1px solid ${t.rule}`, flexShrink:0 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', userSelect:'none' }}>
+            <input type="checkbox" checked={allSel} onChange={toggleAll} style={{ cursor:'pointer', width:14, height:14 }}/>
+            <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:0.8 }}>全选（共 {reports.length} 份报告）</span>
+          </label>
+        </div>
+        <div style={{ flex:1, overflowY:'auto' }}>
+          {reports.length === 0
+            ? <div style={{ padding:'28px 16px', fontFamily:'Noto Sans SC', fontSize:13, color:t.mute, textAlign:'center' }}>报告库为空</div>
+            : reports.map(r => (
+              <label key={r._id} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'8px 16px', cursor:'pointer', borderBottom:`1px solid ${t.rule}`, userSelect:'none' }}>
+                <input type="checkbox" checked={selected.has(r._id)} onChange={e => toggleOne(r._id, e.target.checked)} style={{ marginTop:2, cursor:'pointer', flexShrink:0, width:14, height:14 }}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontFamily:'Noto Sans SC', fontSize:12, fontWeight:600, color:t.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title || r.prompt?.slice(0,44) || '无标题'}</div>
+                  <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, marginTop:1 }}>
+                    {r.savedAt ? new Date(r.savedAt).toLocaleDateString('zh-CN') : ''}
+                    {r.wordCount ? ` · ${r.wordCount} 字` : ''}
+                  </div>
+                </div>
+              </label>
+            ))
+          }
+        </div>
+        <div style={{ padding:'10px 16px', borderTop:`1px solid ${t.rule}`, display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute }}>已选 {selected.size} / {reports.length}</span>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={onClose} style={{ padding:'5px 14px', background:'transparent', border:`1px solid ${t.rule}`, fontFamily:t.fontDisplay, fontWeight:700, fontSize:10, letterSpacing:0.8, cursor:'pointer', color:t.mute }}>取消</button>
+            <button onClick={onConfirm} disabled={selected.size === 0} style={{ padding:'5px 14px', background: selected.size === 0 ? t.rule : (confirmDanger ? '#dc2626' : t.ink), color: selected.size === 0 ? t.mute : t.paper, border:'none', fontFamily:t.fontDisplay, fontWeight:700, fontSize:10, letterSpacing:0.8, cursor: selected.size === 0 ? 'default' : 'pointer', opacity: selected.size === 0 ? 0.55 : 1 }}>{confirmLabel}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UserMenu({ t, tweaks, setTweak, modelStore }) {
   const [open, setOpen] = React.useState(false);
   const [section, setSection] = React.useState(null);
@@ -745,6 +819,15 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
   const saveProfile = (p) => { setProfile(p); try { localStorage.setItem('atlas_user_profile', JSON.stringify(p)); } catch {} };
   const initials = profile.displayName ? profile.displayName.slice(0,2).toUpperCase() : 'JL';
 
+  const [draftProfile, setDraftProfile] = React.useState({});
+  const [profileSaved, setProfileSaved] = React.useState(false);
+
+  const [exportModal, setExportModal] = React.useState(false);
+  const [clearModal, setClearModal] = React.useState(false);
+  const [modalReports, setModalReports] = React.useState([]);
+  const [exportSelected, setExportSelected] = React.useState(new Set());
+  const [clearSelected, setClearSelected] = React.useState(new Set());
+
   React.useEffect(() => {
     if (!open) return;
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setSection(null); } };
@@ -752,12 +835,62 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
-  const toggleSec = (k) => setSection(s => s === k ? null : k);
-  const ACCENT_OPTS = [{ v:'red',hex:'#e5251d' },{ v:'amber',hex:'#c2540a' },{ v:'forest',hex:'#1f6f44' },{ v:'cobalt',hex:'#1d4ed8' }];
+  React.useEffect(() => {
+    if (section === 'profile') { setDraftProfile({ ...profile }); setProfileSaved(false); }
+  }, [section]);
 
-  const MRow = ({ icon, label, sub, isOpen, onClick, danger }) => (
+  const toggleSec = (k) => setSection(s => s === k ? null : k);
+
+  const ACCENT_OPTS = [
+    { v:'red',         hex:'#e5251d' },
+    { v:'amber',       hex:'#c2540a' },
+    { v:'forest',      hex:'#1f6f44' },
+    { v:'cobalt',      hex:'#1d4ed8' },
+    { v:'rose',        hex:'#e11d48' },
+    { v:'violet',      hex:'#7c3aed' },
+    { v:'teal',        hex:'#0d9488' },
+    { v:'gold',        hex:'#b45309' },
+    { v:'grad_sunset', gradient:'linear-gradient(135deg, #f97316, #e11d48)' },
+    { v:'grad_aurora', gradient:'linear-gradient(135deg, #0d9488, #7c3aed)' },
+    { v:'grad_ocean',  gradient:'linear-gradient(135deg, #0ea5e9, #4338ca)' },
+  ];
+
+  const loadReports = () => { try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; } };
+
+  const openExport = () => {
+    const r = loadReports();
+    setModalReports(r);
+    setExportSelected(new Set(r.map(x => x._id)));
+    setExportModal(true);
+    setOpen(false);
+  };
+  const openClear = () => {
+    const r = loadReports();
+    setModalReports(r);
+    setClearSelected(new Set(r.map(x => x._id)));
+    setClearModal(true);
+    setOpen(false);
+  };
+  const doExport = () => {
+    if (!window.confirm(`确认导出 ${exportSelected.size} 份报告？`)) return;
+    const data = modalReports.filter(r => exportSelected.has(r._id));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `atlas-reports-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    setExportModal(false);
+  };
+  const doClear = () => {
+    if (!window.confirm(`确认删除 ${clearSelected.size} 份报告？此操作不可撤销。`)) return;
+    const keep = modalReports.filter(r => !clearSelected.has(r._id));
+    try { localStorage.setItem('atlas_saved_reports', JSON.stringify(keep)); } catch {}
+    setClearModal(false);
+    window.location.reload();
+  };
+
+  const MRow = ({ label, sub, isOpen, onClick, danger }) => (
     <div onClick={onClick} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 16px', cursor:'pointer', background: isOpen ? t.faint : 'transparent', userSelect:'none' }}>
-      <span style={{ fontSize:13, width:18, textAlign:'center', flexShrink:0 }}>{icon}</span>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontFamily:'Noto Sans SC', fontSize:12, fontWeight:600, color: danger ? '#dc2626' : t.ink }}>{label}</div>
         {sub && <div style={{ fontFamily:t.fontMono, fontSize:9, color: danger ? '#dc262688' : t.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
@@ -766,13 +899,18 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
     </div>
   );
 
+  const curAccent = tw.accent || 'red';
+  const curAccentOpt = ACCENT_OPTS.find(a => a.v === curAccent);
+  const accentLabel = curAccent.replace('grad_', '').toUpperCase();
+  const accentKind = curAccentOpt?.gradient ? 'GRADIENT' : 'SOLID';
+
   return (
     <div ref={ref} style={{ position:'relative', userSelect:'none', flexShrink:0 }}>
       {/* Circular avatar */}
       <div onClick={() => { setOpen(o => !o); if (open) setSection(null); }} style={{
         width:30, height:30, borderRadius:'50%',
         border:`1.5px solid ${open ? t.accent : t.ink}`,
-        background: open ? t.accent : t.paper, color: open ? t.paper : t.ink,
+        background: open ? t.accentGradient || t.accent : t.paper, color: open ? t.paper : t.ink,
         fontFamily:t.fontDisplay, fontWeight:800, fontSize:10,
         display:'flex', alignItems:'center', justifyContent:'center',
         cursor:'pointer', overflow:'hidden', transition:'all 0.15s',
@@ -782,11 +920,11 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
 
       {/* Dropdown */}
       {open && (
-        <div style={{ position:'absolute', top:38, right:0, width:260, background:t.paper, border:`1.5px solid ${t.ink}`, boxShadow:`3px 3px 0 rgba(0,0,0,0.12)`, zIndex:9999 }}>
+        <div style={{ position:'absolute', top:38, right:0, width:264, background:t.paper, border:`1.5px solid ${t.ink}`, boxShadow:`3px 3px 0 rgba(0,0,0,0.12)`, zIndex:9999 }}>
           {/* Header */}
           <div style={{ padding:'12px 16px 10px', borderBottom:`1px solid ${t.rule}` }}>
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <div style={{ width:34, height:34, borderRadius:'50%', background:t.accent, color:t.paper, fontFamily:t.fontDisplay, fontWeight:800, fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0 }}>
+              <div style={{ width:34, height:34, borderRadius:'50%', background:t.accentGradient||t.accent, color:t.paper, fontFamily:t.fontDisplay, fontWeight:800, fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0 }}>
                 {profile.avatarUrl ? <img src={profile.avatarUrl} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : initials}
               </div>
               <div style={{ flex:1, minWidth:0 }}>
@@ -798,10 +936,10 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
 
           <div style={{ padding:'4px 0' }}>
             {/* 外观偏好 */}
-            <MRow icon="🎨" label="外观偏好" sub={`${tw.theme === 'cream' ? '浅色' : '深色'} · ${tw.accent || 'red'}`} isOpen={section==='appearance'} onClick={() => toggleSec('appearance')}/>
+            <MRow label="外观偏好" sub={`${tw.theme === 'cream' ? '浅色' : '深色'} · ${accentLabel}`} isOpen={section==='appearance'} onClick={() => toggleSec('appearance')}/>
             {section === 'appearance' && (
               <div style={{ padding:'10px 16px 14px', background:t.faint, borderTop:`1px solid ${t.rule}` }}>
-                <div style={{ marginBottom:10 }}>
+                <div style={{ marginBottom:12 }}>
                   <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:5 }}>THEME</div>
                   <div style={{ display:'flex', gap:6 }}>
                     {[{v:'cream',label:'浅色'},{v:'slate',label:'深色'}].map(opt => (
@@ -810,37 +948,56 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:5 }}>ACCENT COLOR</div>
-                  <div style={{ display:'flex', gap:7 }}>
+                  <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:6 }}>ACCENT COLOR</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:5 }}>
                     {ACCENT_OPTS.map(a => (
-                      <div key={a.v} onClick={() => setTweak && setTweak('accent', a.v)} style={{ width:26, height:26, background:a.hex, cursor:'pointer', borderRadius:2, border: tw.accent===a.v ? `3px solid ${t.ink}` : '3px solid transparent', transition:'border 0.1s' }}/>
+                      <div key={a.v} title={a.v.replace('grad_','').toUpperCase()} onClick={() => setTweak && setTweak('accent', a.v)} style={{
+                        height:22, background: a.gradient || a.hex,
+                        cursor:'pointer', borderRadius:3,
+                        border: curAccent === a.v ? `2.5px solid ${t.ink}` : '2.5px solid transparent',
+                        transition:'border 0.1s', boxSizing:'border-box',
+                      }}/>
                     ))}
+                  </div>
+                  <div style={{ fontFamily:t.fontMono, fontSize:8, color:t.mute, marginTop:5, letterSpacing:0.8 }}>
+                    {accentLabel} · {accentKind}
                   </div>
                 </div>
               </div>
             )}
 
             {/* 模型高级设置 */}
-            <MRow icon="🤖" label="模型高级设置" sub={`Temp ${modelStore ? Number(modelStore.temperature||0.7).toFixed(1) : '0.7'}`} isOpen={section==='model'} onClick={() => toggleSec('model')}/>
+            <MRow label="模型高级设置" sub={`Temp ${modelStore ? Number(modelStore.temperature||0.7).toFixed(1) : '0.7'}`} isOpen={section==='model'} onClick={() => toggleSec('model')}/>
             {section === 'model' && modelStore && (
               <div style={{ padding:'10px 16px 14px', background:t.faint, borderTop:`1px solid ${t.rule}` }}>
+                <UMenuSliderRow t={t} label="TEMPERATURE" value={Number(modelStore.temperature||0.7)} min={0} max={2} step={0.1}
+                  onChange={v => modelStore.setTemperature(v)} formatVal={v => v.toFixed(1)}
+                  hints={['精确 0.0', '均衡 0.7', '创意 2.0']}/>
+                <UMenuSliderRow t={t} label="TOP-P" value={Number(modelStore.topP ?? 1.0)} min={0} max={1} step={0.05}
+                  onChange={v => modelStore.setTopP(v)} formatVal={v => v.toFixed(2)}
+                  hints={['集中 0.0', '均衡 0.5', '多样 1.0']}/>
+                <UMenuSliderRow t={t} label="FREQUENCY PENALTY" value={Number(modelStore.frequencyPenalty ?? 0)} min={-2} max={2} step={0.1}
+                  onChange={v => modelStore.setFrequencyPenalty(v)} formatVal={v => (v >= 0 ? '+' : '') + v.toFixed(1)}
+                  hints={['-2.0', '0.0', '+2.0']}/>
+                <UMenuSliderRow t={t} label="PRESENCE PENALTY" value={Number(modelStore.presencePenalty ?? 0)} min={-2} max={2} step={0.1}
+                  onChange={v => modelStore.setPresencePenalty(v)} formatVal={v => (v >= 0 ? '+' : '') + v.toFixed(1)}
+                  hints={['-2.0', '0.0', '+2.0']}/>
                 <div style={{ marginBottom:12 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
-                    <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1 }}>TEMPERATURE</div>
-                    <div style={{ fontFamily:t.fontMono, fontSize:10, color:t.accent, fontWeight:700 }}>{Number(modelStore.temperature||0.7).toFixed(1)}</div>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                    <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1 }}>MAX TOKENS</div>
+                    <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute }}>留空则自动</div>
                   </div>
-                  <input type="range" min="0" max="2" step="0.1" value={modelStore.temperature||0.7}
-                    onChange={e => modelStore.setTemperature(parseFloat(e.target.value))}
-                    style={{ width:'100%', cursor:'pointer' }}/>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontFamily:t.fontMono, fontSize:8, color:t.mute, marginTop:2 }}>
-                    <span>精确 0.0</span><span>均衡 0.7</span><span>创意 2.0</span>
-                  </div>
+                  <input type="number" min={1} max={32000} step={1}
+                    value={modelStore.maxTokensOverride || ''}
+                    placeholder="Auto"
+                    onChange={e => modelStore.setMaxTokensOverride(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    style={{ width:'100%', padding:'4px 8px', fontFamily:t.fontMono, fontSize:11, border:`1px solid ${t.rule}`, background:t.paper, color:t.ink, outline:'none', boxSizing:'border-box' }}/>
                 </div>
                 <div>
                   <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:5 }}>SYSTEM PROMPT 附加指令</div>
                   <textarea value={modelStore.systemPromptExtra||''} onChange={e => modelStore.setSystemPromptExtra(e.target.value)}
                     placeholder="在基础指令后追加的自定义指令（可选）"
-                    style={{ width:'100%', minHeight:72, resize:'vertical', fontFamily:'Noto Sans SC', fontSize:11, padding:'6px 8px', border:`1px solid ${t.rule}`, background:t.paper, color:t.ink, outline:'none', boxSizing:'border-box', lineHeight:1.55 }}/>
+                    style={{ width:'100%', minHeight:60, resize:'vertical', fontFamily:'Noto Sans SC', fontSize:11, padding:'6px 8px', border:`1px solid ${t.rule}`, background:t.paper, color:t.ink, outline:'none', boxSizing:'border-box', lineHeight:1.55 }}/>
                   <div style={{ fontFamily:t.fontMono, fontSize:8, color:t.mute, marginTop:3 }}>模型：{modelStore.selected?.name || '—'}</div>
                 </div>
               </div>
@@ -849,43 +1006,45 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
             <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
 
             {/* 编辑资料 */}
-            <MRow icon="✏️" label="编辑资料" sub={profile.displayName || 'Atlas User'} isOpen={section==='profile'} onClick={() => toggleSec('profile')}/>
+            <MRow label="编辑资料" sub={profile.displayName || 'Atlas User'} isOpen={section==='profile'} onClick={() => toggleSec('profile')}/>
             {section === 'profile' && (
               <div style={{ padding:'10px 16px 14px', background:t.faint, borderTop:`1px solid ${t.rule}` }}>
                 {[{label:'显示名称',key:'displayName',ph:'Atlas User',mono:false},{label:'邮箱',key:'email',ph:'user@example.com',mono:true}].map(({label,key,ph,mono}) => (
                   <div key={key} style={{ marginBottom:8 }}>
                     <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:3 }}>{label.toUpperCase()}</div>
-                    <input value={profile[key]||''} onChange={e => setProfile(p => ({...p,[key]:e.target.value}))} placeholder={ph}
+                    <input value={draftProfile[key]||''} onChange={e => setDraftProfile(p => ({...p,[key]:e.target.value}))} placeholder={ph}
                       style={{ width:'100%', padding:'5px 8px', fontFamily: mono ? t.fontMono : 'Noto Sans SC', fontSize:12, border:`1px solid ${t.rule}`, background:t.paper, color:t.ink, outline:'none', boxSizing:'border-box' }}/>
                   </div>
                 ))}
-                <button onClick={() => saveProfile(profile)} style={{ padding:'5px 14px', background:t.ink, color:t.paper, border:'none', fontFamily:t.fontDisplay, fontWeight:700, fontSize:10, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>保存</button>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <button onClick={() => { saveProfile(draftProfile); setProfileSaved(true); setTimeout(() => setProfileSaved(false), 2000); }}
+                    style={{ padding:'5px 16px', background:t.ink, color:t.paper, border:'none', fontFamily:t.fontDisplay, fontWeight:700, fontSize:10, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
+                    保存
+                  </button>
+                  {profileSaved && <span style={{ fontFamily:t.fontMono, fontSize:9, color:'#16a34a', letterSpacing:0.5 }}>已保存 ✓</span>}
+                </div>
               </div>
             )}
 
             <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
 
             {/* 导出全部报告 */}
-            <MRow icon="📦" label="导出全部报告" sub="JSON 格式打包下载" onClick={() => {
-              const blob = new Blob([localStorage.getItem('atlas_saved_reports')||'[]'], {type:'application/json'});
-              const a = document.createElement('a');
-              a.href = URL.createObjectURL(blob);
-              a.download = `atlas-reports-${new Date().toISOString().slice(0,10)}.json`;
-              a.click(); setOpen(false);
-            }}/>
+            <MRow label="导出全部报告" sub="选择报告 · JSON 格式" onClick={openExport}/>
 
             {/* 清除本地数据 */}
-            <MRow icon="🗑️" label="清除本地数据" sub="清空报告库和设置" danger onClick={() => {
-              if (window.confirm('确认清除所有本地数据？此操作不可撤销。')) {
-                ['atlas_saved_reports','atlas_custom_models','atlas_builtin_keys','atlas_builtin_urls',
-                 'atlas_selected_model','atlas_user_profile','atlas_temperature','atlas_system_prompt_extra'].forEach(k => localStorage.removeItem(k));
-                window.location.reload();
-              }
-            }}/>
+            <MRow label="清除本地数据" sub="选择要删除的报告" danger onClick={openClear}/>
           </div>
           <div style={{ borderTop:`1px solid ${t.rule}`, padding:'6px 16px', fontFamily:t.fontMono, fontSize:8, color:t.mute, letterSpacing:0.8 }}>ATLAS ESSAYS · VOL.04 · © 2026</div>
         </div>
       )}
+
+      <UMenuReportModal t={t} visible={exportModal} title="导出报告" reports={modalReports}
+        selected={exportSelected} setSelected={setExportSelected}
+        onConfirm={doExport} onClose={() => setExportModal(false)} confirmLabel="确认导出"/>
+
+      <UMenuReportModal t={t} visible={clearModal} title="删除报告" reports={modalReports}
+        selected={clearSelected} setSelected={setClearSelected}
+        onConfirm={doClear} onClose={() => setClearModal(false)} confirmLabel="确认删除" confirmDanger/>
     </div>
   );
 }
@@ -1563,6 +1722,22 @@ function useModelStore() {
   const [systemPromptExtra, setSystemPromptExtraState] = React.useState(
     () => localStorage.getItem('atlas_system_prompt_extra') || ''
   );
+  const [topP, setTopPState] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem('atlas_top_p'));
+    return isNaN(v) ? 1.0 : v;
+  });
+  const [frequencyPenalty, setFreqPenaltyState] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem('atlas_freq_penalty'));
+    return isNaN(v) ? 0 : v;
+  });
+  const [presencePenalty, setPresPenaltyState] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem('atlas_pres_penalty'));
+    return isNaN(v) ? 0 : v;
+  });
+  const [maxTokensOverride, setMaxTokensOverrideState] = React.useState(() => {
+    const v = parseInt(localStorage.getItem('atlas_max_tokens_override'), 10);
+    return isNaN(v) ? null : v;
+  });
 
   // Merge builtin keys + custom URLs into allModels
   const allModels = [
@@ -1599,7 +1774,14 @@ function useModelStore() {
   };
   const setTemperature = (v) => { setTemperatureState(v); try { localStorage.setItem('atlas_temperature', String(v)); } catch {} };
   const setSystemPromptExtra = (v) => { setSystemPromptExtraState(v); try { localStorage.setItem('atlas_system_prompt_extra', v); } catch {} };
-  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra };
+  const setTopP = (v) => { setTopPState(v); try { localStorage.setItem('atlas_top_p', String(v)); } catch {} };
+  const setFrequencyPenalty = (v) => { setFreqPenaltyState(v); try { localStorage.setItem('atlas_freq_penalty', String(v)); } catch {} };
+  const setPresencePenalty = (v) => { setPresPenaltyState(v); try { localStorage.setItem('atlas_pres_penalty', String(v)); } catch {} };
+  const setMaxTokensOverride = (v) => {
+    setMaxTokensOverrideState(v);
+    try { v !== null ? localStorage.setItem('atlas_max_tokens_override', String(v)) : localStorage.removeItem('atlas_max_tokens_override'); } catch {}
+  };
+  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra, topP, setTopP, frequencyPenalty, setFrequencyPenalty, presencePenalty, setPresencePenalty, maxTokensOverride, setMaxTokensOverride };
 }
 
 function ModelSelector({ t, store }) {
@@ -2433,7 +2615,7 @@ const RUN_TOTAL = 26.0;
 
 // ── Live API streaming -----------------------------------------------
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError }) {
-  const { tone, length, selectedSources, attachments, temperature, systemPromptExtra } = toolbarConfig || {};
+  const { tone, length, selectedSources, attachments, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
   const targetLength = length || 2500;
 
@@ -2493,8 +2675,11 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
           { role: 'user', content: userContent },
         ],
         stream: true,
-        max_tokens: maxTokens,
+        max_tokens: (maxTokensOverride && maxTokensOverride > 0) ? maxTokensOverride : maxTokens,
         temperature: (temperature !== undefined && !isNaN(Number(temperature))) ? Number(temperature) : 0.7,
+        ...(topP != null ? { top_p: Number(topP) } : {}),
+        ...(frequencyPenalty != null ? { frequency_penalty: Number(frequencyPenalty) } : {}),
+        ...(presencePenalty != null ? { presence_penalty: Number(presencePenalty) } : {}),
       }),
     });
 
@@ -3747,11 +3932,11 @@ function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
             background: filter === f.k ? t.ink : 'transparent',
             color: filter === f.k ? t.paper : t.ink,
             fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10,
-            letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
-            display: 'inline-flex', gap: 6,
+            letterSpacing: 1.2, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 5,
           }}>
-            <span>{f.en}</span>
-            <span style={{ fontFamily: t.fontCN, opacity: 0.7 }}>{f.cn}</span>
+            <span style={{ textTransform: 'uppercase' }}>{f.en}</span>
+            <span style={{ fontFamily: t.fontCN, fontWeight: 500, fontSize: 11, opacity: 0.65, letterSpacing: 0 }}>{f.cn}</span>
           </button>
         ))}
         <span style={{ flex: 1 }}/>
@@ -4964,6 +5149,10 @@ function App() {
               attachments: toolbarStore.attachments,
               temperature: modelStore.temperature,
               systemPromptExtra: modelStore.systemPromptExtra,
+              topP: modelStore.topP,
+              frequencyPenalty: modelStore.frequencyPenalty,
+              presencePenalty: modelStore.presencePenalty,
+              maxTokensOverride: modelStore.maxTokensOverride,
             }}
             onSaveReport={handleSaveReport}/>
         )}
