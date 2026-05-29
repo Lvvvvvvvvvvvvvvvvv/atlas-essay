@@ -1918,15 +1918,15 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
             </React.Fragment>
           ) : (
             <React.Fragment>
-              <span onClick={() => { setNoteDraft(editorNote.note || ''); setNoteEditing(true); }} title=”点击编辑编者按”
+              <span onClick={() => { setNoteDraft(editorNote.note || ''); setNoteEditing(true); }} title={'点击编辑编者按'}
                 style={{ fontFamily: t.fontCN, fontSize: 13, lineHeight: 1.55, color: t.inkSoft, flex: 1, cursor: 'text' }}>
                 {displayNote}
               </span>
               {editorNote.note && (
-                <button onClick={() => { editorNote.save(''); }} title=”恢复自动生成”
+                <button onClick={() => { editorNote.save(''); }} title={'恢复自动生成'}
                   style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontSize: 10, fontFamily: t.fontMono, padding: '2px 4px', flexShrink: 0, letterSpacing: 0.5 }}>↺</button>
               )}
-              <button onClick={() => { setNoteDraft(editorNote.note || ''); setNoteEditing(true); }} title=”编辑编者按”
+              <button onClick={() => { setNoteDraft(editorNote.note || ''); setNoteEditing(true); }} title={'编辑编者按'}
                 style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontSize: 13, padding: '2px 4px', flexShrink: 0 }}>✎</button>
               <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, whiteSpace: 'nowrap' }}>— ATLAS v0.41</span>
             </React.Fragment>
