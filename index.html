@@ -6932,15 +6932,24 @@ function App() {
   const t = essayTokens({ theme: tweaks.theme, accent: tweaks.accent });
 
   // Import todos from URL param (set by Apple Shortcuts)
+  // Supports two formats: plain newline-separated text, or base64-encoded JSON array
   React.useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      const encoded = params.get('todos');
-      if (!encoded) return;
-      const list = JSON.parse(atob(encoded));
-      if (Array.isArray(list) && list.length) {
+      const raw = params.get('todos');
+      if (!raw) return;
+      let list = [];
+      try {
+        // Try base64 JSON first
+        list = JSON.parse(atob(raw));
+        if (!Array.isArray(list)) list = [];
+      } catch {
+        // Fall back to plain newline/comma separated text
+        list = raw.split(/[\n,｜|]/).map(s => s.trim()).filter(Boolean);
+      }
+      if (list.length) {
         const key = `atlas_todos_${new Date().toISOString().slice(0,10)}`;
-        localStorage.setItem(key, JSON.stringify(list.map(t => ({ text: String(t), done: false }))));
+        localStorage.setItem(key, JSON.stringify(list.map(s => ({ text: String(s), done: false }))));
         const url = new URL(window.location.href);
         url.searchParams.delete('todos');
         window.history.replaceState({}, '', url.toString());
