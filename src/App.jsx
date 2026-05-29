@@ -1,0 +1,6877 @@
+import React from 'react';
+import './styles/globals.css';
+
+
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "palette": ["#D97757", "#29261b", "#f6f4ef"],
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        options={['#D97757', '#2A6FDB', '#1F8A5B', '#7A5AE0']}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakColor  label="Palette" value={t.palette}
+//                        options={[['#D97757', '#29261b', '#f6f4ef'],
+//                                  ['#475569', '#0f172a', '#f1f5f9']]}
+//                        onChange={(v) => setTweak('palette', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom right;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;box-sizing:border-box;width:100%;min-width:0;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+    overflow-wrap:anywhere}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;box-sizing:border-box;min-width:0;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+
+  .twk-chips{display:flex;gap:6px}
+  .twk-chip{position:relative;appearance:none;flex:1;min-width:0;height:46px;
+    padding:0;border:0;border-radius:6px;overflow:hidden;cursor:default;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.06);
+    transition:transform .12s cubic-bezier(.3,.7,.4,1),box-shadow .12s}
+  .twk-chip:hover{transform:translateY(-1px);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 4px 10px rgba(0,0,0,.12)}
+  .twk-chip[data-on="1"]{box-shadow:0 0 0 1.5px rgba(0,0,0,.85),
+    0 2px 6px rgba(0,0,0,.15)}
+  .twk-chip>span{position:absolute;top:0;bottom:0;right:0;width:34%;
+    display:flex;flex-direction:column;box-shadow:-1px 0 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i{flex:1;box-shadow:0 -1px 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i:first-child{box-shadow:none}
+  .twk-chip svg{position:absolute;top:6px;left:6px;width:13px;height:13px;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('atlas_tweaks') || 'null');
+      return saved ? { ...defaults, ...saved } : defaults;
+    } catch { return defaults; }
+  });
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => {
+      const next = { ...prev, ...edits };
+      try { localStorage.setItem('atlas_tweaks', JSON.stringify(next)); } catch {}
+      return next;
+    });
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+    window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', noDeckControls = false, children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  // Auto-inject a rail toggle when a <deck-stage> is on the page. The
+  // toggle drives the deck's per-viewer _railVisible via window message;
+  // state is mirrored from the same localStorage key the deck reads so
+  // the control reflects reality across reloads. The mechanism is the
+  // message — authors who want custom placement can post it directly
+  // and pass noDeckControls to suppress this one.
+  const hasDeckStage = React.useMemo(
+    () => typeof document !== 'undefined' && !!document.querySelector('deck-stage'),
+    [],
+  );
+  // deck-stage enables its rail in connectedCallback, but this panel can
+  // mount before that element has upgraded. The initial read catches the
+  // common case; the listener covers mounting first. (Older deck-stage.js
+  // copies still wait for the host's __omelette_rail_enabled postMessage —
+  // same listener handles those.)
+  const [railEnabled, setRailEnabled] = React.useState(
+    () => hasDeckStage && !!document.querySelector('deck-stage')?._railEnabled,
+  );
+  React.useEffect(() => {
+    if (!hasDeckStage || railEnabled) return undefined;
+    const onMsg = (e) => {
+      if (e.data && e.data.type === '__omelette_rail_enabled') setRailEnabled(true);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [hasDeckStage, railEnabled]);
+  const [railVisible, setRailVisible] = React.useState(() => {
+    try { return localStorage.getItem('deck-stage.railVisible') !== '0'; } catch (e) { return true; }
+  });
+  const toggleRail = (on) => {
+    setRailVisible(on);
+    window.postMessage({ type: '__deck_rail_visible', on }, '*');
+  };
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" data-noncommentable=""
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">
+          {children}
+          {hasDeckStage && railEnabled && !noDeckControls && (
+            <TweakSection label="Deck">
+              <TweakToggle label="Thumbnail rail" value={railVisible} onChange={toggleRail} />
+            </TweakSection>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  // Segments wrap mid-word once per-segment width runs out. The track is
+  // ~248px (280 panel − 28 body pad − 4 seg pad), each button loses 12px
+  // to its own padding, and 11.5px system-ui averages ~6.3px/char — so 2
+  // options fit ~16 chars each, 3 fit ~10. Past that (or >3 options), fall
+  // back to a dropdown rather than wrap.
+  const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
+  const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
+  const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
+  if (!fitsAsSegments) {
+    // <select> emits strings — map back to the original option value so the
+    // fallback stays type-preserving (numbers, booleans) like the segment path.
+    const resolve = (s) => {
+      const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
+      return m === undefined ? s : typeof m === 'object' ? m.value : m;
+    };
+    return <TweakSelect label={label} value={value} options={options}
+                        onChange={(s) => onChange(resolve(s))} />;
+  }
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+// Relative-luminance contrast pick — checkmarks drawn over a swatch need to
+// read on both #111 and #fafafa without per-option configuration. Hex input
+// only (#rgb / #rrggbb); named or rgb()/hsl() colors fall through to "light".
+function __twkIsLight(hex) {
+  const h = String(hex).replace('#', '');
+  const x = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.padEnd(6, '0');
+  const n = parseInt(x.slice(0, 6), 16);
+  if (Number.isNaN(n)) return true;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return r * 299 + g * 587 + b * 114 > 148000;
+}
+
+const __TwkCheck = ({ light }) => (
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
+          strokeLinecap="round" strokeLinejoin="round"
+          stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
+  </svg>
+);
+
+// TweakColor — curated color/palette picker. Each option is either a single
+// hex string or an array of 1-5 hex strings; the card adapts — a lone color
+// renders solid, a palette renders colors[0] as the hero (left ~2/3) with the
+// rest stacked in a sharp column on the right. onChange emits the
+// option in the shape it was passed (string stays string, array stays array).
+// Without options it falls back to the native color input for back-compat.
+function TweakColor({ label, value, options, onChange }) {
+  if (!options || !options.length) {
+    return (
+      <div className="twk-row twk-row-h">
+        <div className="twk-lbl"><span>{label}</span></div>
+        <input type="color" className="twk-swatch" value={value}
+               onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  // Native <input type=color> emits lowercase hex per the HTML spec, so
+  // compare case-insensitively. String() guards JSON.stringify(undefined),
+  // which returns the primitive undefined (no .toLowerCase).
+  const key = (o) => String(JSON.stringify(o)).toLowerCase();
+  const cur = key(value);
+  return (
+    <TweakRow label={label}>
+      <div className="twk-chips" role="radiogroup">
+        {options.map((o, i) => {
+          const colors = Array.isArray(o) ? o : [o];
+          const [hero, ...rest] = colors;
+          const sup = rest.slice(0, 4);
+          const on = key(o) === cur;
+          return (
+            <button key={i} type="button" className="twk-chip" role="radio"
+                    aria-checked={on} data-on={on ? '1' : '0'}
+                    aria-label={colors.join(', ')} title={colors.join(' · ')}
+                    style={{ background: hero }}
+                    onClick={() => onChange(o)}>
+              {sup.length > 0 && (
+                <span>
+                  {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
+                </span>
+              )}
+              {on && <__TwkCheck light={__twkIsLight(hero)} />}
+            </button>
+          );
+        })}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+Object.assign(window, {
+  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+  TweakText, TweakNumber, TweakColor, TweakButton,
+});
+// Essay direction — shared base. Tokens, top nav, footer, primitives.
+
+// Tokens vary by tweak (theme + accent). Returns a consistent palette.
+function essayTokens({ theme = 'cream', accent = 'red' }) {
+  const accents = {
+    red:          { hex: '#e5251d', soft: '#fde4e2', name: 'SIGNAL RED' },
+    amber:        { hex: '#c2540a', soft: '#fbe7d2', name: 'CINNABAR' },
+    forest:       { hex: '#1f6f44', soft: '#daece1', name: 'EDITORIAL SAGE' },
+    cobalt:       { hex: '#1d4ed8', soft: '#dee5fb', name: 'PRESS BLUE' },
+    rose:         { hex: '#e11d48', soft: '#ffe1eb', name: 'ROSE BLUSH' },
+    violet:       { hex: '#7c3aed', soft: '#ede9fe', name: 'VIOLET MIST' },
+    teal:         { hex: '#0d9488', soft: '#d1faf5', name: 'ATLAS TEAL' },
+    gold:         { hex: '#b45309', soft: '#fef3c7', name: 'ATLAS GOLD' },
+    grad_sunset:  { hex: '#dc4e0c', soft: '#fbe7d2', gradient: 'linear-gradient(135deg, #f97316 0%, #e11d48 100%)', name: 'SUNSET' },
+    grad_aurora:  { hex: '#0f7855', soft: '#daece1', gradient: 'linear-gradient(135deg, #0d9488 0%, #7c3aed 100%)', name: 'AURORA' },
+    grad_ocean:   { hex: '#1a55c0', soft: '#dee5fb', gradient: 'linear-gradient(135deg, #0ea5e9 0%, #4338ca 100%)', name: 'OCEAN DEEP' },
+  };
+  const a = accents[accent] || accents.red;
+
+  const themes = {
+    cream: {
+      paper:    '#fbf9f4',
+      paperAlt: '#f5f1e8',
+      ink:      '#0f0f0f',
+      inkSoft:  '#1f1d1a',
+      mute:     '#767368',
+      muteSoft: '#a8a395',
+      rule:     '#d8d4ca',
+      faint:    '#efebe1',
+      cardOn:   '#ffffff',
+    },
+    slate: {
+      paper:    '#15140f',
+      paperAlt: '#1d1c17',
+      ink:      '#f4f1e8',
+      inkSoft:  '#e2dfd5',
+      mute:     '#8c8778',
+      muteSoft: '#5d5a4f',
+      rule:     '#2a2823',
+      faint:    '#1a1914',
+      cardOn:   '#1d1c17',
+    },
+  };
+  const palette = themes[theme] || themes.cream;
+
+  return {
+    ...palette,
+    accent: a.hex,
+    accentGradient: a.gradient || a.hex,
+    accentSoft: a.soft,
+    accentName: a.name,
+    theme,
+    fontDisplay: "'Archivo', 'Noto Sans SC', system-ui, sans-serif",
+    fontBody:    "'Hanken Grotesk', 'Noto Sans SC', system-ui, sans-serif",
+    fontSerif:   "'Newsreader', 'Noto Serif SC', Georgia, serif",
+    fontMono:    "'JetBrains Mono', ui-monospace, monospace",
+    fontCN:      "'Noto Sans SC', system-ui, sans-serif",
+  };
+}
+
+// ── Top nav: wordmark + section nav + meta -------------------------------
+const NAV_ITEMS = [
+  { k: 'home',    en: 'NEW',     cn: '新建' },
+  { k: 'library', en: 'LIBRARY', cn: '报告库' },
+  { k: 'sources', en: 'SOURCES', cn: '数据源' },
+];
+
+function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore }) {
+  const [now, setNow] = React.useState(() => new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const pad = n => String(n).padStart(2, '0');
+  const dateStr = `${now.getFullYear()}·${pad(now.getMonth()+1)}·${pad(now.getDate())}`;
+  const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+  return (
+    <div style={{
+      borderBottom: `1px solid ${t.ink}`, background: t.paper, flexShrink: 0,
+      padding: '0 36px', height: 60,
+      display: 'flex', alignItems: 'center', gap: 24,
+    }}>
+      <div onClick={() => setRoute('home')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 10, whiteSpace: 'nowrap', flexShrink: 0 }}>
+        <span style={{
+          fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 18,
+          letterSpacing: 2.6, textTransform: 'uppercase', color: t.ink,
+        }}>Atlas</span>
+        <span style={{
+          fontFamily: t.fontDisplay, fontWeight: 500, fontSize: 11,
+          letterSpacing: 1.4, color: t.mute, textTransform: 'uppercase',
+        }}>⎯ Essays</span>
+      </div>
+
+      <span style={{ flex: 1, height: 1, background: t.ink, opacity: 0.55, margin: '0 8px' }}/>
+
+      <nav style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'stretch' }}>
+        {NAV_ITEMS.map(n => (
+          <span key={n.k}
+            onClick={() => setRoute(n.k)}
+            style={{
+              cursor: 'pointer',
+              display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: '0 14px', height: 60,
+              borderBottom: route === n.k ? `2px solid ${t.accent}` : '2px solid transparent',
+              borderTop: '2px solid transparent',
+              color: route === n.k ? t.ink : t.mute,
+              userSelect: 'none',
+            }}>
+            <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase', lineHeight: 1.2 }}>{n.en}</span>
+            <span style={{ fontFamily: t.fontCN, fontSize: 10, letterSpacing: 0.3, marginTop: 1, lineHeight: 1.2, color: route === n.k ? t.ink : t.mute }}>{n.cn}</span>
+          </span>
+        ))}
+      </nav>
+
+      <span style={{ flex: 1, height: 1, background: t.ink, opacity: 0.55, margin: '0 8px' }}/>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, whiteSpace: 'nowrap' }}>
+        {runState === 'running' && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <LiveDot color={t.accent}/>
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, letterSpacing: 1.2 }}>LIVE</span>
+          </span>
+        )}
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>
+          VOL.04 · № {issueNum}
+        </span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{dateStr} · {timeStr}</span>
+        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore}/>
+      </div>
+    </div>
+  );
+}
+
+function UMenuSliderRow({ label, value, min, max, step, onChange, formatVal, hints, t }) {
+  return (
+    <div style={{ marginBottom:12 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+        <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1 }}>{label}</div>
+        <div style={{ fontFamily:t.fontMono, fontSize:10, color:t.accent, fontWeight:700 }}>{formatVal ? formatVal(value) : value}</div>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        style={{ width:'100%', cursor:'pointer' }}/>
+      {hints && (
+        <div style={{ display:'flex', justifyContent:'space-between', fontFamily:t.fontMono, fontSize:8, color:t.mute, marginTop:2 }}>
+          {hints.map((h, i) => <span key={i}>{h}</span>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UMenuReportModal({ visible, title, reports, selected, setSelected, onConfirm, onClose, confirmLabel, confirmDanger, t }) {
+  if (!visible) return null;
+  const allSel = reports.length > 0 && selected.size === reports.length;
+  const toggleAll = (e) => setSelected(e.target.checked ? new Set(reports.map(r => r.id)) : new Set());
+  const toggleOne = (id, checked) => setSelected(prev => { const n = new Set(prev); checked ? n.add(id) : n.delete(id); return n; });
+  return (
+    <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.45)', zIndex:99999, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background:t.paper, border:`1.5px solid ${t.ink}`, width:420, maxHeight:'72vh', display:'flex', flexDirection:'column', boxShadow:`4px 4px 0 rgba(0,0,0,0.15)` }}>
+        <div style={{ padding:'11px 16px', borderBottom:`1px solid ${t.rule}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+          <span style={{ fontFamily:t.fontDisplay, fontWeight:800, fontSize:13, color:t.ink }}>{title}</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', fontFamily:t.fontMono, fontSize:16, color:t.mute, lineHeight:1, padding:'0 2px' }}>×</button>
+        </div>
+        <div style={{ padding:'7px 16px 6px', borderBottom:`1px solid ${t.rule}`, flexShrink:0 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', userSelect:'none' }}>
+            <input type="checkbox" checked={allSel} onChange={toggleAll} style={{ cursor:'pointer', width:14, height:14 }}/>
+            <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:0.8 }}>全选（共 {reports.length} 份报告）</span>
+          </label>
+        </div>
+        <div style={{ flex:1, overflowY:'auto' }}>
+          {reports.length === 0
+            ? <div style={{ padding:'28px 16px', fontFamily:'Noto Sans SC', fontSize:13, color:t.mute, textAlign:'center' }}>报告库为空</div>
+            : reports.map(r => (
+              <label key={r.id} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'8px 16px', cursor:'pointer', borderBottom:`1px solid ${t.rule}`, userSelect:'none' }}>
+                <input type="checkbox" checked={selected.has(r.id)} onChange={e => toggleOne(r.id, e.target.checked)} style={{ marginTop:2, cursor:'pointer', flexShrink:0, width:14, height:14 }}/>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontFamily:'Noto Sans SC', fontSize:12, fontWeight:600, color:t.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title || r.prompt?.slice(0,44) || '无标题'}</div>
+                  <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, marginTop:1 }}>
+                    {r.savedAt ? new Date(r.savedAt).toLocaleDateString('zh-CN') : ''}
+                    {r.wordCount ? ` · ${r.wordCount} 字` : ''}
+                  </div>
+                </div>
+              </label>
+            ))
+          }
+        </div>
+        <div style={{ padding:'10px 16px', borderTop:`1px solid ${t.rule}`, display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute }}>已选 {selected.size} / {reports.length}</span>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={onClose} style={{ padding:'5px 14px', background:'transparent', border:`1px solid ${t.rule}`, fontFamily:t.fontDisplay, fontWeight:700, fontSize:10, letterSpacing:0.8, cursor:'pointer', color:t.mute }}>取消</button>
+            <button onClick={onConfirm} disabled={selected.size === 0} style={{ padding:'5px 14px', background: selected.size === 0 ? t.rule : (confirmDanger ? '#dc2626' : t.ink), color: selected.size === 0 ? t.mute : t.paper, border:'none', fontFamily:t.fontDisplay, fontWeight:700, fontSize:10, letterSpacing:0.8, cursor: selected.size === 0 ? 'default' : 'pointer', opacity: selected.size === 0 ? 0.55 : 1 }}>{confirmLabel}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Permission system ─────────────────────────────────────────────────────
+function usePermission() {
+  const role = (() => { try { return localStorage.getItem('atlas_role') || 'admin'; } catch { return 'admin'; } })();
+  const DEFAULT_RULES = {
+    admin:  ['generate','save','export','template','library','sources','source_manage','sync','model_config','appearance'],
+    editor: ['generate','save','export','template','library','sources','appearance'],
+    viewer: ['library'],
+  };
+  const can = (feature) => {
+    try {
+      const cfg = JSON.parse(localStorage.getItem('atlas_perm_config') || 'null');
+      if (cfg && cfg[role]) return !!cfg[role][feature];
+    } catch {}
+    return (DEFAULT_RULES[role] || DEFAULT_RULES.admin).includes(feature);
+  };
+  return { role, can };
+}
+
+// ── Settings Modal ────────────────────────────────────────────────────────
+function SettingsModal({ t, modelStore, onClose }) {
+  const [tab, setTab] = React.useState('model');
+  const [modalReports, setModalReports] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; }
+  });
+  const [exportSel, setExportSel] = React.useState(() => new Set());
+  const [clearSel, setClearSel] = React.useState(() => new Set());
+  React.useEffect(() => {
+    const ids = modalReports.map(r => r.id);
+    setExportSel(new Set(ids));
+    setClearSel(new Set(ids));
+  }, []);
+
+  const [showAddForm, setShowAddForm] = React.useState(false);
+  const emptyForm = { name: '', modelId: '', apiUrl: '', apiKey: '', provider: '' };
+  const [form, setForm] = React.useState(emptyForm);
+  const [showKey, setShowKey] = React.useState(false);
+  const [role, setRoleState] = React.useState(() => {
+    try { return localStorage.getItem('atlas_role') || 'admin'; } catch { return 'admin'; }
+  });
+  const saveRole = (r) => { setRoleState(r); try { localStorage.setItem('atlas_role', r); } catch {} };
+
+  const [exportFmt, setExportFmt] = React.useState('json');
+  const [exportMode, setExportMode] = React.useState('combined'); // 'combined' | 'separate'
+  const [exportStatus, setExportStatus] = React.useState('idle');
+  const [exportStatusMsg, setExportStatusMsg] = React.useState('');
+
+  const [confirmingClear, setConfirmingClear] = React.useState(false);
+  const [clearToast, setClearToast] = React.useState('');
+
+  const PERM_TABLE = [
+    { feature: '生成报告',          key: 'generate',      admin: true,  editor: true,  viewer: false },
+    { feature: '保存 / 导出报告',   key: 'save',          admin: true,  editor: true,  viewer: false },
+    { feature: '自定义模板管理',     key: 'template',      admin: true,  editor: true,  viewer: false },
+    { feature: '查看报告库',         key: 'library',       admin: true,  editor: true,  viewer: true  },
+    { feature: '查看 Sources 页',   key: 'sources',       admin: true,  editor: true,  viewer: false },
+    { feature: '添加 / 断开数据源', key: 'source_manage', admin: true,  editor: false, viewer: false },
+    { feature: '手动同步数据源',     key: 'sync',          admin: true,  editor: false, viewer: false },
+    { feature: '修改模型 / 参数',   key: 'model_config',  admin: true,  editor: false, viewer: false },
+    { feature: '修改主题 / 外观',   key: 'appearance',    admin: true,  editor: true,  viewer: false },
+  ];
+  const [permConfig, setPermConfig] = React.useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('atlas_perm_config') || 'null');
+      if (stored) return stored;
+    } catch {}
+    const cfg = { admin: {}, editor: {}, viewer: {} };
+    for (const row of PERM_TABLE) {
+      cfg.admin[row.key] = row.admin;
+      cfg.editor[row.key] = row.editor;
+      cfg.viewer[row.key] = row.viewer;
+    }
+    return cfg;
+  });
+  const togglePerm = (roleKey, featureKey) => {
+    setPermConfig(prev => {
+      const next = { ...prev, [roleKey]: { ...prev[roleKey], [featureKey]: !prev[roleKey]?.[featureKey] } };
+      try { localStorage.setItem('atlas_perm_config', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const handleAddModel = () => {
+    if (!form.name || !form.modelId || !form.apiUrl || !form.apiKey) return;
+    modelStore.addModel({ id: form.modelId, name: form.name, apiUrl: form.apiUrl, apiKey: form.apiKey, provider: form.provider || 'Custom', builtin: false });
+    setForm(emptyForm); setShowAddForm(false); setShowKey(false);
+  };
+
+  const _norm = (r) => ({
+    ...r,
+    title: r.title || r.meta?.titleEn || r.meta?.title?.en || r.prompt?.slice(0,52) || '报告',
+    subtitle: r.subtitle || r.meta?.subtitle || '',
+  });
+
+  const doExport = async () => {
+    const data = modalReports.filter(r => exportSel.has(r.id));
+    if (!data.length) return;
+    const separate = exportMode === 'separate' && data.length > 1;
+    setExportStatus('loading'); setExportStatusMsg('');
+    try {
+      if (exportFmt === 'json') {
+        if (separate) {
+          for (const r of data) {
+            _dlBlob(new Blob([JSON.stringify(r, null, 2)], { type: 'application/json' }), _slug(r.title || r.meta?.titleEn || 'report') + '.json');
+          }
+        } else {
+          _dlBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `atlas-reports-${new Date().toISOString().slice(0,10)}.json`);
+        }
+        setExportStatus('done'); setExportStatusMsg(`✓ JSON 已下载（${data.length} 份${separate ? '，分别保存' : '，合并为一份'}）`);
+      } else if (exportFmt === 'pdf') {
+        for (const r of data) { await _exportPDFDownload(_norm(r)); }
+        setExportStatus('done'); setExportStatusMsg(`✓ PDF 已下载（${data.length} 份）`);
+      } else if (exportFmt === 'docx') {
+        for (const r of data) {
+          const html = _buildWordHTML(_norm(r));
+          _dlBlob(new Blob(['﻿', html], { type: 'application/vnd.ms-word;charset=utf-8' }), _slug((r.title || r.meta?.titleEn || 'report')) + '.doc');
+        }
+        setExportStatus('done'); setExportStatusMsg(`✓ DOCX 已下载（${data.length} 份）`);
+      } else if (exportFmt === 'md') {
+        if (separate) {
+          for (const r of data) {
+            _dlBlob(new Blob([_buildMarkdown(_norm(r))], { type: 'text/markdown;charset=utf-8' }), _slug(r.title || r.meta?.titleEn || 'report') + '.md');
+          }
+        } else {
+          const combined = data.map(r => _buildMarkdown(_norm(r))).join('\n\n---\n\n');
+          _dlBlob(new Blob([combined], { type: 'text/markdown;charset=utf-8' }), `atlas-reports-${new Date().toISOString().slice(0,10)}.md`);
+        }
+        setExportStatus('done'); setExportStatusMsg(`✓ Markdown 已下载（${data.length} 份${separate ? '，分别保存' : '，合并为一份'}）`);
+      } else if (exportFmt === 'notion') {
+        const combined = data.map(r => _buildMarkdown(_norm(r))).join('\n\n---\n\n');
+        await navigator.clipboard.writeText(combined);
+        setExportStatus('done'); setExportStatusMsg('✓ 已复制 → 在 Notion 新建页面后直接粘贴');
+      } else if (exportFmt === 'link') {
+        const base = window.location.href.split('?')[0].split('#')[0];
+        const links = data.map(r => {
+          const param = btoa(encodeURIComponent(JSON.stringify({ id: r.id, title: r.title || r.meta?.titleEn || '', ts: Date.now() }))).slice(0, 32);
+          return `${base}?r=${param}`;
+        }).join('\n');
+        await navigator.clipboard.writeText(links);
+        setExportStatus('done'); setExportStatusMsg(`✓ ${data.length} 条链接已复制`);
+      }
+    } catch (err) {
+      setExportStatus('error'); setExportStatusMsg('✕ 操作失败：' + (err.message || String(err)));
+    }
+    setTimeout(() => { setExportStatus('idle'); setExportStatusMsg(''); }, 4000);
+  };
+
+  const doClear = () => { if (clearSel.size) setConfirmingClear(true); };
+  const doConfirmClear = () => {
+    const count = clearSel.size;
+    const keep = modalReports.filter(r => !clearSel.has(r.id));
+    try { localStorage.setItem('atlas_saved_reports', JSON.stringify(keep)); } catch {}
+    window.dispatchEvent(new Event('atlas-reports-updated'));
+    setModalReports(keep);
+    setExportSel(new Set(keep.map(r => r.id)));
+    setClearSel(new Set());
+    setConfirmingClear(false);
+    setClearToast(`已删除 ${count} 份报告`);
+    setTimeout(() => setClearToast(''), 3500);
+  };
+
+  const TABS = [
+    { k: 'model',      label: '模型',  sub: '参数 & 管理' },
+    { k: 'export',     label: '导出',  sub: '多格式导出'  },
+    { k: 'clear',      label: '清除',  sub: '本地数据'    },
+    { k: 'permission', label: '权限',  sub: '角色管理'    },
+  ];
+  const ROLES = [
+    { k: 'admin',  label: '管理员', desc: '全部功能权限',          color: '#1d4ed8' },
+    { k: 'editor', label: '编辑',   desc: '生成报告，不能改数据源', color: '#2a8c5c' },
+    { k: 'viewer', label: '查看者', desc: '只读，仅查看报告库',    color: '#767368' },
+  ];
+  const EXPORT_FORMATS_SETTINGS = [
+    { k: 'json',   en: 'JSON',     cn: '完整备份，含所有元数据' },
+    { k: 'pdf',    en: 'PDF',      cn: '便于打印 / 邮件附件' },
+    { k: 'docx',   en: 'DOCX',    cn: '继续在 Word 编辑' },
+    { k: 'md',     en: 'Markdown', cn: '纯文本，所有报告合并为一个文件' },
+    { k: 'notion', en: 'NOTION',  cn: '复制 Markdown 到剪贴板，粘贴进 Notion' },
+    { k: 'link',   en: 'LINK',    cn: '每份报告生成一条分享链接，批量复制' },
+  ];
+
+  const lbl = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 5, display: 'block' };
+  const inp = { width: '100%', padding: '6px 8px', boxSizing: 'border-box', border: `1px solid ${t.rule}`, background: t.paper, color: t.ink, fontFamily: t.fontBody, fontSize: 12, outline: 'none' };
+  const secHdr = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 12, paddingBottom: 7, borderBottom: `1px solid ${t.rule}` };
+
+  const ReportList = ({ sel, setSel }) => {
+    const all = modalReports.length > 0 && sel.size === modalReports.length;
+    const toggleAll = (e) => setSel(e.target.checked ? new Set(modalReports.map(r => r.id)) : new Set());
+    const toggleOne = (id, chk) => setSel(prev => { const n = new Set(prev); chk ? n.add(id) : n.delete(id); return n; });
+    return (
+      <div style={{ border: `1px solid ${t.rule}` }}>
+        <div style={{ padding: '6px 12px', borderBottom: `1px solid ${t.rule}`, background: t.faint }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={all} onChange={toggleAll} style={{ cursor: 'pointer', width: 13, height: 13 }}/>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>全选（共 {modalReports.length} 份）</span>
+          </label>
+        </div>
+        <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+          {modalReports.length === 0
+            ? <div style={{ padding: '24px', fontFamily: t.fontCN, fontSize: 13, color: t.mute, textAlign: 'center' }}>报告库为空</div>
+            : modalReports.map(r => (
+              <label key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', cursor: 'pointer', borderBottom: `1px solid ${t.rule}`, userSelect: 'none' }}>
+                <input type="checkbox" checked={sel.has(r.id)} onChange={e => toggleOne(r.id, e.target.checked)} style={{ marginTop: 2, cursor: 'pointer', flexShrink: 0, width: 13, height: 13 }}/>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: t.fontCN, fontSize: 12, fontWeight: 600, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title || r.meta?.titleEn || r.prompt?.slice(0,44) || '无标题'}</div>
+                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 1 }}>{r.meta?.date || ''}{r.meta?.words ? ` · ${r.meta.words} 字` : ''}</div>
+                </div>
+              </label>
+            ))
+          }
+        </div>
+        <div style={{ padding: '5px 12px', borderTop: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>已选 {sel.size} / {modalReports.length}</div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: t.paper, border: `1.5px solid ${t.ink}`, width: '100%', maxWidth: 700, maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: `4px 4px 0 rgba(0,0,0,0.15)` }}>
+        <div style={{ padding: '14px 20px', borderBottom: `1.5px solid ${t.ink}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <Tag t={t} accent>◆ SETTINGS · 设置</Tag>
+          <span style={{ flex: 1 }}/>
+          <button type="button" onClick={onClose} style={{ border: `1px solid ${t.ink}`, background: t.paper, padding: '3px 8px', fontFamily: t.fontMono, fontSize: 11, cursor: 'pointer', color: t.ink }}>ESC</button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          <div style={{ width: 110, borderRight: `1px solid ${t.rule}`, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            {TABS.map(tb => (
+              <div key={tb.k} onClick={() => setTab(tb.k)} style={{ padding: '13px 14px', cursor: 'pointer', background: tab === tb.k ? t.faint : 'transparent', borderBottom: `1px solid ${t.rule}`, borderLeft: `2.5px solid ${tab === tb.k ? t.accent : 'transparent'}` }}>
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 12, letterSpacing: 0.5, color: tab === tb.k ? t.ink : t.mute }}>{tb.label}</div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 3, lineHeight: 1.3 }}>{tb.sub}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+            {tab === 'model' && modelStore && (
+              <React.Fragment>
+                <div>
+                  <div style={secHdr}>模型参数</div>
+                  <UMenuSliderRow t={t} label="TEMPERATURE" value={Number(modelStore.temperature||0.7)} min={0} max={2} step={0.1} onChange={v => modelStore.setTemperature(v)} formatVal={v => v.toFixed(1)} hints={['精确 0.0','均衡 0.7','创意 2.0']}/>
+                  <UMenuSliderRow t={t} label="TOP-P" value={Number(modelStore.topP ?? 1.0)} min={0} max={1} step={0.05} onChange={v => modelStore.setTopP(v)} formatVal={v => v.toFixed(2)} hints={['集中 0.0','均衡 0.5','多样 1.0']}/>
+                  <UMenuSliderRow t={t} label="FREQUENCY PENALTY" value={Number(modelStore.frequencyPenalty ?? 0)} min={-2} max={2} step={0.1} onChange={v => modelStore.setFrequencyPenalty(v)} formatVal={v => (v>=0?'+':'')+v.toFixed(1)} hints={['-2.0','0.0','+2.0']}/>
+                  <UMenuSliderRow t={t} label="PRESENCE PENALTY" value={Number(modelStore.presencePenalty ?? 0)} min={-2} max={2} step={0.1} onChange={v => modelStore.setPresencePenalty(v)} formatVal={v => (v>=0?'+':'')+v.toFixed(1)} hints={['-2.0','0.0','+2.0']}/>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1 }}>MAX TOKENS</div>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>留空则自动</div>
+                    </div>
+                    <input type="number" min={1} max={131072} value={modelStore.maxTokensOverride || ''} placeholder="Auto"
+                      onChange={e => { const v = e.target.value ? Math.min(parseInt(e.target.value, 10), 131072) : null; modelStore.setMaxTokensOverride(v); }}
+                      style={inp}/>
+                  </div>
+                  <div>
+                    <label style={lbl}>SYSTEM PROMPT 附加指令</label>
+                    <textarea value={modelStore.systemPromptExtra||''} onChange={e => modelStore.setSystemPromptExtra(e.target.value)}
+                      placeholder="在基础指令后追加的自定义指令（可选）"
+                      style={{ ...inp, minHeight: 60, resize: 'vertical', lineHeight: 1.55 }}/>
+                    <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 3 }}>当前模型：{modelStore.selected?.name || '—'}</div>
+                  </div>
+                </div>
+                <div>
+                  <div style={secHdr}>模型管理</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 10 }}>
+                    {modelStore.allModels.map(m => (
+                      <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: `1px solid ${modelStore.selected?.id === m.id ? t.ink : t.rule}`, background: modelStore.selected?.id === m.id ? t.faint : 'transparent' }}>
+                        <div onClick={() => modelStore.selectModel(m.id)} style={{ flex: 1, cursor: 'pointer', minWidth: 0 }}>
+                          <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 600, color: t.ink }}>{m.name}</div>
+                          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>{m.provider} · {m.id}</div>
+                        </div>
+                        {modelStore.selected?.id === m.id && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, letterSpacing: 0.5, flexShrink: 0 }}>使用中</span>}
+                        {m.builtin && m.needsKey && (
+                          <span style={{ fontFamily: t.fontMono, fontSize: 8, color: modelStore.builtinKeys?.[m.id] ? '#2a8c5c' : t.mute, flexShrink: 0 }}>
+                            {modelStore.builtinKeys?.[m.id] ? '已配置 Key' : '需配置 Key'}
+                          </span>
+                        )}
+                        <button type="button"
+                          onClick={() => m.builtin ? modelStore.hideBuiltin(m.id) : modelStore.removeModel(m.id)}
+                          style={{ border: `1px solid #dc2626`, background: 'transparent', cursor: 'pointer', color: '#dc2626', fontFamily: t.fontMono, fontSize: 9, padding: '3px 8px', letterSpacing: 0.5, flexShrink: 0 }}>
+                          {m.builtin ? '移除' : '删除'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {!showAddForm ? (
+                    <button type="button" onClick={() => setShowAddForm(true)}
+                      style={{ width: '100%', padding: '9px 0', border: `1px dashed ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, color: t.mute, cursor: 'pointer', textTransform: 'uppercase' }}>
+                      ＋ 新增模型
+                    </button>
+                  ) : (
+                    <div style={{ border: `1px solid ${t.rule}`, padding: '14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.ink, textTransform: 'uppercase' }}>新增自定义模型</div>
+                      {[{k:'name',l:'显示名称 *',ph:'GPT-4o Mini'},{k:'modelId',l:'Model ID *',ph:'gpt-4o-mini'},{k:'apiUrl',l:'API Base URL *',ph:'https://api.openai.com/v1'},{k:'provider',l:'Provider（选填）',ph:'Custom'}].map(({k,l,ph}) => (
+                        <div key={k}>
+                          <label style={lbl}>{l}</label>
+                          <input value={form[k]} onChange={e => setForm(f => ({...f,[k]:e.target.value}))} placeholder={ph} style={inp}/>
+                        </div>
+                      ))}
+                      <div>
+                        <label style={lbl}>API Key *</label>
+                        <div style={{ position: 'relative' }}>
+                          <input type={showKey ? 'text' : 'password'} value={form.apiKey}
+                            onChange={e => setForm(f => ({...f, apiKey: e.target.value}))}
+                            placeholder="sk-••••••••••••••••"
+                            style={{ ...inp, paddingRight: 48 }}/>
+                          <button type="button" onClick={() => setShowKey(s => !s)}
+                            style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: t.fontMono, fontSize: 8, color: t.mute }}>
+                            {showKey ? 'HIDE' : 'SHOW'}
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button type="button" onClick={() => { setShowAddForm(false); setForm(emptyForm); }}
+                          style={{ flex: 1, padding: '7px 0', border: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 9, color: t.mute, cursor: 'pointer', textTransform: 'uppercase' }}>取消</button>
+                        <button type="button" onClick={handleAddModel}
+                          disabled={!form.name || !form.modelId || !form.apiUrl || !form.apiKey}
+                          style={{ flex: 2, padding: '7px 0', border: `1px solid ${t.ink}`, background: t.ink, color: t.paper, fontFamily: t.fontMono, fontSize: 9, cursor: 'pointer', textTransform: 'uppercase', opacity: (!form.name||!form.modelId||!form.apiUrl||!form.apiKey) ? 0.4 : 1 }}>确认添加</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </React.Fragment>
+            )}
+
+            {tab === 'export' && (
+              <React.Fragment>
+                <div style={secHdr}>导出报告</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {EXPORT_FORMATS_SETTINGS.map(f => (
+                    <button key={f.k} type="button" onClick={() => setExportFmt(f.k)}
+                      style={{ padding: '7px 12px', border: `1.5px solid ${exportFmt === f.k ? t.ink : t.rule}`, background: exportFmt === f.k ? t.ink : 'transparent', color: exportFmt === f.k ? t.paper : t.ink, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, cursor: 'pointer', textTransform: 'uppercase' }}>
+                      {f.en}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute }}>
+                  {EXPORT_FORMATS_SETTINGS.find(f => f.k === exportFmt)?.cn || ''}
+                </div>
+                {exportSel.size > 1 && ['json','md'].includes(exportFmt) && (
+                  <div style={{ display: 'flex', gap: 0, border: `1px solid ${t.rule}`, alignSelf: 'flex-start' }}>
+                    {[{k:'combined',l:'合并为一份'},{k:'separate',l:'分别导出'}].map(m => (
+                      <button key={m.k} type="button" onClick={() => setExportMode(m.k)}
+                        style={{ padding: '5px 12px', border: 'none', borderRight: m.k==='combined' ? `1px solid ${t.rule}` : 'none', background: exportMode === m.k ? t.ink : 'transparent', color: exportMode === m.k ? t.paper : t.mute, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.5, cursor: 'pointer' }}>
+                        {m.l}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <ReportList sel={exportSel} setSel={setExportSel}/>
+                {exportStatus !== 'idle' && (
+                  <div style={{ padding: '8px 12px', background: exportStatus === 'error' ? '#fef2f2' : t.faint, border: `1px solid ${exportStatus === 'error' ? '#dc2626' : t.rule}`, fontFamily: t.fontMono, fontSize: 10, color: exportStatus === 'error' ? '#dc2626' : '#2a8c5c' }}>
+                    {exportStatus === 'loading' ? '处理中…' : exportStatusMsg}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Btn t={t} size="md" primary onClick={doExport} disabled={exportSel.size === 0 || exportStatus === 'loading'}>
+                    {exportStatus === 'loading' ? '处理中…' : `${['notion','link'].includes(exportFmt) ? '⎘ 复制' : '↓ 下载'} ${exportFmt.toUpperCase()}（${exportSel.size} 份）`}
+                  </Btn>
+                </div>
+              </React.Fragment>
+            )}
+
+            {tab === 'clear' && (
+              <React.Fragment>
+                <div style={secHdr}>清除本地数据</div>
+                <ReportList sel={clearSel} setSel={setClearSel}/>
+                {clearToast && (
+                  <div style={{ padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', fontFamily: t.fontMono, fontSize: 10, color: '#16a34a' }}>
+                    ✓ {clearToast}
+                  </div>
+                )}
+                {confirmingClear ? (
+                  <div style={{ padding: '14px 16px', border: '1.5px solid #dc2626', background: '#fef2f2' }}>
+                    <div style={{ fontFamily: t.fontCN, fontSize: 13, color: '#dc2626', fontWeight: 600, marginBottom: 10 }}>确认删除 {clearSel.size} 份报告？此操作不可撤销。</div>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button type="button" onClick={() => setConfirmingClear(false)}
+                        style={{ flex: 1, padding: '8px 0', border: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 9, color: t.mute, cursor: 'pointer', textTransform: 'uppercase' }}>取消</button>
+                      <button type="button" onClick={doConfirmClear}
+                        style={{ flex: 2, padding: '8px 0', border: '1.5px solid #dc2626', background: '#dc2626', color: '#fff', fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 1 }}>确认删除</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button type="button" onClick={doClear} disabled={clearSel.size === 0}
+                      style={{ padding: '10px 16px', border: `1.5px solid ${clearSel.size ? '#dc2626' : t.rule}`, background: clearSel.size ? '#dc2626' : 'transparent', color: clearSel.size ? '#fff' : t.mute, fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 1.3, cursor: clearSel.size ? 'pointer' : 'not-allowed', textTransform: 'uppercase', opacity: clearSel.size ? 1 : 0.5 }}>
+                      删除所选 {clearSel.size} 份报告
+                    </button>
+                  </div>
+                )}
+              </React.Fragment>
+            )}
+
+            {tab === 'permission' && (
+              <React.Fragment>
+                <div>
+                  <div style={secHdr}>当前角色</div>
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 22 }}>
+                    {ROLES.map(r => (
+                      <div key={r.k} onClick={() => saveRole(r.k)} style={{ flex: 1, padding: '12px 14px', cursor: 'pointer', border: `1.5px solid ${role === r.k ? r.color : t.rule}`, background: role === r.k ? r.color + '12' : 'transparent', transition: 'all 0.12s' }}>
+                        <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 12, color: role === r.k ? r.color : t.ink }}>{r.label}</div>
+                        <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, marginTop: 5, lineHeight: 1.5 }}>{r.desc}</div>
+                        {role === r.k && <div style={{ fontFamily: t.fontMono, fontSize: 8, color: r.color, marginTop: 6, letterSpacing: 0.5 }}>▶ 当前角色</div>}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ ...secHdr, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>权限对照表</span>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, letterSpacing: 0.5, textTransform: 'none', fontWeight: 400 }}>点击单元格可切换</span>
+                  </div>
+                  <div style={{ border: `1px solid ${t.rule}` }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 64px 64px 64px', padding: '7px 12px', background: t.faint, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute, textTransform: 'uppercase', borderBottom: `1px solid ${t.rule}` }}>
+                      <span>功能</span><span style={{ textAlign: 'center' }}>管理员</span><span style={{ textAlign: 'center' }}>编辑</span><span style={{ textAlign: 'center' }}>查看</span>
+                    </div>
+                    {PERM_TABLE.map((row, i) => (
+                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 64px 64px 64px', padding: '9px 12px', borderBottom: i < PERM_TABLE.length-1 ? `1px solid ${t.rule}` : 'none' }}>
+                        <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink }}>{row.feature}</span>
+                        {['admin','editor','viewer'].map(rk => {
+                          const on = permConfig[rk]?.[row.key] !== undefined ? permConfig[rk][row.key] : row[rk];
+                          return (
+                            <span key={rk} onClick={() => togglePerm(rk, row.key)}
+                              style={{ textAlign: 'center', fontSize: 13, cursor: 'pointer', color: on ? '#2a8c5c' : t.mute, userSelect: 'none' }}>
+                              {on ? '✓' : '—'}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 8, fontFamily: t.fontMono, fontSize: 8, color: t.mute }}>更改即时生效并保存到本地</div>
+                </div>
+              </React.Fragment>
+            )}
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UserMenu({ t, tweaks, setTweak, modelStore }) {
+  const [open, setOpen] = React.useState(false);
+  const [section, setSection] = React.useState(null);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  const tw = tweaks || {};
+  const [profile, setProfile] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_user_profile') || '{}'); } catch { return {}; }
+  });
+  const saveProfile = (p) => { setProfile(p); try { localStorage.setItem('atlas_user_profile', JSON.stringify(p)); } catch {} };
+  const initials = profile.displayName ? profile.displayName.slice(0,2).toUpperCase() : 'JL';
+  const [draftProfile, setDraftProfile] = React.useState({});
+  const [profileSaved, setProfileSaved] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setSection(null); } };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  React.useEffect(() => {
+    if (section === 'profile') { setDraftProfile({ ...profile }); setProfileSaved(false); }
+  }, [section]);
+
+  const toggleSec = (k) => setSection(s => s === k ? null : k);
+
+  const ACCENT_OPTS = [
+    { v:'red',         hex:'#e5251d' },
+    { v:'amber',       hex:'#c2540a' },
+    { v:'forest',      hex:'#1f6f44' },
+    { v:'cobalt',      hex:'#1d4ed8' },
+    { v:'rose',        hex:'#e11d48' },
+    { v:'violet',      hex:'#7c3aed' },
+    { v:'teal',        hex:'#0d9488' },
+    { v:'gold',        hex:'#b45309' },
+    { v:'grad_sunset', gradient:'linear-gradient(135deg, #f97316, #e11d48)' },
+    { v:'grad_aurora', gradient:'linear-gradient(135deg, #0d9488, #7c3aed)' },
+    { v:'grad_ocean',  gradient:'linear-gradient(135deg, #0ea5e9, #4338ca)' },
+  ];
+  const curAccent = tw.accent || 'red';
+  const curAccentOpt = ACCENT_OPTS.find(a => a.v === curAccent);
+  const accentLabel = curAccent.replace('grad_','').toUpperCase();
+  const accentKind = curAccentOpt?.gradient ? 'GRADIENT' : 'SOLID';
+
+  const MRow = ({ label, sub, isOpen, onClick, arrow }) => (
+    <div onClick={onClick} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 16px', cursor:'pointer', background: isOpen ? t.faint : 'transparent', userSelect:'none' }}>
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontFamily:'Noto Sans SC', fontSize:12, fontWeight:600, color:t.ink }}>{label}</div>
+        {sub && <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
+      </div>
+      {isOpen !== undefined && !arrow && <span style={{ fontFamily:t.fontMono, fontSize:8, color:t.mute, flexShrink:0 }}>{isOpen ? '▲' : '▼'}</span>}
+      {arrow && <span style={{ fontFamily:t.fontMono, fontSize:11, color:t.mute, flexShrink:0 }}>›</span>}
+    </div>
+  );
+
+  return (
+    <div ref={ref} style={{ position:'relative', userSelect:'none', flexShrink:0 }}>
+      <div onClick={() => { setOpen(o => !o); if (open) setSection(null); }} style={{
+        width:30, height:30, borderRadius:'50%',
+        border:`1.5px solid ${open ? t.accent : t.ink}`,
+        background: open ? t.accentGradient || t.accent : t.paper, color: open ? t.paper : t.ink,
+        fontFamily:t.fontDisplay, fontWeight:800, fontSize:10,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        cursor:'pointer', overflow:'hidden', transition:'all 0.15s',
+      }}>
+        {profile.avatarUrl ? <img src={profile.avatarUrl} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : initials}
+      </div>
+
+      {open && (
+        <div style={{ position:'absolute', top:38, right:0, width:264, background:t.paper, border:`1.5px solid ${t.ink}`, boxShadow:`3px 3px 0 rgba(0,0,0,0.12)`, zIndex:9999 }}>
+          <div style={{ padding:'12px 16px 10px', borderBottom:`1px solid ${t.rule}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:34, height:34, borderRadius:'50%', background:t.accentGradient||t.accent, color:t.paper, fontFamily:t.fontDisplay, fontWeight:800, fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0 }}>
+                {profile.avatarUrl ? <img src={profile.avatarUrl} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : initials}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontFamily:t.fontDisplay, fontWeight:800, fontSize:13, color:t.ink }}>{profile.displayName || 'Atlas User'}</div>
+                <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{profile.email || 'lvhaocheng0726@gmail.com'}</div>
+              </div>
+            </div>
+          </div>
+          <div style={{ padding:'4px 0' }}>
+            <MRow label="外观偏好" sub={`${tw.theme === 'cream' ? '浅色' : '深色'} · ${accentLabel}`} isOpen={section==='appearance'} onClick={() => toggleSec('appearance')}/>
+            {section === 'appearance' && (
+              <div style={{ padding:'10px 16px 14px', background:t.faint, borderTop:`1px solid ${t.rule}` }}>
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:5 }}>THEME</div>
+                  <div style={{ display:'flex', gap:6 }}>
+                    {[{v:'cream',label:'浅色'},{v:'slate',label:'深色'}].map(opt => (
+                      <div key={opt.v} onClick={() => setTweak && setTweak('theme', opt.v)} style={{ flex:1, padding:'5px 0', textAlign:'center', cursor:'pointer', border:`1.5px solid ${tw.theme===opt.v ? t.accent : t.rule}`, background: tw.theme===opt.v ? t.accent : 'transparent', color: tw.theme===opt.v ? t.paper : t.ink, fontFamily:t.fontDisplay, fontSize:9, fontWeight:700, letterSpacing:0.8 }}>{opt.label}</div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:6 }}>ACCENT COLOR</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:5 }}>
+                    {ACCENT_OPTS.map(a => (
+                      <div key={a.v} onClick={() => setTweak && setTweak('accent', a.v)} style={{ height:22, background: a.gradient || a.hex, cursor:'pointer', borderRadius:3, border: curAccent === a.v ? `2.5px solid ${t.ink}` : '2.5px solid transparent', transition:'border 0.1s', boxSizing:'border-box' }}/>
+                    ))}
+                  </div>
+                  <div style={{ fontFamily:t.fontMono, fontSize:8, color:t.mute, marginTop:5, letterSpacing:0.8 }}>{accentLabel} · {accentKind}</div>
+                </div>
+              </div>
+            )}
+            <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
+            <MRow label="编辑资料" sub={profile.displayName || 'Atlas User'} isOpen={section==='profile'} onClick={() => toggleSec('profile')}/>
+            {section === 'profile' && (
+              <div style={{ padding:'10px 16px 14px', background:t.faint, borderTop:`1px solid ${t.rule}` }}>
+                {[{label:'显示名称',key:'displayName',ph:'Atlas User',mono:false},{label:'邮箱',key:'email',ph:'user@example.com',mono:true}].map(({label,key,ph,mono}) => (
+                  <div key={key} style={{ marginBottom:8 }}>
+                    <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:3 }}>{label.toUpperCase()}</div>
+                    <input value={draftProfile[key]||''} onChange={e => setDraftProfile(p => ({...p,[key]:e.target.value}))} placeholder={ph}
+                      style={{ width:'100%', padding:'5px 8px', fontFamily: mono ? t.fontMono : 'Noto Sans SC', fontSize:12, border:`1px solid ${t.rule}`, background:t.paper, color:t.ink, outline:'none', boxSizing:'border-box' }}/>
+                  </div>
+                ))}
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <button onClick={() => { saveProfile(draftProfile); setProfileSaved(true); setTimeout(() => setProfileSaved(false), 2000); }}
+                    style={{ padding:'5px 16px', background:t.ink, color:t.paper, border:'none', fontFamily:t.fontDisplay, fontWeight:700, fontSize:10, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>保存</button>
+                  {profileSaved && <span style={{ fontFamily:t.fontMono, fontSize:9, color:'#16a34a', letterSpacing:0.5 }}>已保存 ✓</span>}
+                </div>
+              </div>
+            )}
+            <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
+            <MRow label="设置" sub="模型 · 导出 · 权限" arrow onClick={() => { setOpen(false); setSection(null); setSettingsOpen(true); }}/>
+          </div>
+          <div style={{ borderTop:`1px solid ${t.rule}`, padding:'6px 16px', fontFamily:t.fontMono, fontSize:8, color:t.mute, letterSpacing:0.8 }}>ATLAS ESSAYS · VOL.04 · © 2026</div>
+        </div>
+      )}
+
+      {settingsOpen && <SettingsModal t={t} modelStore={modelStore} onClose={() => setSettingsOpen(false)}/>}
+    </div>
+  );
+}
+
+
+
+// ── Page footer: thin issue bar -----------------------------------------
+function IssueFooter({ t, page = '01', section = 'COVER', issue = 241 }) {
+  const cell = { whiteSpace: 'nowrap', flexShrink: 0 };
+  const dot = { ...cell, opacity: 0.5 };
+  return (
+    <div style={{
+      borderTop: `1px solid ${t.ink}`, background: t.paper,
+      padding: '0 36px', height: 32, flexShrink: 0,
+      display: 'flex', alignItems: 'center', gap: 14,
+      fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1, color: t.mute, textTransform: 'uppercase',
+      overflow: 'hidden',
+    }}>
+      <span style={cell}>PAGE {page}</span>
+      <span style={dot}>·</span>
+      <span style={cell}>{section}</span>
+      <span style={{ flex: 1 }}/>
+      <span style={cell}>Atlas v0.41</span>
+      <span style={dot}>·</span>
+      <span style={cell}>An essay engine</span>
+      <span style={{ flex: 1 }}/>
+      <span style={cell}>ISSUE № {issue}</span>
+      <span style={dot}>·</span>
+      <span style={cell}>2026·MAY</span>
+    </div>
+  );
+}
+
+// ── Small primitives ----------------------------------------------------
+
+function LiveDot({ size = 8, color }) {
+  return (
+    <span style={{
+      display: 'inline-block', width: size, height: size, background: color || '#e5251d',
+      borderRadius: size, flexShrink: 0, position: 'relative',
+      boxShadow: `0 0 0 0 ${color || '#e5251d'}`, animation: 'essay-pulse 1.6s ease-out infinite',
+    }}/>
+  );
+}
+
+function Tag({ children, t, color, bg, accent = false, filled = false, style = {} }) {
+  const fg = accent ? t.accent : (color || t.ink);
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+      fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, textTransform: 'uppercase',
+      padding: '3px 7px', border: filled ? 'none' : `1px solid ${fg}`,
+      background: filled ? fg : (bg || 'transparent'),
+      color: filled ? t.paper : fg, lineHeight: 1,
+      ...style,
+    }}>{children}</span>
+  );
+}
+
+function Btn({ children, t, primary = false, accent = false, size = 'md', onClick, disabled, style = {} }) {
+  const sizes = {
+    xs: { p: '5px 9px',  f: 9 },
+    sm: { p: '7px 12px', f: 10 },
+    md: { p: '10px 16px', f: 11 },
+    lg: { p: '14px 22px', f: 13 },
+  }[size];
+  const fg = accent ? t.accent : t.ink;
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+        padding: sizes.p, fontSize: sizes.f,
+        fontFamily: t.fontDisplay, fontWeight: 700, letterSpacing: 1.3, textTransform: 'uppercase',
+        border: `1.5px solid ${fg}`,
+        background: primary ? fg : t.paper,
+        color: primary ? t.paper : fg,
+        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+        userSelect: 'none', transition: 'background 0.12s, color 0.12s, transform 0.08s',
+        ...style,
+      }}
+      onMouseDown={e => { if (!disabled) e.currentTarget.style.transform = 'translateY(1px)'; }}
+      onMouseUp={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+    >{children}</button>
+  );
+}
+
+function Hairline({ t, color, vertical = false, opacity = 1 }) {
+  return vertical
+    ? <span style={{ width: 1, alignSelf: 'stretch', background: color || t.rule, opacity }}/>
+    : <span style={{ height: 1, width: '100%', background: color || t.rule, opacity }}/>;
+}
+
+function Sup({ n, t, color }) {
+  return (
+    <sup style={{
+      color: color || t.accent, fontFamily: t.fontMono, fontSize: 10,
+      padding: '0 1px', fontWeight: 700,
+    }}>[{n}]</sup>
+  );
+}
+
+// Big bilingual head — EN kicker over CN title (or just EN)
+function BilingualHead({ en, cn, t, size = 'lg', emphasis = '' }) {
+  const sizes = {
+    xs:  { en: 10, cn: 14, gap: 4 },
+    sm:  { en: 11, cn: 18, gap: 4 },
+    md:  { en: 12, cn: 26, gap: 6 },
+    lg:  { en: 13, cn: 38, gap: 8 },
+    xl:  { en: 14, cn: 52, gap: 10 },
+    xxl: { en: 16, cn: 68, gap: 14 },
+  }[size];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: sizes.gap }}>
+      {en && (
+        <div style={{
+          fontFamily: t.fontDisplay, fontWeight: 800, fontSize: sizes.en,
+          letterSpacing: 1.6, textTransform: 'uppercase', color: t.ink,
+        }}>{en}</div>
+      )}
+      {cn && (
+        <div style={{
+          fontFamily: t.fontCN, fontWeight: 800, fontSize: sizes.cn,
+          lineHeight: 1.05, letterSpacing: -0.5, color: t.ink,
+          textWrap: 'balance', wordBreak: 'keep-all',
+        }}>{cn}</div>
+      )}
+      {emphasis && (
+        <div style={{
+          fontFamily: t.fontSerif, fontStyle: 'italic', fontSize: sizes.cn * 0.45,
+          color: t.mute, letterSpacing: 0,
+        }}>{emphasis}</div>
+      )}
+    </div>
+  );
+}
+
+// Metric pull-out: huge number + caption
+function Metric({ value, en, cn, t, accent = false, big = false }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{
+        fontFamily: t.fontDisplay, fontWeight: 800,
+        fontSize: big ? 48 : 32, lineHeight: 0.95, letterSpacing: -1.4,
+        color: accent ? t.accent : t.ink,
+      }}>{value}</span>
+      <span style={{
+        fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, textTransform: 'uppercase', color: t.mute,
+      }}>{en} · {cn}</span>
+    </div>
+  );
+}
+
+// Pull quote — italic serif emphasis block
+function PullQuote({ children, t, attribution }) {
+  return (
+    <figure style={{ margin: '8px 0', padding: '20px 0', borderTop: `1px solid ${t.ink}`, borderBottom: `1px solid ${t.ink}` }}>
+      <blockquote style={{
+        margin: 0, fontFamily: t.fontSerif, fontStyle: 'italic',
+        fontSize: 26, lineHeight: 1.3, color: t.ink, letterSpacing: -0.3,
+      }}>“{children}”</blockquote>
+      {attribution && (
+        <figcaption style={{
+          marginTop: 10, fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1.2,
+          color: t.mute, textTransform: 'uppercase',
+        }}>— {attribution}</figcaption>
+      )}
+    </figure>
+  );
+}
+
+// Figure placeholder — diagonal hatched rect with caption
+function Figure({ t, label, caption, height = 200, type = 'chart' }) {
+  return (
+    <figure style={{ margin: '12px 0' }}>
+      <div style={{
+        width: '100%', height, border: `1px solid ${t.ink}`, position: 'relative',
+        background: type === 'chart'
+          ? `repeating-linear-gradient(135deg, ${t.faint} 0 6px, transparent 6px 12px), ${t.cardOn}`
+          : t.cardOn,
+        overflow: 'hidden',
+      }}>
+        {type === 'chart' && <FigureChart t={t}/>}
+        {type === 'image' && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: t.fontMono, fontSize: 11, color: t.mute, letterSpacing: 1, textTransform: 'uppercase',
+          }}>◇ Image · {label}</div>
+        )}
+        <span style={{
+          position: 'absolute', top: 8, left: 10,
+          fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.2,
+        }}>{label}</span>
+      </div>
+      {caption && (
+        <figcaption style={{
+          marginTop: 6, fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1,
+          color: t.mute, textTransform: 'uppercase',
+        }}>{caption}</figcaption>
+      )}
+    </figure>
+  );
+}
+
+// Sample bar chart drawn inside a Figure
+function FigureChart({ t }) {
+  const bars = [
+    { label: '10万以下', v: 8 },
+    { label: '10-15万', v: 22 },
+    { label: '15-20万', v: 38 },
+    { label: '20-30万', v: 62, hi: true },
+    { label: '30-50万', v: 28 },
+    { label: '50万以上', v: 12 },
+  ];
+  const max = 70;
+  return (
+    <svg viewBox="0 0 600 200" preserveAspectRatio="none"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+      <g transform="translate(60, 20)">
+        {/* y-axis ticks */}
+        {[0, 25, 50, 75].map(y => (
+          <g key={y}>
+            <line x1={-4} x2={540} y1={140 - (y / max) * 130} y2={140 - (y / max) * 130}
+              stroke={t.rule} strokeWidth="0.5" strokeDasharray="2 3"/>
+            <text x={-8} y={144 - (y / max) * 130} textAnchor="end"
+              fontFamily={t.fontMono} fontSize="9" fill={t.mute}>{y}</text>
+          </g>
+        ))}
+        {/* baseline */}
+        <line x1={0} x2={540} y1={140} y2={140} stroke={t.ink} strokeWidth="1"/>
+        {bars.map((b, i) => {
+          const x = i * 90 + 10;
+          const w = 70;
+          const h = (b.v / max) * 130;
+          return (
+            <g key={b.label}>
+              <rect x={x} y={140 - h} width={w} height={h}
+                fill={b.hi ? t.accent : t.ink}/>
+              <text x={x + w / 2} y={156} textAnchor="middle"
+                fontFamily={t.fontCN} fontSize="11" fill={t.ink}>{b.label}</text>
+              <text x={x + w / 2} y={140 - h - 6} textAnchor="middle"
+                fontFamily={t.fontMono} fontSize="10" fontWeight="700" fill={b.hi ? t.accent : t.ink}>{b.v}%</text>
+            </g>
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+
+// Single marginalia entry — used in running screen
+function MarginNote({ t, tag, cn, time, state = 'done', children }) {
+  const live = state === 'live';
+  const queued = state === 'queued';
+  const ruleColor = live ? t.accent : (queued ? t.muteSoft : t.ink);
+  return (
+    <div style={{
+      paddingLeft: 12, borderLeft: `2px solid ${ruleColor}`,
+      display: 'flex', flexDirection: 'column', gap: 4,
+      opacity: queued ? 0.5 : (state === 'done' && !live ? 0.72 : 1),
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.1, fontWeight: 700, color: live ? t.accent : t.ink }}>{tag}</span>
+        {live && <LiveDot size={5} color={t.accent}/>}
+        <span style={{ flex: 1 }}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{time}</span>
+      </div>
+      <span style={{ fontFamily: t.fontCN, fontSize: 11, lineHeight: 1.5, color: t.inkSoft }}>{cn}</span>
+      {children}
+    </div>
+  );
+}
+
+Object.assign(window, {
+  essayTokens, TopBar, IssueFooter, UserMenu,
+  LiveDot, Tag, Btn, Hairline, Sup,
+  BilingualHead, Metric, PullQuote, Figure, FigureChart, MarginNote,
+  NAV_ITEMS,
+});
+// Home — magazine cover + working prompt input. The first thing users see.
+
+const SAMPLE_PROMPTS = [
+  '梳理 2025 年 Q1 国内咖啡赛道的融资动态，重点说说 Manner、库迪和挪瓦的新动向，给一份 2000 字的内部分析。',
+  '用过去三个季度的销售数据，分析华南区不同品类的增长情况，输出 1,500 字的内部分析报告。',
+  '帮我写一份关于"远程办公对一线城市租房市场影响"的研究报告，要有数据支撑。',
+  '把这周团队的进展整理成一份周报，重点突出新启动的客户合作项目。',
+];
+
+const STARTERS = [
+  {
+    num: 'I.',
+    en: 'Industry Scan',
+    cn: '调研一个我没听过的赛道',
+    sub: '我先扫一圈公开报道、社群讨论和融资数据，输出洞察。',
+    minutes: '8-12 min',
+    tag: 'RESEARCH',
+    prompt: `调研「家用清洁机器人」赛道，输出一篇 2,200 字的内部分析报告，严格按以下四节结构展开：
+
+第一节 · 核心结论（TL;DR）
+开头一句导语，直接点明赛道最重要的结构性变化（不超过 30 字）。随后两段：第一段给出市场规模与增速数据；第二段说明头部格局的分化现状，谁在领跑、谁在掉队。
+
+第二节 · 主要玩家分析
+分析石头科技、追觅、科沃斯三家各自的竞争策略与差异化路径。穿插一段行业内部人士视角的引述（用引号 + 来源标注），说明价格带逻辑：旗舰 8000 元以上 / 中端 2000–5000 元 / 白牌 1500 元以下各自的生存法则。
+
+第三节 · 用户在说什么
+基于小红书与电商评论提炼用户洞察：高频好评关键词、高频差评关键词（各列 3 个）；指出一个被品牌方低估的细分人群，说明其需求特征与对应价格带。
+
+第四节 · 接下来看什么
+列出两个值得持续追踪的行业信号，各用一段展开；最后一段简要提及海外机会。
+
+写作要求：分析性语气，结论先行，数据支撑，观点鲜明。重要数据用 §1 §2 §3 标注脚注编号。直接输出报告正文，不要输出标题、前言或任何说明文字。`,
+    _reportData: {
+      meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '2,240', sources: 8, reading: '5 min', category: 'INDUSTRY · 行业研究', titleEn: 'Bots, brushes, and the bathroom.', titleCn: '机器人、刷头与浴室', subtitle: '家用清洁机器人赛道 2025 全景速记' },
+      metrics: [
+        { value: '¥312亿', en: 'MARKET', cn: '2025年市场规模', accent: false },
+        { value: '+29%',   en: 'YOY',    cn: '同比增长',       accent: true },
+        { value: '3层',    en: 'TIERS',  cn: '明显价格分层',   accent: false },
+        { value: '22%',    en: 'PENET',  cn: '家庭渗透率',     accent: false },
+      ],
+      sections: [
+        { id: 's1', num: '01', en: 'TL;DR', cn: '核心结论', blocks: [
+          { kind: 'lede', text: '扫地机器人不再是终点——清洁赛道正在从「一个产品」变成「一套系统」，谁能做到扫、拖、洗、烘一体，谁才真正拿到下一个增长周期的门票。' },
+          { kind: 'p', text: '2025 年国内家用清洁机器人市场预计突破 312 亿元§1，同比增长约 29%。但增速的背后，结构性分化已经出现：头部三家（石头、追觅、科沃斯）合计份额超过 73%，中腰部品牌正面临被清出市场的压力。' },
+          { kind: 'p', text: '用户不再为单一功能付费。小红书上的高互动帖子里，「全能基站」「自清洁」「热风烘干」是出现频率最高的三个词——这意味着产品定义权从「扫地」转移到了「免维护」。§2' },
+        ]},
+        { id: 's2', num: '02', en: 'The players', cn: '谁在场', blocks: [
+          { kind: 'p', text: '石头科技依然是技术端最被认可的玩家——S8 MaxV Ultra 的避障算法和自动倒尘被核心用户反复提及§3。追觅则在旗舰机型之外，把价格下探到 2,000–3,000 元区间，试图同时打高端和中高端。科沃斯的策略有所不同：它在「商用清洁」上加大投入，用 ToB 的稳定毛利补贴 ToC 的价格战。' },
+          { kind: 'quote', text: '这个品类现在的核心矛盾不是「扫不干净」，而是「用户不愿意自己洗拖布」——谁解决了这个问题，谁就赢了。', by: '某头部品牌产品总监 · 闭门沟通' },
+          { kind: 'p', text: '价格带上，8,000 元以上的旗舰区间是各家必争之地，因为这里的用户对品牌忠诚度高、口碑效应强、溢价空间充足。1,500 元以下则几乎成了白牌和代工品牌的残酷竞技场，毛利率普遍低于 12%§4。' },
+        ]},
+        { id: 's3', num: '03', en: 'What users say', cn: '用户在说什么', blocks: [
+          { kind: 'p', text: '分析 218 条小红书高互动内容后，几个结论浮出水面：「买了后悔」和「买了推荐」的比例几乎都在 30% 以上——说明品类的信息不对称问题依然严重。「噪音大」和「识图率差」是最高频的负面关键词，排在「清洁不干净」之前。' },
+          { kind: 'figure', label: 'Fig. 1 · 用户好评 / 差评关键词分布', caption: '数据来源：小红书讨论抓取 · 2025 Q1 218 条高互动内容' },
+          { kind: 'p', text: '租房群体是被低估的增量市场。这部分用户倾向于购买 2,000–3,500 元区间的产品——既不愿在「不属于自己的空间」投入太多，又真实需要清洁力。追觅和石头的子品牌都在悄悄开发针对这个群体的型号。§5' },
+        ]},
+        { id: 's4', num: '04', en: 'What to watch', cn: '接下来看什么', blocks: [
+          { kind: 'p', text: '两个值得持续追踪的信号：其一，全能基站的「养护服务」订阅化——石头今年开始试验「免维护套餐」，如果续费率超过 40%，意味着软件服务将成为新的利润层。其二，AI 视觉在家庭场景的落地速度，将直接决定下一代旗舰机型的定价权。' },
+          { kind: 'p', text: '海外市场是另一条没有被充分讨论的增长线——石头在欧洲的增速已连续三个季度超过 45%，价格还能比国内高 20–30%。追觅的东南亚布局刚刚起步，竞争格局远比国内宽松。§6' },
+        ]},
+      ],
+      refs: [
+        { n: '[1]', src: 'IDC', title: '2025 中国家用清洁机器人市场追踪', url: 'idc.com', date: '2025.03.15' },
+        { n: '[2]', src: '小红书', title: '清洁机器人用户讨论分析 · Q1', url: 'xiaohongshu.com', date: '2025.04.10' },
+        { n: '[3]', src: '36 氪', title: '石头科技产品策略深度解析', url: '36kr.com', date: '2025.03.28' },
+        { n: '[4]', src: '国信证券', title: '清洁电器行业深度报告', url: 'guosen.com.cn', date: '2025.02.28' },
+        { n: '[5]', src: '追觅科技', title: '2025 年品牌策略投资者说明', url: 'dreame.com', date: '2025.04.20' },
+        { n: '[6]', src: '石头科技', title: '2025 Q1 财报 & 海外业务说明', url: 'roborock.com', date: '2025.04.30' },
+      ],
+    },
+  },
+  {
+    num: 'II.',
+    en: 'Data Analysis',
+    cn: '把这堆数据读懂',
+    sub: '上传或连接表格，我做清洗、聚类和洞察，附图。',
+    minutes: '5-8 min',
+    tag: 'DATA',
+    prompt: `分析过去四个季度的门店销售数据，按城市等级分群，输出约 1,400 字的内部分析报告，严格按以下四节结构展开：
+
+第一节 · 核心结论（TL;DR）
+开头一句导语，直接点明增长分布的关键事实（如"一线扛大旗，三四线在吃老本"）。随后说明：整体增速与各城市等级实际增速的落差；新店效应 vs 老店有机增长的区别。
+
+第二节 · 城市等级分层分析
+逐层分析一线城市（客单价变化、增速驱动因素）、新一线城市（成都 / 杭州 / 武汉等，潜力与现状）、三四线城市（增长天花板在哪里）；穿插一段来自运营层面的内部判断引述（用引号 + 来源标注）。
+
+第三节 · 季节性规律
+分析 Q1–Q4 各季度节奏：哪个季度是峰值、淡旺季效应是否在减弱；用同比数据对比说明趋势。
+
+第四节 · 建议与行动项
+三条具体可执行的业务建议，每条一句话，附明确方向（谁做、做什么、大概时间节点）。
+
+写作要求：数据分析性语气，结论先行，不模棱两可。重要数据用 §1 §2 §3 标注。直接输出报告正文，不要输出标题。`,
+    _reportData: {
+      meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '1,380', sources: 4, reading: '3 min', category: 'DATA · 数据分析', titleEn: 'The stores that didn\'t blink.', titleCn: '没有眨眼的门店', subtitle: '过去四季度门店销售数据分群分析' },
+      metrics: [
+        { value: '+18%',    en: 'OVERALL', cn: '整体销售增长',   accent: false },
+        { value: '+34%',    en: 'TIER-1',  cn: '一线城市增速',   accent: true },
+        { value: '+3.2%',   en: 'TIER-3',  cn: '三四线城市增速', accent: false },
+        { value: 'Q4',      en: 'PEAK',    cn: '年度峰值季度',   accent: false },
+      ],
+      sections: [
+        { id: 's1', num: '01', en: 'TL;DR', cn: '核心结论', blocks: [
+          { kind: 'lede', text: '增长不是均匀分布的——一线城市的旗舰门店扛起了 62% 的总增量，三四线门店同比持平，事实上是在靠口碑存活。' },
+          { kind: 'p', text: '过去四个季度，公司整体销售额同比增长 18%§1。但拆开来看，北上广深旗舰店的增幅接近 34%，而三四线城市门店平均增速只有 3.2%——两类门店在同一张财报里共存，讲的却是完全不同的故事。' },
+          { kind: 'p', text: '新店效应是另一个影响因素。Q3 和 Q4 新开的 12 家门店贡献了整体增长的 21%——剥离新店后，老店的有机增长约在 14% 左右，这个数字其实相当健康。§2' },
+        ]},
+        { id: 's2', num: '02', en: 'City-tier breakdown', cn: '城市分层分析', blocks: [
+          { kind: 'p', text: '一线城市的门店单均产出最高，但增速的来源耐人寻味——不是客流增长，而是客单价提升。Q4 的客单价同比提升了 11.2%，主要由新品和组合套餐拉动。这说明一线用户的消费升级意愿仍然强烈，产品策略的边际效果好。§3' },
+          { kind: 'quote', text: '三四线门店最大的问题不是不赚钱，而是增长上限太低——本地客群基本盘稳固，但向上拓展的空间几乎没有。', by: '区域运营负责人 · 内部季度总结' },
+          { kind: 'p', text: '新一线城市（成都、杭州、武汉）是最值得重点关注的区域：增速 22%，介于一线和三四线之间，坪效和客单价的提升空间仍然充足。Q1 有两家新一线门店的月均销售额首次超过了某些一线旗舰店。' },
+        ]},
+        { id: 's3', num: '03', en: 'Seasonality', cn: '季节性规律', blocks: [
+          { kind: 'figure', label: 'Fig. 1 · 四季度销售趋势（按城市等级分组）', caption: '数据来源：内部销售数据库 · 近 16 个月滚动统计' },
+          { kind: 'p', text: 'Q4 是毫无疑义的峰值季度——所有城市等级的门店都表现正增长。但值得注意的是，Q1 的同比下滑幅度在缩小——去年 Q1 同比下滑了 8%，今年只有 3.1%，说明春节后的淡季效应正在弱化。§4' },
+        ]},
+        { id: 's4', num: '04', en: 'Recommendations', cn: '建议与行动项', blocks: [
+          { kind: 'p', text: '三条行动建议：第一，把新一线城市验证成功的产品组合策略迅速复制到其他城市；第二，三四线门店增加本地爆款和区域限定策略，减少统一 SKU 投放；第三，Q1 淡季效应减弱是积极信号，建议提前锁定 Q1 促销资源，争取连续两年缩小淡季缺口。' },
+        ]},
+      ],
+      refs: [
+        { n: '[1]', src: '内部数据库', title: '2024Q2–2025Q1 门店销售汇总', url: 'internal', date: '2025.04.30' },
+        { n: '[2]', src: '内部数据库', title: '新店 vs 老店增长对照分析', url: 'internal', date: '2025.04.30' },
+        { n: '[3]', src: '内部数据库', title: '客单价趋势及品类贡献报告', url: 'internal', date: '2025.04.30' },
+        { n: '[4]', src: '内部数据库', title: '季节性调整模型 · 月度滚动', url: 'internal', date: '2025.04.30' },
+      ],
+    },
+  },
+  {
+    num: 'III.',
+    en: 'Weekly Brief',
+    cn: '给老板写一份 10 分钟读完的周报',
+    sub: '我会自动整理上周日程、文档和项目进展。',
+    minutes: '2-4 min',
+    tag: 'INTERNAL',
+    prompt: `帮我写一份本周工作周报，约 1,000 字，严格按以下三节结构展开：
+
+第一节 · 本周进展
+开头一句导语，直接点明本周最重要的一件事（不超过 25 字）。随后分三块：1）客户 A 的合作进展——本周第几次沟通、对方态度出现了什么变化、卡点在哪里、下一步动作；2）上线的第一个功能——功能名称、上线范围、初步数据表现；3）上线的第二个功能——同上格式。
+
+第二节 · 本周遇到的问题
+具体描述问题：发生时间、影响范围（用户数）、根本原因。穿插一段来自内部复盘会议的关键判断（用引号 + 发言人 · 场合标注）。最后说明善后处理情况和受影响用户的补偿方案。
+
+第三节 · 下周计划
+三件事，每件一句话，格式：事项描述 + 时间节点 + 负责人。
+
+写作要求：内部报告风格，简洁直接，不废话，领导扫一遍就能抓住重点。重要事项来源或备注用 §1 §2 §3 标注。直接输出报告正文，不要输出标题。`,
+    _reportData: {
+      meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '980', sources: 3, reading: '2 min', category: 'INTERNAL · 内部报告', titleEn: 'Seven days. Three wins.', titleCn: '七天，三件事', subtitle: '本周工作总结与关键进展' },
+      metrics: [
+        { value: '3',    en: 'WINS',     cn: '重要进展', accent: true },
+        { value: '2',    en: 'FEATURES', cn: '功能上线', accent: false },
+        { value: '1',    en: 'BLOCKER',  cn: '待解决问题', accent: false },
+        { value: '下周一', en: 'NEXT',   cn: '关键节点', accent: false },
+      ],
+      sections: [
+        { id: 's1', num: '01', en: 'This week', cn: '本周进展', blocks: [
+          { kind: 'lede', text: '本周最大的突破不是产品——而是客户 A 终于松口，愿意进入合同审核阶段。这件事拖了六周，现在看到了终点。' },
+          { kind: 'p', text: '客户 A 合作进展：经过周三第 4 次沟通，对方采购负责人确认将合同提交法务部审核，预计 5 个工作日内反馈。双方在账期上仍有小分歧（我们希望 30 天，对方倾向 45 天），这一点在合同审核阶段还需要再谈。§1' },
+          { kind: 'p', text: '上线功能：本周完成了两个功能的灰度发布。第一个是报告导出功能（PDF / 图片），已在 200 名内测用户中开放，首日导出次数超预期 40%。第二个是数据源自动同步，连接了三个主要 API，目前运行稳定。§2' },
+        ]},
+        { id: 's2', num: '02', en: 'The problem', cn: '本周遇到的问题', blocks: [
+          { kind: 'p', text: '服务器在周四凌晨出现约 23 分钟的异常波动，影响了约 340 名用户的正常使用。原因已定位：数据源同步功能上线后，并发处理的队列配置有误，导致部分请求超时。技术团队已当天修复并优化了队列参数。' },
+          { kind: 'quote', text: '这次的问题不是偶发，是配置没有经过充分压测就上线了——下次新功能上线前，压测必须作为硬性门槛。', by: 'CTO · 周五内部复盘' },
+          { kind: 'p', text: '340 名受影响用户中，有 17 名通过客服渠道反馈了问题，已全部得到及时回复和补偿方案（延长会员 7 天）。受影响的企业客户中，无人提出合同层面的追责。§3' },
+        ]},
+        { id: 's3', num: '03', en: 'Next week', cn: '下周计划', blocks: [
+          { kind: 'p', text: '下周三件事：第一，跟进客户 A 合同，务必在周三前拿到法务反馈；第二，报告导出功能全量开放，同时启动「分享链接」功能的开发排期；第三，针对本周的服务器问题，完善压测流程并输出文档，下周五前提交技术委员会审阅。' },
+        ]},
+      ],
+      refs: [
+        { n: '[1]', src: 'CRM', title: '客户 A 沟通记录 · 本周', url: 'internal', date: '2025.05.21' },
+        { n: '[2]', src: '产品日志', title: 'v2.3.1 & v2.3.2 上线记录', url: 'internal', date: '2025.05.20' },
+        { n: '[3]', src: '客服系统', title: '周四故障用户反馈汇总', url: 'internal', date: '2025.05.22' },
+      ],
+    },
+  },
+  {
+    num: 'IV.',
+    en: 'Competitor Teardown',
+    cn: '拆一拆这个对手',
+    sub: '产品、定价、增长、舆情，四个角度做对比。',
+    minutes: '10-15 min',
+    tag: 'RESEARCH',
+    prompt: `对 Notion AI 和 ChatGPT for Teams 进行竞品对比分析，输出约 2,200 字的内部报告，严格按以下四节结构展开：
+
+第一节 · 核心结论（TL;DR）
+开头一句导语，直接点明两者的本质差异（不是功能差异，而是工作流哲学的不同）。随后：定价对比与综合 TCO 分析；各自最适合的团队类型一句话总结。
+
+第二节 · 产品功能对比
+Notion AI 的核心竞争力（上下文感知、工作区文档集成的优势与局限）；ChatGPT Teams 的核心竞争力（模型能力、灵活对话、多模态的优势与局限）；穿插一段真实用户使用体感的引述（用引号 + 来源标注），体现两种产品的日常使用感受差异。
+
+第三节 · 用户口碑与增长
+对比 G2 / Capterra 评分及成因；各自负面反馈集中在哪里（分别列出 2–3 个高频差评关键词）；增长数据与市场渗透趋势（可基于公开信息推算）。
+
+第四节 · 选择建议
+分场景给出明确的、有立场的选择建议（场景一：已重度使用 Notion；场景二：技术驱动的团队；场景三：重度 Office 365 用户）；最后点出第三个需要关注的变量。
+
+写作要求：分析性语气，观点鲜明，不模棱两可，有明确立场。重要数据与来源用 §1 §2 §3 标注。直接输出报告正文，不要输出标题。`,
+    _reportData: {
+      meta: { issue: '№ 241', date: '2026 · MAY · 27', words: '2,180', sources: 6, reading: '5 min', category: 'RESEARCH · 竞品研究', titleEn: 'The AI assistant wars, enterprise edition.', titleCn: 'AI 助手企业战', subtitle: 'Notion AI 与 ChatGPT for Teams 深度对比' },
+      metrics: [
+        { value: '$16/月', en: 'NOTION', cn: 'Notion AI 单席位', accent: false },
+        { value: '$25/月', en: 'TEAMS',  cn: 'ChatGPT Teams 单席位', accent: false },
+        { value: '文档流',  en: 'EDGE-N', cn: 'Notion AI 优势场景', accent: true },
+        { value: '对话流',  en: 'EDGE-C', cn: 'ChatGPT 优势场景', accent: false },
+      ],
+      sections: [
+        { id: 's1', num: '01', en: 'TL;DR', cn: '核心结论', blocks: [
+          { kind: 'lede', text: '这不是一场功能对比——而是两种完全不同的工作流哲学之间的碰撞。Notion AI 假设你的工作在文档里，ChatGPT for Teams 假设你的工作在对话里。' },
+          { kind: 'p', text: 'Notion AI 在文档处理、知识库问答和团队协作上有明显优势，特别是对于「写作密集型」团队（咨询、内容、法务、产品），ROI 更高。ChatGPT Teams 在代码辅助、即兴创作和多模态理解上更强，但它的「无状态对话」模式反而让很多用户觉得更自由。§1' },
+          { kind: 'p', text: '定价上，Notion AI 单席位 $16/月（需搭配 Notion 订阅），ChatGPT Teams 单席位 $25/月。综合 TCO 来看两者相差不大，关键在于团队现有工作流与哪个产品更契合。§2' },
+        ]},
+        { id: 's2', num: '02', en: 'Product features', cn: '产品功能', blocks: [
+          { kind: 'p', text: 'Notion AI 的核心竞争力在于「上下文感知」——它能直接引用你工作区里的文档、数据库和页面历史，回答质量和你积累的 Notion 内容强相关。这对于已经重度使用 Notion 的团队是显著优势，对于新用户则是一个陡峭的前提成本。§3' },
+          { kind: 'quote', text: '我们团队用 Notion AI 写周报只需要 10 分钟，因为它能直接拉上周的会议记录——但前提是我们已经把所有会议记录都存在 Notion 里了。', by: '某科技公司 PMO · 用户访谈' },
+          { kind: 'p', text: 'ChatGPT Teams 则更像「高级搜索 + 创作助手」的组合。它的优势在于模型能力本身——GPT-4o 在创意写作、代码生成和多语言理解上仍然是行业基准。团队版在此基础上增加了数据隔离、自定义 GPT 和更高的 token 上限。' },
+        ]},
+        { id: 's3', num: '03', en: 'User feedback', cn: '用户口碑', blocks: [
+          { kind: 'figure', label: 'Fig. 1 · G2 & Capterra 用户评分对比（满分 5 分）', caption: '数据来源：G2 · Capterra · 截至 2025 年 5 月，各取最近 200 条评价' },
+          { kind: 'p', text: 'G2 上 Notion AI 均分 4.4，ChatGPT Teams 均分 4.6。差距来自不同的负面反馈：Notion AI 的差评集中在「学习成本高」和「非 Notion 用户难以入门」，ChatGPT 的差评集中在「幻觉率偏高」和「价格贵」。两者的满意度在各自核心用户群里都很高。§4' },
+        ]},
+        { id: 's4', num: '04', en: 'Recommendation', cn: '选择建议', blocks: [
+          { kind: 'p', text: '选谁取决于你的团队现有工作流：如果团队已经在 Notion 上运转，选 Notion AI；如果需要一个独立的 AI 工作台、或者团队里有大量技术工作，ChatGPT Teams 的综合能力更强。两者都不建议作为「彻底替代人力」的工具，更适合做「加速器」。' },
+          { kind: 'p', text: '一个值得关注的变量：微软 Copilot 正在快速迭代，它在 Office 生态里的整合优势是 Notion 和 OpenAI 都很难复制的。如果你的公司重度依赖 Office 365，Copilot 可能才是最值得评测的选项。§5' },
+        ]},
+      ],
+      refs: [
+        { n: '[1]', src: 'Notion', title: 'Notion AI 产品功能页', url: 'notion.so/product/ai', date: '2025.05.01' },
+        { n: '[2]', src: 'OpenAI', title: 'ChatGPT for Teams 定价页', url: 'openai.com/chatgpt/team', date: '2025.05.01' },
+        { n: '[3]', src: 'G2', title: 'Notion AI 用户评价 · 2025 Q2', url: 'g2.com', date: '2025.05.10' },
+        { n: '[4]', src: 'Capterra', title: 'ChatGPT Teams 用户评价汇总', url: 'capterra.com', date: '2025.05.12' },
+        { n: '[5]', src: '36 氪', title: 'Microsoft Copilot 企业端进展', url: '36kr.com', date: '2025.04.22' },
+        { n: '[6]', src: '行业访谈', title: '6 位企业 IT 负责人工具评估访谈', url: 'internal', date: '2025.05.15' },
+      ],
+    },
+  },
+];
+
+function useCustomTemplates() {
+  const [templates, setTemplates] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_custom_templates') || '[]'); } catch { return []; }
+  });
+  const save = (tpl) => setTemplates(prev => {
+    const next = tpl.id ? prev.map(t => t.id === tpl.id ? tpl : t) : [...prev, { ...tpl, id: Date.now().toString() }];
+    try { localStorage.setItem('atlas_custom_templates', JSON.stringify(next)); } catch {}
+    return next;
+  });
+  const remove = (id) => setTemplates(prev => {
+    const next = prev.filter(t => t.id !== id);
+    try { localStorage.setItem('atlas_custom_templates', JSON.stringify(next)); } catch {}
+    return next;
+  });
+  return { templates, save, remove };
+}
+
+function TemplateEditor({ t, onSave, onClose, initial = null }) {
+  const ICONS = ['📊','📈','🔍','💡','📝','🗂','🏢','💰','🌐','⚡','🎯','📋'];
+  const TAG_OPTS = ['RESEARCH','DATA','STRATEGY','ANALYSIS','REPORT','CUSTOM'];
+  const [icon, setIcon]         = React.useState(initial?.icon    || '📝');
+  const [enName, setEnName]     = React.useState(initial?.en      || '');
+  const [cnName, setCnName]     = React.useState(initial?.cn      || '');
+  const [sub, setSub]           = React.useState(initial?.sub     || '');
+  const [tag, setTag]           = React.useState(initial?.tag     || 'CUSTOM');
+  const [minutes, setMinutes]   = React.useState(initial?.minutes || '3-5 min');
+  const [promptVal, setPromptVal] = React.useState(initial?.prompt || '');
+  const valid = enName.trim().length > 0 && promptVal.trim().length > 0;
+  const handleSave = () => { if (!valid) return; onSave({ ...initial, icon, en: enName.trim(), cn: cnName.trim(), sub: sub.trim(), tag, minutes, prompt: promptVal.trim() }); };
+
+  const lbl = { fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute, textTransform: 'uppercase', marginBottom: 5, display: 'block' };
+  const inp = { width: '100%', border: `1.5px solid ${t.rule}`, padding: '7px 10px', fontFamily: t.fontBody, fontSize: 13, color: t.ink, background: t.faint, outline: 'none', boxSizing: 'border-box' };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.38)', zIndex:9995, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={onClose}>
+      <div style={{ background:t.paper, border:`2px solid ${t.ink}`, boxShadow:`6px 6px 0 ${t.ink}`, width:560, maxWidth:'92vw', maxHeight:'90vh', overflow:'auto', padding:'32px 36px' }} onClick={e=>e.stopPropagation()}>
+
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24, borderBottom:`1px solid ${t.rule}`, paddingBottom:16 }}>
+          <div>
+            <div style={{ fontFamily:t.fontDisplay, fontWeight:800, fontSize:13, letterSpacing:1.6, textTransform:'uppercase' }}>{initial?.id ? 'Edit Template' : 'New Template'}</div>
+            <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, marginTop:3 }}>{initial?.id ? '编辑自定义模板' : '新建自定义模板'}</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:t.mute, lineHeight:1, padding:'0 4px' }}>×</button>
+        </div>
+
+        <div style={{ marginBottom:16 }}>
+          <span style={lbl}>Icon · 图标</span>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {ICONS.map(ic => (
+              <button key={ic} onClick={()=>setIcon(ic)} style={{ width:34, height:34, fontSize:17, cursor:'pointer', border: icon===ic ? `2px solid ${t.ink}` : `1.5px solid ${t.rule}`, background: icon===ic ? t.faint : t.paper, boxShadow: icon===ic ? `2px 2px 0 ${t.ink}` : 'none' }}>{ic}</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
+          <div>
+            <span style={lbl}>Template Name *</span>
+            <input value={enName} onChange={e=>setEnName(e.target.value)} placeholder="e.g. Competitor Scan" style={{...inp, borderColor: enName.trim() ? t.ink : t.rule}} maxLength={30}/>
+          </div>
+          <div>
+            <span style={lbl}>中文标题（可选）</span>
+            <input value={cnName} onChange={e=>setCnName(e.target.value)} placeholder="e.g. 竞品调研" style={inp} maxLength={20}/>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:16 }}>
+          <span style={lbl}>Subtitle · 副标题</span>
+          <input value={sub} onChange={e=>setSub(e.target.value)} placeholder="一句话描述这个模板的用途" style={inp} maxLength={50}/>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
+          <div>
+            <span style={lbl}>Tag · 标签</span>
+            <div style={{ display:'flex', border:`1.5px solid ${t.ink}` }}>
+              {TAG_OPTS.map((tg, i) => (
+                <button key={tg} onClick={()=>setTag(tg)} style={{ flex:1, padding:'5px 0', fontSize:7.5, fontFamily:t.fontMono, letterSpacing:0.5, border:'none', borderLeft: i===0?'none':`1px solid ${t.ink}`, background: tag===tg ? t.ink : t.paper, color: tag===tg ? t.paper : t.ink, cursor:'pointer' }}>{tg}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span style={lbl}>Est. Time · 预计用时</span>
+            <input value={minutes} onChange={e=>setMinutes(e.target.value)} placeholder="e.g. 5-8 min" style={inp} maxLength={15}/>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <span style={lbl}>Prompt · 提示词内容 *</span>
+          <textarea value={promptVal} onChange={e=>setPromptVal(e.target.value)}
+            placeholder="输入完整的提示词，点击模板卡片后会直接填入输入框…"
+            style={{...inp, height:150, resize:'vertical', lineHeight:1.6, borderColor: promptVal.trim() ? t.ink : t.rule}}/>
+        </div>
+
+        <div style={{ display:'flex', gap:10, justifyContent:'flex-end', paddingTop:16, borderTop:`1px solid ${t.rule}` }}>
+          <button onClick={onClose} style={{ padding:'8px 20px', fontFamily:t.fontMono, fontSize:10, letterSpacing:1.2, border:`1.5px solid ${t.rule}`, background:'transparent', color:t.mute, cursor:'pointer' }}>CANCEL</button>
+          <button onClick={handleSave} disabled={!valid} style={{ padding:'8px 22px', fontFamily:t.fontMono, fontSize:10, letterSpacing:1.2, border:`1.5px solid ${valid?t.ink:t.rule}`, background: valid?t.ink:'transparent', color: valid?t.paper:t.mute, cursor: valid?'pointer':'default', boxShadow: valid?`2px 2px 0 ${t.accent}`:'none' }}>SAVE TEMPLATE</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getAutoNote() {
+  try {
+    const reports = JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]');
+    const custom = JSON.parse(localStorage.getItem('atlas_custom_templates') || '[]');
+    const count = reports.length;
+    if (count === 0 && custom.length === 0) return null;
+    const tplUsage = {};
+    reports.forEach(r => { if (r.template) tplUsage[r.template] = (tplUsage[r.template] || 0) + 1; });
+    const top = Object.entries(tplUsage).sort((a, b) => b[1] - a[1])[0];
+    const parts = [];
+    if (count > 0) parts.push(`这一期你已生成 ${count} 篇报告${top ? `，最常调用「${top[0]}」模板` : ''}`);
+    if (custom.length > 0) parts.push(`另有 ${custom.length} 个自定义模板待用`);
+    return parts.join('；') + '。';
+  } catch { return null; }
+}
+
+function useEditorNote() {
+  const [note, setNote] = React.useState(() => {
+    try { return localStorage.getItem('atlas_editor_note') || ''; } catch { return ''; }
+  });
+  const save = (text) => {
+    setNote(text);
+    try {
+      if (text) localStorage.setItem('atlas_editor_note', text);
+      else localStorage.removeItem('atlas_editor_note');
+    } catch {}
+  };
+  return { note, save };
+}
+
+function useAINews() {
+  const cacheKey = `atlas_ai_news_${new Date().toISOString().slice(0,10)}`;
+  const [items, setItems] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(cacheKey) || '[]'); } catch { return []; }
+  });
+  const [loading, setLoading] = React.useState(false);
+  const getHost = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'hn'; } };
+  const translate = async (text) => {
+    try {
+      const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${encodeURIComponent(text)}`);
+      const d = await res.json();
+      return (d[0] || []).map(s => s?.[0] || '').join('').trim() || text;
+    } catch { return text; }
+  };
+
+  React.useEffect(() => {
+    if (items.length) return;
+    setLoading(true);
+    fetch('https://hn.algolia.com/api/v1/search_by_date?query=AI+LLM+OpenAI+Claude+Gemini+GPT&tags=story&hitsPerPage=30')
+      .then(r => r.json())
+      .then(async data => {
+        const raw = (data.hits || [])
+          .filter(h => h.title && (h.points || 0) >= 3 && h.url)
+          .slice(0, 20)
+          .map(h => ({ title: h.title, url: h.url, points: h.points, source: getHost(h.url) }));
+        const news = await Promise.all(raw.map(async h => ({ ...h, titleCN: await translate(h.title) })));
+        setItems(news);
+        try { localStorage.setItem(cacheKey, JSON.stringify(news)); } catch {}
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { items, loading };
+}
+
+function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
+  const editorial = density === 'editorial';
+  const headSize = editorial ? 'xxl' : 'xl';
+  const customTpls = useCustomTemplates();
+  const [editorOpen, setEditorOpen] = React.useState(false);
+  const [editingTemplate, setEditingTemplate] = React.useState(null);
+  const [hoveredCustomId, setHoveredCustomId] = React.useState(null);
+  const editorNote = useEditorNote();
+  const [noteEditing, setNoteEditing] = React.useState(false);
+  const [noteDraft, setNoteDraft] = React.useState('');
+  const autoNote = getAutoNote();
+  const displayNote = editorNote.note || autoNote || '这一期，我学会了更好地引用脚注。写完后告诉我"再细一些"，我会重写。';
+  const aiNews = useAINews();
+  const [newsIdx, setNewsIdx] = React.useState(0);
+  React.useEffect(() => {
+    if (!aiNews.items.length) return;
+    const id = setInterval(() => setNewsIdx(i => (i + 1) % aiNews.items.length), 5000);
+    return () => clearInterval(id);
+  }, [aiNews.items.length]);
+  const [now] = React.useState(() => new Date());
+  const DAY_CN = ['日','一','二','三','四','五','六'];
+  const coverDate = `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`;
+
+  return (
+    <div style={{
+      flex: 1, background: t.paper, color: t.ink,
+      display: 'grid', gridTemplateColumns: '64px 1fr', minHeight: 0, overflow: 'auto',
+    }}>
+      {/* Left thin rail — vertical metadata */}
+      <div style={{
+        borderRight: `1px solid ${t.ink}`,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
+        padding: '28px 0', minHeight: 0,
+      }}>
+        <span style={{
+          fontFamily: t.fontMono, fontSize: 10, letterSpacing: 2,
+          writingMode: 'vertical-lr',
+          color: t.ink,
+        }}>VOL. 04 · № 241</span>
+        <span style={{
+          fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.8, color: t.mute,
+          writingMode: 'vertical-lr',
+        }}>报告智能体 · ATLAS</span>
+      </div>
+
+      {/* Cover area */}
+      <div style={{
+        padding: editorial ? '48px 72px 32px' : '32px 56px 28px',
+        display: 'flex', flexDirection: 'column', gap: editorial ? 36 : 24, minHeight: 0,
+      }}>
+        {/* Kicker row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <Tag t={t} accent>◆ THE COVER STORY · 封面故事</Tag>
+          <span style={{ flex: 1, height: 1, background: t.ink }}/>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>{coverDate}</span>
+        </div>
+
+        {/* Headline */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <BilingualHead t={t} size={headSize}
+            en="Tell Atlas what to write."
+            cn={<>今天写点什么<span style={{ color: t.accent }}>报告</span>？</>}
+          />
+          <div style={{
+            fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 400,
+            fontSize: editorial ? 26 : 22, lineHeight: 1.35, color: t.mute,
+            letterSpacing: -0.3, maxWidth: 720,
+          }}>
+            An essay engine. Drop a brief, get back a piece you can actually file.
+          </div>
+        </div>
+
+        {/* Prompt input */}
+        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} modelStore={modelStore} toolbarStore={toolbarStore} onNavigateSources={onNavigateSources}/>
+
+        {/* AI news ticker */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', border: `1px solid ${t.ink}`, background: t.cardOn, minWidth: 0 }}>
+          <Tag t={t} accent>AI 动态</Tag>
+          {aiNews.loading ? (
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, flex: 1, letterSpacing: 0.5 }}>加载中…</span>
+          ) : aiNews.items.length > 0 ? (
+            <React.Fragment>
+              <a key={newsIdx} href={aiNews.items[newsIdx].url} target="_blank" rel="noreferrer"
+                style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', cursor: 'pointer' }}>
+                {aiNews.items[newsIdx].titleCN || aiNews.items[newsIdx].title}
+              </a>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0, letterSpacing: 0.3 }}>{aiNews.items[newsIdx].source}</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>{newsIdx + 1}/{aiNews.items.length}</span>
+            </React.Fragment>
+          ) : (
+            <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.mute, flex: 1 }}>{displayNote}</span>
+          )}
+        </div>
+
+        {/* Starters grid */}
+        <div>
+          <div style={{
+            display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 14,
+            borderTop: `1px solid ${t.ink}`, paddingTop: 12,
+          }}>
+            <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 12, letterSpacing: 1.6, textTransform: 'uppercase' }}>
+              Or pick a starter
+            </span>
+            <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute }}>从模板开始</span>
+            <span style={{ flex: 1, height: 1, background: t.rule }}/>
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
+              {String(STARTERS.length + customTpls.templates.length).padStart(2,'0')} entries
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0,
+            borderTop: `1px solid ${t.rule}`, borderLeft: `1px solid ${t.rule}`,
+          }}>
+            {/* ── built-in starters ── */}
+            {STARTERS.map((s) => (
+              <button key={s.num} type="button" onClick={() => setPrompt(s.prompt)}
+                style={{ borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}`, background:t.paper, padding:'18px 22px', textAlign:'left', display:'flex', flexDirection:'column', gap:6, cursor:'pointer', fontFamily:t.fontBody, color:t.ink, transition:'background 0.12s' }}
+                onMouseEnter={e=>e.currentTarget.style.background=t.faint}
+                onMouseLeave={e=>e.currentTarget.style.background=t.paper}
+              >
+                <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:4 }}>
+                  <span style={{ fontFamily:t.fontSerif, fontStyle:'italic', fontWeight:600, fontSize:22, color:t.accent, letterSpacing:-0.5, lineHeight:1 }}>{s.num}</span>
+                  <Tag t={t}>{s.tag}</Tag>
+                </div>
+                <div style={{ fontFamily:t.fontDisplay, fontWeight:700, fontSize:13, letterSpacing:0.5, textTransform:'uppercase' }}>{s.en}</div>
+                <div style={{ fontFamily:t.fontCN, fontSize:15, fontWeight:600, lineHeight:1.3 }}>{s.cn}</div>
+                <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, lineHeight:1.5 }}>{s.sub}</div>
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                  <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1 }}>{s.minutes}</span>
+                  <span style={{ flex:1 }}/>
+                  <span style={{ fontFamily:t.fontMono, fontSize:11, color:t.ink }}>↗</span>
+                </div>
+              </button>
+            ))}
+
+            {/* ── custom templates ── */}
+            {customTpls.templates.map((s) => (
+              <div key={s.id} style={{ position:'relative', borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}` }}
+                onMouseEnter={()=>setHoveredCustomId(s.id)}
+                onMouseLeave={()=>setHoveredCustomId(null)}
+              >
+                {/* card body — same layout as built-in starters */}
+                <button type="button" onClick={()=>setPrompt(s.prompt)}
+                  style={{ width:'100%', height:'100%', background: hoveredCustomId===s.id ? t.faint : t.paper, padding:'18px 22px', textAlign:'left', display:'flex', flexDirection:'column', gap:6, cursor:'pointer', fontFamily:t.fontBody, color:t.ink, transition:'background 0.12s', border:'none' }}
+                >
+                  {/* top row: icon left, tag right — mirrors built-in num/tag row */}
+                  <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:4 }}>
+                    <span style={{ fontFamily:t.fontSerif, fontStyle:'italic', fontWeight:600, fontSize:22, lineHeight:1, letterSpacing:-0.5 }}>{s.icon || '📝'}</span>
+                    <Tag t={t}>{s.tag || 'CUSTOM'}</Tag>
+                  </div>
+                  <div style={{ fontFamily:t.fontDisplay, fontWeight:700, fontSize:13, letterSpacing:0.5, textTransform:'uppercase' }}>{s.en}</div>
+                  {s.cn&&<div style={{ fontFamily:t.fontCN, fontSize:15, fontWeight:600, lineHeight:1.3 }}>{s.cn}</div>}
+                  {s.sub&&<div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, lineHeight:1.5 }}>{s.sub}</div>}
+                  <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                    <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1 }}>{s.minutes}</span>
+                    <span style={{ fontFamily:t.fontMono, fontSize:7.5, letterSpacing:1, color:t.accent, border:`1px solid ${t.accent}`, padding:'1px 4px', lineHeight:1.5 }}>CUSTOM</span>
+                    <span style={{ flex:1 }}/><span style={{ fontFamily:t.fontMono, fontSize:11, color:t.ink }}>↗</span>
+                  </div>
+                </button>
+                {/* edit / delete — only visible on hover */}
+                {hoveredCustomId===s.id&&(
+                  <div style={{ position:'absolute', top:10, right:10, display:'flex', gap:3 }} onClick={e=>e.stopPropagation()}>
+                    <button onClick={()=>{setEditingTemplate(s);setEditorOpen(true);}} title="编辑模板"
+                      style={{ width:22, height:22, border:`1px solid ${t.rule}`, background:t.paper, cursor:'pointer', fontSize:11, color:t.mute, display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>✎</button>
+                    <button onClick={()=>customTpls.remove(s.id)} title="删除模板"
+                      style={{ width:22, height:22, border:`1px solid ${t.rule}`, background:t.paper, cursor:'pointer', fontSize:13, color:t.mute, display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>×</button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* ── + add new template ── */}
+            <button type="button" onClick={()=>{setEditingTemplate(null);setEditorOpen(true);}}
+              style={{ borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}`, background:'transparent', padding:'18px 22px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', minHeight:130, border:'none', borderRight:`1px dashed ${t.rule}`, borderBottom:`1px dashed ${t.rule}`, outline:`1px dashed ${t.rule}` }}
+              onMouseEnter={e=>{e.currentTarget.style.background=t.faint;}}
+              onMouseLeave={e=>{e.currentTarget.style.background='transparent';}}
+            >
+              <span style={{ fontFamily:t.fontSerif, fontStyle:'italic', fontSize:28, color:t.rule, lineHeight:1 }}>+</span>
+              <span style={{ fontFamily:t.fontMono, fontSize:9, letterSpacing:1.5, color:t.mute, textTransform:'uppercase' }}>Add Template</span>
+              <span style={{ fontFamily:t.fontCN, fontSize:11, color:t.mute }}>自定义模板</span>
+            </button>
+          </div>
+
+          {/* template editor modal */}
+          {editorOpen&&(
+            <TemplateEditor t={t} initial={editingTemplate}
+              onSave={tpl=>{customTpls.save(tpl);setEditorOpen(false);setEditingTemplate(null);}}
+              onClose={()=>{setEditorOpen(false);setEditingTemplate(null);}}/>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Model Selector ─────────────────────────────────────────────────────
+
+const BUILTIN_MODELS = [
+  { id: 'claude-opus-4-7',           name: 'Opus 4.7',    provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
+  { id: 'claude-sonnet-4-6',         name: 'Sonnet 4.6',  provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5',   provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
+  { id: 'mimo-v2.5-pro',             name: 'MiMo V2.5 Pro', provider: 'Xiaomi', builtin: true, apiUrl: 'https://api.xiaomimimo.com/v1', needsKey: true },
+];
+const EFFORT_OPTIONS = ['Low', 'Medium', 'High', 'Max'];
+
+function useModelStore() {
+  const [customModels, setCustomModels] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_custom_models') || '[]'); } catch { return []; }
+  });
+  const [selectedId, setSelectedId] = React.useState(
+    () => localStorage.getItem('atlas_selected_model') || 'claude-sonnet-4-6'
+  );
+  // API keys + custom URLs for builtin models (keyed by model id)
+  const [builtinKeys, setBuiltinKeys] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_builtin_keys') || '{}'); } catch { return {}; }
+  });
+  const [builtinUrls, setBuiltinUrls] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_builtin_urls') || '{}'); } catch { return {}; }
+  });
+  const [effort, setEffort] = React.useState('High');
+  const [fastMode, setFastMode] = React.useState(false);
+  const [temperature, setTemperatureState] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem('atlas_temperature'));
+    return isNaN(v) ? 0.7 : v;
+  });
+  const [systemPromptExtra, setSystemPromptExtraState] = React.useState(
+    () => localStorage.getItem('atlas_system_prompt_extra') || ''
+  );
+  const [topP, setTopPState] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem('atlas_top_p'));
+    return isNaN(v) ? 1.0 : v;
+  });
+  const [frequencyPenalty, setFreqPenaltyState] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem('atlas_freq_penalty'));
+    return isNaN(v) ? 0 : v;
+  });
+  const [presencePenalty, setPresPenaltyState] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem('atlas_pres_penalty'));
+    return isNaN(v) ? 0 : v;
+  });
+  const [maxTokensOverride, setMaxTokensOverrideState] = React.useState(() => {
+    const v = parseInt(localStorage.getItem('atlas_max_tokens_override'), 10);
+    return isNaN(v) ? null : Math.min(v, 131072);
+  });
+
+  const [hiddenBuiltins, setHiddenBuiltins] = React.useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('atlas_hidden_builtins') || '[]')); } catch { return new Set(); }
+  });
+  const hideBuiltin = (id) => {
+    const next = new Set([...hiddenBuiltins, id]);
+    setHiddenBuiltins(next);
+    try { localStorage.setItem('atlas_hidden_builtins', JSON.stringify([...next])); } catch {}
+  };
+
+  // Merge builtin keys + custom URLs into allModels, excluding hidden builtins
+  const allModels = [
+    ...BUILTIN_MODELS.filter(m => !hiddenBuiltins.has(m.id)).map(m => m.needsKey
+      ? { ...m, apiKey: builtinKeys[m.id] || '', apiUrl: builtinUrls[m.id] || m.apiUrl }
+      : m),
+    ...customModels,
+  ];
+  const selected = allModels.find(m => m.id === selectedId) || allModels[1];
+
+  const selectModel = (id) => {
+    setSelectedId(id);
+    try { localStorage.setItem('atlas_selected_model', id); } catch {}
+  };
+  const setBuiltinKey = (id, key, url) => {
+    const updatedKeys = { ...builtinKeys, [id]: key };
+    setBuiltinKeys(updatedKeys);
+    try { localStorage.setItem('atlas_builtin_keys', JSON.stringify(updatedKeys)); } catch {}
+    if (url !== undefined) {
+      const updatedUrls = { ...builtinUrls, [id]: url };
+      setBuiltinUrls(updatedUrls);
+      try { localStorage.setItem('atlas_builtin_urls', JSON.stringify(updatedUrls)); } catch {}
+    }
+  };
+  const addModel = (model) => {
+    const updated = [...customModels, model];
+    setCustomModels(updated);
+    try { localStorage.setItem('atlas_custom_models', JSON.stringify(updated)); } catch {}
+  };
+  const removeModel = (id) => {
+    const updated = customModels.filter(m => m.id !== id);
+    setCustomModels(updated);
+    try { localStorage.setItem('atlas_custom_models', JSON.stringify(updated)); } catch {}
+  };
+  const setTemperature = (v) => { setTemperatureState(v); try { localStorage.setItem('atlas_temperature', String(v)); } catch {} };
+  const setSystemPromptExtra = (v) => { setSystemPromptExtraState(v); try { localStorage.setItem('atlas_system_prompt_extra', v); } catch {} };
+  const setTopP = (v) => { setTopPState(v); try { localStorage.setItem('atlas_top_p', String(v)); } catch {} };
+  const setFrequencyPenalty = (v) => { setFreqPenaltyState(v); try { localStorage.setItem('atlas_freq_penalty', String(v)); } catch {} };
+  const setPresencePenalty = (v) => { setPresPenaltyState(v); try { localStorage.setItem('atlas_pres_penalty', String(v)); } catch {} };
+  const setMaxTokensOverride = (v) => {
+    setMaxTokensOverrideState(v);
+    try { v !== null ? localStorage.setItem('atlas_max_tokens_override', String(v)) : localStorage.removeItem('atlas_max_tokens_override'); } catch {}
+  };
+  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, hideBuiltin, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra, topP, setTopP, frequencyPenalty, setFrequencyPenalty, presencePenalty, setPresencePenalty, maxTokensOverride, setMaxTokensOverride };
+}
+
+function ModelSelector({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const [showAddForm, setShowAddForm] = React.useState(false);
+  const emptyForm = { name: '', modelId: '', apiUrl: '', apiKey: '', provider: '' };
+  const [form, setForm] = React.useState(emptyForm);
+  const [showKey, setShowKey] = React.useState(false);
+  const popoverRef = React.useRef(null);
+  const triggerRef = React.useRef(null);
+
+  // Close on outside click
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target) &&
+          triggerRef.current && !triggerRef.current.contains(e.target)) {
+        setOpen(false); setShowAddForm(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // ⇧⌘I keyboard shortcut
+  React.useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'I') {
+        e.preventDefault(); setOpen(o => !o);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const handleAdd = () => {
+    if (!form.name || !form.modelId || !form.apiUrl || !form.apiKey) return;
+    store.addModel({ id: form.modelId, name: form.name, apiUrl: form.apiUrl, apiKey: form.apiKey, provider: form.provider || 'Custom', builtin: false });
+    setForm(emptyForm); setShowAddForm(false); setShowKey(false);
+  };
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }}>
+      {/* Trigger */}
+      <button ref={triggerRef} type="button" onClick={() => setOpen(o => !o)} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+        fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, textTransform: 'uppercase',
+        padding: '3px 7px', lineHeight: 1, cursor: 'pointer',
+        border: `1px solid ${open ? t.ink : t.ink}`,
+        background: open ? t.ink : 'transparent',
+        color: open ? t.paper : t.ink,
+      }}>◈ {store.selected.name} ▾</button>
+
+      {/* Popover */}
+      {open && (
+        <div ref={popoverRef} style={{
+          position: 'absolute', bottom: 'calc(100% + 10px)', left: 0,
+          width: 290, zIndex: 300,
+          background: t.cardOn, border: `1.5px solid ${t.ink}`,
+          boxShadow: `4px 4px 0 ${t.ink}`,
+        }}>
+          {/* ── MODELS ── */}
+          <div style={{ borderBottom: `1px solid ${t.rule}` }}>
+            <div style={{ padding: '8px 14px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.4, color: t.mute, textTransform: 'uppercase' }}>Models · 模型</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.muteSoft, letterSpacing: 0.5 }}>⇧⌘I</span>
+            </div>
+            {store.allModels.map(m => (
+              <ModelRow key={m.id} model={m} t={t}
+                selected={store.selected.id === m.id}
+                onSelect={() => store.selectModel(m.id)}
+                onRemove={!m.builtin ? () => store.removeModel(m.id) : null}
+                onSetKey={store.setBuiltinKey}/>
+            ))}
+            {/* Add model */}
+            {!showAddForm ? (
+              <button type="button" onClick={() => setShowAddForm(true)} style={{
+                display: 'flex', width: '100%', padding: '8px 14px',
+                border: 'none', borderTop: `1px dashed ${t.rule}`,
+                background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2,
+                color: t.mute, textTransform: 'uppercase',
+              }}
+                onMouseEnter={e => e.currentTarget.style.background = t.faint}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >＋ 添加模型 · Add model</button>
+            ) : (
+              <AddModelForm t={t} form={form} setForm={setForm}
+                showKey={showKey} setShowKey={setShowKey}
+                onAdd={handleAdd}
+                onCancel={() => { setShowAddForm(false); setForm(emptyForm); setShowKey(false); }}/>
+            )}
+          </div>
+
+          {/* ── EFFORT ── */}
+          <div style={{ padding: '8px 14px 10px', borderBottom: `1px solid ${t.rule}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.4, color: t.mute, textTransform: 'uppercase' }}>Effort · 力度</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.muteSoft, letterSpacing: 0.5 }}>⇧⌘E</span>
+            </div>
+            <div style={{ display: 'flex', border: `1px solid ${t.ink}` }}>
+              {EFFORT_OPTIONS.map((e, i) => (
+                <button key={e} type="button" onClick={() => store.setEffort(e)} style={{
+                  flex: 1, padding: '6px 0', border: 'none',
+                  borderLeft: i === 0 ? 'none' : `1px solid ${t.ink}`,
+                  background: store.effort === e ? t.ink : 'transparent',
+                  color: store.effort === e ? t.paper : t.ink,
+                  fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8,
+                  cursor: 'pointer', textTransform: 'uppercase',
+                }}>{e}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── FAST MODE ── */}
+          <div style={{ padding: '8px 14px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.4, color: t.mute, textTransform: 'uppercase', marginBottom: 3 }}>Fast mode · 快速模式</div>
+              <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, lineHeight: 1.4 }}>用 Opus 的速度输出（Beta）</div>
+            </div>
+            <button type="button" onClick={() => store.setFastMode(v => !v)} style={{
+              position: 'relative', width: 36, height: 20, border: `1.5px solid ${t.ink}`,
+              background: store.fastMode ? t.ink : t.paper, cursor: 'pointer', padding: 0, flexShrink: 0,
+            }}>
+              <span style={{
+                position: 'absolute', top: 2, left: store.fastMode ? 16 : 2,
+                width: 12, height: 12, background: store.fastMode ? t.paper : t.ink, transition: 'left 0.12s',
+              }}/>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const MIMO_ENDPOINTS = [
+  { label: '国际（按量付费）', url: 'https://api.xiaomimimo.com/v1' },
+  { label: '中国区（Token 套餐）', url: 'https://token-plan-cn.xiaomimimo.com/v1' },
+];
+
+function ModelRow({ model, t, selected, onSelect, onRemove, onSetKey }) {
+  const [hover, setHover] = React.useState(false);
+  const [editingKey, setEditingKey] = React.useState(false);
+  const [keyDraft, setKeyDraft] = React.useState(model.apiKey || '');
+  const [urlDraft, setUrlDraft] = React.useState(model.apiUrl || '');
+  const [showKey, setShowKey] = React.useState(false);
+  const hasKey = !!(model.apiKey);
+  const needsKey = model.needsKey;
+  const isMimo = model.id && model.id.startsWith('mimo');
+
+  const openEdit = (e) => {
+    e.stopPropagation();
+    setEditingKey(v => !v);
+    setKeyDraft(model.apiKey || '');
+    setUrlDraft(model.apiUrl || '');
+    setShowKey(false);
+  };
+
+  const save = () => {
+    onSetKey(model.id, keyDraft, urlDraft);
+    setEditingKey(false);
+  };
+
+  const inputStyle = {
+    flex: 1, padding: '5px 8px', border: `1px solid ${t.rule}`,
+    background: t.paper, color: t.ink, fontFamily: t.fontMono, fontSize: 11, outline: 'none',
+    width: '100%', boxSizing: 'border-box',
+  };
+
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ borderBottom: `1px solid ${t.faint}` }}>
+      {/* Row */}
+      <div onClick={onSelect} style={{
+        display: 'flex', alignItems: 'center', padding: '7px 14px',
+        cursor: 'pointer', background: hover ? t.faint : 'transparent',
+      }}>
+        <span style={{ width: 16, flexShrink: 0, fontFamily: t.fontMono, fontSize: 11, color: t.accent }}>
+          {selected ? '✓' : ''}
+        </span>
+        <span style={{ flex: 1, fontFamily: t.fontBody, fontSize: 13, color: t.ink }}>{model.name}</span>
+        {needsKey && (
+          <span onClick={openEdit} style={{
+            fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, cursor: 'pointer',
+            marginRight: 6, textDecoration: 'underline',
+            color: hasKey ? '#10b981' : t.accent,
+          }}>
+            {hasKey ? 'KEY ✓' : 'SET KEY'}
+          </span>
+        )}
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.4 }}>{model.provider}</span>
+        {onRemove && hover && (
+          <button type="button" onClick={e => { e.stopPropagation(); onRemove(); }} style={{
+            marginLeft: 8, border: 'none', background: 'transparent', cursor: 'pointer',
+            fontFamily: t.fontMono, fontSize: 10, color: t.mute, padding: '0 2px', lineHeight: 1,
+          }}>✕</button>
+        )}
+      </div>
+
+      {/* Edit panel */}
+      {editingKey && needsKey && (
+        <div onClick={e => e.stopPropagation()} style={{
+          padding: '8px 14px 12px 14px', background: t.paperAlt,
+          display: 'flex', flexDirection: 'column', gap: 8,
+          borderTop: `1px dashed ${t.rule}`,
+        }}>
+          {/* API URL */}
+          <div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1, marginBottom: 4 }}>
+              API BASE URL
+            </div>
+            {/* MiMo quick-select */}
+            {isMimo && (
+              <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                {MIMO_ENDPOINTS.map(ep => (
+                  <button key={ep.url} type="button" onClick={() => setUrlDraft(ep.url)} style={{
+                    padding: '3px 8px', fontSize: 9, fontFamily: t.fontMono,
+                    border: `1px solid ${urlDraft === ep.url ? t.ink : t.rule}`,
+                    background: urlDraft === ep.url ? t.ink : 'transparent',
+                    color: urlDraft === ep.url ? t.paper : t.mute,
+                    cursor: 'pointer', letterSpacing: 0.5, whiteSpace: 'nowrap',
+                  }}>{ep.label}</button>
+                ))}
+              </div>
+            )}
+            <input value={urlDraft} onChange={e => setUrlDraft(e.target.value)}
+              style={inputStyle} placeholder="https://api.example.com/v1"/>
+          </div>
+
+          {/* API Key */}
+          <div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1, marginBottom: 4 }}>
+              API KEY
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <input type={showKey ? 'text' : 'password'} value={keyDraft}
+                  onChange={e => setKeyDraft(e.target.value)}
+                  placeholder="粘贴你的 API Key"
+                  style={{ ...inputStyle, paddingRight: 42 }}/>
+                <button type="button" onClick={() => setShowKey(s => !s)} style={{
+                  position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                  border: 'none', background: 'transparent', cursor: 'pointer',
+                  fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 0.5,
+                }}>{showKey ? 'HIDE' : 'SHOW'}</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" onClick={() => setEditingKey(false)} style={{
+              flex: 1, padding: '5px 0', border: `1px solid ${t.rule}`, background: 'transparent',
+              fontFamily: t.fontMono, fontSize: 9, color: t.mute, cursor: 'pointer', letterSpacing: 1,
+            }}>取消</button>
+            <button type="button" onClick={save} disabled={!keyDraft} style={{
+              flex: 2, padding: '5px 0',
+              border: `1px solid ${keyDraft ? t.ink : t.rule}`,
+              background: keyDraft ? t.ink : 'transparent',
+              fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1,
+              color: keyDraft ? t.paper : t.mute,
+              cursor: keyDraft ? 'pointer' : 'not-allowed',
+            }}>保存</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddModelForm({ t, form, setForm, showKey, setShowKey, onAdd, onCancel }) {
+  const iStyle = (extra = {}) => ({
+    width: '100%', padding: '6px 8px', boxSizing: 'border-box',
+    border: `1px solid ${t.rule}`, background: t.paper, color: t.ink,
+    fontFamily: t.fontBody, fontSize: 12, outline: 'none',
+    ...extra,
+  });
+  const lStyle = {
+    display: 'block', fontFamily: t.fontMono, fontSize: 9,
+    letterSpacing: 1, color: t.mute, textTransform: 'uppercase', marginBottom: 3,
+  };
+  const canSubmit = form.name && form.modelId && form.apiUrl && form.apiKey;
+  return (
+    <div style={{ padding: '10px 14px 12px', borderTop: `1px dashed ${t.rule}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.4, color: t.ink, textTransform: 'uppercase' }}>Add Model · 新增模型</span>
+      <div>
+        <label style={lStyle}>显示名称 *</label>
+        <input style={iStyle()} placeholder="GPT-4o Mini" value={form.name}
+          onChange={e => setForm(f => ({ ...f, name: e.target.value }))}/>
+      </div>
+      <div>
+        <label style={lStyle}>Model ID *</label>
+        <input style={iStyle()} placeholder="gpt-4o-mini" value={form.modelId}
+          onChange={e => setForm(f => ({ ...f, modelId: e.target.value }))}/>
+      </div>
+      <div>
+        <label style={lStyle}>API Base URL *</label>
+        <input style={iStyle()} placeholder="https://api.openai.com/v1" value={form.apiUrl}
+          onChange={e => setForm(f => ({ ...f, apiUrl: e.target.value }))}/>
+      </div>
+      <div>
+        <label style={lStyle}>API Key *</label>
+        <div style={{ position: 'relative' }}>
+          <input style={iStyle({ paddingRight: 48 })}
+            type={showKey ? 'text' : 'password'}
+            placeholder="sk-••••••••••••••••"
+            value={form.apiKey}
+            onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}/>
+          <button type="button" onClick={() => setShowKey(s => !s)} style={{
+            position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+            border: 'none', background: 'transparent', cursor: 'pointer',
+            fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 0.5,
+          }}>{showKey ? 'HIDE' : 'SHOW'}</button>
+        </div>
+      </div>
+      <div>
+        <label style={lStyle}>Provider（选填）</label>
+        <input style={iStyle()} placeholder="Custom" value={form.provider}
+          onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}/>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+        <button type="button" onClick={onCancel} style={{
+          flex: 1, padding: '6px 0', border: `1px solid ${t.rule}`, background: 'transparent',
+          fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, color: t.mute,
+          cursor: 'pointer', textTransform: 'uppercase',
+        }}>取消</button>
+        <button type="button" onClick={onAdd} disabled={!canSubmit} style={{
+          flex: 2, padding: '6px 0',
+          border: `1px solid ${canSubmit ? t.ink : t.rule}`,
+          background: canSubmit ? t.ink : 'transparent',
+          fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1,
+          color: canSubmit ? t.paper : t.mute,
+          cursor: canSubmit ? 'pointer' : 'not-allowed', textTransform: 'uppercase',
+        }}>确认添加 ↗</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Toolbar constants ─────────────────────────────────────────────────────
+const BUILTIN_TONES = [
+  { id: 'analytical', cn: '分析性', en: 'Analytical' },
+  { id: 'narrative',  cn: '叙述性', en: 'Narrative' },
+  { id: 'formal',     cn: '正式',   en: 'Formal' },
+  { id: 'concise',    cn: '简洁',   en: 'Concise' },
+  { id: 'persuasive', cn: '说服性', en: 'Persuasive' },
+];
+
+const LENGTH_PRESETS = [
+  { id: 'brief',    cn: '简报', chars: 800 },
+  { id: 'standard', cn: '标准', chars: 1500 },
+  { id: 'deep',     cn: '深度', chars: 2500 },
+  { id: 'long',     cn: '长文', chars: 4000 },
+];
+
+// ── Toolbar store ─────────────────────────────────────────────────────────
+function useToolbarStore() {
+  const [selectedSources, setSelectedSources] = React.useState(
+    () => new Set(['乘联会 · 销量月报', 'IT 桔子 · 一级市场数据库', '36 氪报道精选'])
+  );
+  const [attachments, setAttachments] = React.useState([]);
+  const [toneId, setToneId] = React.useState('analytical');
+  const [customTones, setCustomTones] = React.useState(
+    () => { try { return JSON.parse(localStorage.getItem('atlas_custom_tones') || '[]'); } catch { return []; } }
+  );
+  const [lengthId, setLengthId] = React.useState('deep');
+  const [customLength, setCustomLength] = React.useState('');
+
+  const allTones = [...BUILTIN_TONES, ...customTones];
+  const currentTone = allTones.find(to => to.id === toneId) || allTones[0];
+  const effectiveLength = lengthId === 'custom'
+    ? (parseInt(customLength) || 2500)
+    : (LENGTH_PRESETS.find(p => p.id === lengthId)?.chars || 2500);
+
+  const addTone = (cn) => {
+    const id = 'custom_' + Date.now();
+    const updated = [...customTones, { id, cn, en: cn, custom: true }];
+    setCustomTones(updated);
+    try { localStorage.setItem('atlas_custom_tones', JSON.stringify(updated)); } catch {}
+    setToneId(id);
+  };
+
+  const removeTone = (id) => {
+    const updated = customTones.filter(to => to.id !== id);
+    setCustomTones(updated);
+    try { localStorage.setItem('atlas_custom_tones', JSON.stringify(updated)); } catch {}
+    if (toneId === id) setToneId('analytical');
+  };
+
+  const toggleSource = (name) => {
+    setSelectedSources(prev => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  };
+
+  const addAttachment = (file) => {
+    const reader = new FileReader();
+    const isText = file.type.startsWith('text') || /\.(txt|md|csv|json|docx)$/i.test(file.name);
+    reader.onload = (e) => {
+      setAttachments(prev => [...prev, {
+        id: Date.now() + '_' + file.name,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        content: typeof e.target.result === 'string' ? e.target.result.slice(0, 8000) : '[binary]',
+      }]);
+    };
+    isText ? reader.readAsText(file) : reader.readAsDataURL(file);
+  };
+
+  const removeAttachment = (id) => setAttachments(prev => prev.filter(a => a.id !== id));
+
+  return {
+    selectedSources, toggleSource,
+    attachments, addAttachment, removeAttachment,
+    toneId, setToneId, allTones, currentTone, addTone, removeTone,
+    lengthId, setLengthId, customLength, setCustomLength, effectiveLength,
+  };
+}
+
+// ── ToolPopover (shared popover container) ────────────────────────────────
+function ToolPopover({ t, label, open, onOpen, onClose, children, width = 280 }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open, onClose]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div onClick={open ? onClose : onOpen} style={{
+        display: 'inline-flex', alignItems: 'center',
+        fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase',
+        padding: '3px 8px', border: `1px solid ${open ? t.ink : t.rule}`,
+        background: open ? t.ink : 'transparent',
+        color: open ? t.paper : t.ink,
+        cursor: 'pointer', userSelect: 'none', transition: 'all 0.12s',
+        whiteSpace: 'nowrap',
+      }}>
+        {label}
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, zIndex: 200,
+          width, background: t.cardOn, border: `1px solid ${t.ink}`,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+        }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SourcesPopover ────────────────────────────────────────────────────────
+function SourcesPopover({ t, store, onNavigateSources }) {
+  const [open, setOpen] = React.useState(false);
+  const [catFilter, setCatFilter] = React.useState('all');
+  const allSources = typeof SOURCES !== 'undefined' ? SOURCES : [];
+  const allCats = typeof SOURCE_CATEGORIES !== 'undefined' ? SOURCE_CATEGORIES : [];
+  const filtered = catFilter === 'all' ? allSources : allSources.filter(s => s.type === catFilter);
+  const count = store.selectedSources.size;
+
+  return (
+    <ToolPopover t={t} label={`＋ 数据源${count > 0 ? ` (${count})` : ''}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={320}>
+      <div style={{ padding: '6px 10px 6px', borderBottom: `1px solid ${t.rule}`, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {allCats.map(c => (
+          <button key={c.k} onClick={() => setCatFilter(c.k)} style={{
+            fontFamily: t.fontMono, fontSize: 8, letterSpacing: 0.8,
+            padding: '3px 7px', border: `1px solid ${catFilter === c.k ? t.ink : t.rule}`,
+            background: catFilter === c.k ? t.ink : 'transparent',
+            color: catFilter === c.k ? t.paper : t.mute,
+            cursor: 'pointer', transition: 'all 0.1s',
+          }}>{c.cn}</button>
+        ))}
+      </div>
+      <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+        {filtered.map(s => {
+          const checked = store.selectedSources.has(s.name);
+          return (
+            <div key={s.name} onClick={() => store.toggleSource(s.name)} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+              cursor: 'pointer', background: checked ? t.paperAlt : 'transparent',
+              borderBottom: `1px solid ${t.rule}`,
+            }}>
+              <div style={{
+                width: 11, height: 11, flexShrink: 0,
+                border: `1px solid ${checked ? t.accent : t.rule}`,
+                background: checked ? t.accent : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {checked && <span style={{ color: t.paper, fontSize: 8, lineHeight: 1 }}>✓</span>}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.name}
+                </div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 1 }}>{s.kind}</div>
+              </div>
+              {s.quality && (
+                <span style={{ fontFamily: t.fontMono, fontSize: 8, letterSpacing: 0.5, padding: '1px 4px', flexShrink: 0,
+                  color: s.quality === 'A' ? '#2a8c5c' : s.quality === 'B' ? '#7a6a3a' : '#9b1c14',
+                  border: `1px solid ${s.quality === 'A' ? '#2a8c5c' : s.quality === 'B' ? '#c2a04a' : '#9b1c14'}` }}>
+                  {s.quality}
+                </span>
+              )}
+              <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: s.status === 'ok' ? '#5B8A6A' : '#C4844A' }}/>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ padding: '8px 12px' }}>
+        <button onClick={() => { setOpen(false); onNavigateSources?.(); }} style={{
+          width: '100%', padding: '6px 0', background: 'transparent',
+          border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9,
+          letterSpacing: 0.8, color: t.mute, cursor: 'pointer',
+        }}>管理全部数据源 →</button>
+      </div>
+    </ToolPopover>
+  );
+}
+
+// ── AttachmentsPopover ────────────────────────────────────────────────────
+function AttachmentsPopover({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const [dragOver, setDragOver] = React.useState(false);
+  const fileRef = React.useRef(null);
+  const count = store.attachments.length;
+  const handleFiles = (files) => Array.from(files).forEach(f => store.addAttachment(f));
+  const fmt = (b) => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB';
+
+  return (
+    <ToolPopover t={t} label={count > 0 ? `＋ 附件 (${count})` : '＋ 附件'}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={280}>
+      {count > 0 && (
+        <div style={{ borderBottom: `1px solid ${t.rule}` }}>
+          {store.attachments.map(a => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderBottom: `1px solid ${t.rule}` }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.paper, background: t.mute, padding: '1px 4px', flexShrink: 0 }}>
+                {a.name.split('.').pop().toUpperCase()}
+              </span>
+              <span style={{ flex: 1, fontFamily: t.fontCN, fontSize: 12, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {a.name}
+              </span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>{fmt(a.size)}</span>
+              <button onClick={(e) => { e.stopPropagation(); store.removeAttachment(a.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
+        onClick={() => fileRef.current?.click()}
+        style={{
+          margin: '10px 12px', padding: '18px 12px', textAlign: 'center', cursor: 'pointer',
+          border: `1px dashed ${dragOver ? t.ink : t.rule}`,
+          background: dragOver ? t.paperAlt : 'transparent', transition: 'all 0.15s',
+        }}
+      >
+        <input ref={fileRef} type="file" multiple accept=".pdf,.txt,.md,.csv,.docx,.json"
+          style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)}/>
+        <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.8 }}>拖拽文件或点击上传</div>
+        <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 4, opacity: 0.7 }}>PDF · TXT · CSV · DOCX · JSON</div>
+      </div>
+    </ToolPopover>
+  );
+}
+
+// ── TonePopover ───────────────────────────────────────────────────────────
+function TonePopover({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => { if (adding && inputRef.current) inputRef.current.focus(); }, [adding]);
+
+  const submit = () => {
+    if (draft.trim()) { store.addTone(draft.trim()); setDraft(''); setAdding(false); }
+  };
+
+  return (
+    <ToolPopover t={t} label={`语气 · ${store.currentTone?.cn || '分析性'}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => { setOpen(false); setAdding(false); setDraft(''); }} width={220}>
+      <div style={{ padding: '6px 0' }}>
+        {store.allTones.map(tone => {
+          const active = tone.id === store.toneId;
+          return (
+            <div key={tone.id} style={{
+              display: 'flex', alignItems: 'center', padding: '7px 12px',
+              cursor: 'pointer', background: active ? t.paperAlt : 'transparent',
+              borderBottom: `1px solid ${t.rule}`,
+            }}>
+              <div onClick={() => store.setToneId(tone.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                  border: `1px solid ${active ? t.ink : t.rule}`,
+                  background: active ? t.ink : 'transparent',
+                }}/>
+                <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{tone.cn}</span>
+                {!tone.custom && (
+                  <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginLeft: 'auto' }}>{tone.en}</span>
+                )}
+              </div>
+              {tone.custom && (
+                <button onClick={(e) => { e.stopPropagation(); store.removeTone(tone.id); }} style={{
+                  background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 12, padding: '0 2px', lineHeight: 1,
+                }}>×</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ padding: '8px 10px', borderTop: `1px solid ${t.rule}` }}>
+        {!adding ? (
+          <button onClick={() => setAdding(true)} style={{
+            width: '100%', padding: '5px 0', background: 'transparent',
+            border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9,
+            letterSpacing: 0.8, color: t.mute, cursor: 'pointer',
+          }}>＋ 新增语气</button>
+        ) : (
+          <div style={{ display: 'flex', gap: 5 }}>
+            <input ref={inputRef} value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { setAdding(false); setDraft(''); }}}
+              placeholder="如：批判性"
+              style={{ flex: 1, padding: '4px 7px', fontFamily: t.fontCN, fontSize: 12, border: `1px solid ${t.ink}`, background: t.cardOn, color: t.ink, outline: 'none' }}
+            />
+            <button disabled={!draft.trim()} onClick={submit} style={{
+              padding: '4px 10px', background: draft.trim() ? t.ink : t.rule, border: 'none',
+              fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.5, color: t.paper,
+              cursor: draft.trim() ? 'pointer' : 'not-allowed',
+            }}>确认</button>
+          </div>
+        )}
+      </div>
+    </ToolPopover>
+  );
+}
+
+// ── LengthPopover ─────────────────────────────────────────────────────────
+function LengthPopover({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const preset = LENGTH_PRESETS.find(p => p.id === store.lengthId);
+  const displayLen = store.lengthId === 'custom'
+    ? `${store.customLength || '?'} 字`
+    : `${(preset?.chars || 2500).toLocaleString()} 字`;
+
+  return (
+    <ToolPopover t={t} label={`长度 · ${displayLen}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={220}>
+      <div style={{ padding: '6px 0' }}>
+        {LENGTH_PRESETS.map(p => {
+          const active = store.lengthId === p.id;
+          return (
+            <div key={p.id} onClick={() => store.setLengthId(p.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px',
+              cursor: 'pointer', background: active ? t.paperAlt : 'transparent',
+              borderBottom: `1px solid ${t.rule}`,
+            }}>
+              <div style={{
+                width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                border: `1px solid ${active ? t.ink : t.rule}`,
+                background: active ? t.ink : 'transparent',
+              }}/>
+              <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{p.cn}</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 'auto' }}>
+                {p.chars.toLocaleString()} 字
+              </span>
+            </div>
+          );
+        })}
+        <div style={{ padding: '8px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <div onClick={() => store.setLengthId('custom')} style={{
+              width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+              border: `1px solid ${store.lengthId === 'custom' ? t.ink : t.rule}`,
+              background: store.lengthId === 'custom' ? t.ink : 'transparent',
+              cursor: 'pointer',
+            }}/>
+            <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>自定义</span>
+            <input type="number" min={100} max={10000}
+              value={store.customLength}
+              onChange={e => { store.setCustomLength(e.target.value); store.setLengthId('custom'); }}
+              placeholder="100–10000"
+              style={{
+                flex: 1, padding: '3px 6px', fontFamily: t.fontMono, fontSize: 11,
+                border: `1px solid ${t.rule}`, background: t.cardOn, color: t.ink, outline: 'none', minWidth: 0,
+              }}
+            />
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>字</span>
+          </div>
+        </div>
+      </div>
+    </ToolPopover>
+  );
+}
+
+// ── PromptComposer ──────────────────────────────────────────────────────
+
+function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStore, onNavigateSources }) {
+  const charCount = prompt.length;
+  const placeholder = '比如，"梳理一下 2025 年 Q1 咖啡赛道的融资动态…"';
+  const taRef = React.useRef(null);
+
+  // auto-grow
+  React.useEffect(() => {
+    if (taRef.current) {
+      taRef.current.style.height = 'auto';
+      taRef.current.style.height = Math.max(96, taRef.current.scrollHeight) + 'px';
+    }
+  }, [prompt]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && prompt.trim()) {
+      e.preventDefault();
+      onStart();
+    }
+  };
+
+  return (
+    <div style={{
+      border: `1.5px solid ${t.ink}`, background: t.cardOn,
+      display: 'flex', flexDirection: 'column',
+    }}>
+      <div style={{
+        padding: '10px 14px', borderBottom: `1px solid ${t.rule}`,
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <Tag t={t} filled>PROMPT</Tag>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.5 }}>describe the report</span>
+        <span style={{ flex: 1 }}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{charCount} / 4000</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>⌘ ↩ to send</span>
+      </div>
+      <textarea
+        ref={taRef}
+        value={prompt}
+        onChange={e => setPrompt(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        style={{
+          padding: '18px 22px', minHeight: 96, fontFamily: t.fontCN, fontSize: 16,
+          lineHeight: 1.55, color: t.ink, background: 'transparent',
+          border: 'none', outline: 'none', resize: 'none', width: '100%', boxSizing: 'border-box',
+        }}
+      />
+      <div style={{
+        padding: '12px 14px', borderTop: `1px solid ${t.rule}`,
+        display: 'flex', alignItems: 'center', gap: 8, background: t.paperAlt,
+        flexWrap: 'wrap',
+      }}>
+        {toolbarStore ? (
+          <>
+            <SourcesPopover t={t} store={toolbarStore} onNavigateSources={onNavigateSources}/>
+            <AttachmentsPopover t={t} store={toolbarStore}/>
+            <TonePopover t={t} store={toolbarStore}/>
+            <LengthPopover t={t} store={toolbarStore}/>
+          </>
+        ) : (
+          <>
+            <Tag t={t}>＋ 数据源 (3)</Tag>
+            <Tag t={t}>＋ 附件</Tag>
+            <Tag t={t}>语气 · 分析性</Tag>
+            <Tag t={t}>长度 · 2,500 字</Tag>
+          </>
+        )}
+        {modelStore && <ModelSelector t={t} store={modelStore}/>}
+        <span style={{ flex: 1 }}/>
+        <Btn t={t} size="sm"
+          onClick={() => setPrompt(SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)])}>
+          ✦ Surprise me
+        </Btn>
+        <Btn t={t} primary accent size="md" onClick={onStart} disabled={!prompt.trim()}>
+          Start writing ↗
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Home, PromptComposer, SAMPLE_PROMPTS, STARTERS });
+// Running — agent at work. Center column streams the essay paragraph by
+// paragraph; right column collects marginalia in real time. Total demo
+// duration ~26s. User can pause, slow down, or skip to the finished report.
+
+// ── Paragraph copy --------------------------------------------------------
+const RUN_PARAGRAPHS = [
+  { kind: 'lede',
+    text: '一句话总结：钱没少，故事变了——资本退出"高密度精品"的叙事，重新拥抱规模与下沉。' },
+  { kind: 'p',
+    text: '2025 年第一季度，国内连锁咖啡品牌共发生 9 起公开融资事件，总金额约 11.4 亿元§1。其中 6 起集中在 1 月，3 起分布在 2 月与 3 月——节奏明显前置，且回避了春节后的传统淡季窗口。' },
+  { kind: 'p',
+    text: 'Manner 在 1 月完成新一轮融资，估值约 30 亿美元§2，并同步释放"5 年内开设 5,000 家门店"的计划。这是公司首次明确表态规模化路径，此前 Manner 长期被视作精品咖啡的代表。' },
+  { kind: 'p',
+    text: '另一端则是库迪、挪瓦、本来不该有等品牌密集出现在三四线城市§3。库迪 1 月披露的加盟数据显示，下沉市场加盟商占比已超过 60%。' },
+];
+
+// ── Timeline ------------------------------------------------------------
+const RUN_EVENTS = [
+  // 0–8s: planning + fetching + analyzing
+  { at: 0.0,  kind: 'marginStart', id: 'plan',    tag: 'PLAN',    cn: '拆解任务为 5 个子步骤' },
+  { at: 2.4,  kind: 'marginDone',  id: 'plan' },
+  { at: 2.6,  kind: 'marginStart', id: 'fetch1',  tag: 'FETCH',   cn: '抓取 IT 桔子 2025·Q1 融资数据库' },
+  { at: 4.6,  kind: 'marginDone',  id: 'fetch1' },
+  { at: 4.7,  kind: 'marginStart', id: 'fetch2',  tag: 'FETCH',   cn: '读取 36 氪 18 篇相关报道' },
+  { at: 6.4,  kind: 'marginDone',  id: 'fetch2' },
+  { at: 6.6,  kind: 'marginStart', id: 'analyze', tag: 'ANALYZE', cn: '提取金额 · 轮次 · 估值' },
+  { at: 8.2,  kind: 'marginDone',  id: 'analyze' },
+  // 8.5–20s: writing essay paragraph by paragraph
+  { at: 8.5,  kind: 'marginStart', id: 'write',   tag: 'WRITE',   cn: '撰写正文 (1 / 4)' },
+  { at: 8.6,  kind: 'paragraph',   idx: 0 },
+  { at: 10.8, kind: 'paragraph',   idx: 1 },
+  { at: 11.1, kind: 'marginAdd',   id: 'cite1',   tag: 'CITE [1]', cn: 'IT 桔子 · 2025 Q1 融资数据库' },
+  { at: 14.0, kind: 'paragraph',   idx: 2 },
+  { at: 14.4, kind: 'marginAdd',   id: 'cite2',   tag: 'CITE [2]', cn: '36 氪 · Manner 新一轮融资消息' },
+  { at: 17.4, kind: 'paragraph',   idx: 3 },
+  { at: 17.8, kind: 'marginAdd',   id: 'cite3',   tag: 'CITE [3]', cn: '窄门餐眼 · 咖啡品牌门店数据' },
+  { at: 20.5, kind: 'marginDone',  id: 'write' },
+  // 20.5–26s: chart + review
+  { at: 20.7, kind: 'marginStart', id: 'chart',   tag: 'CHART',   cn: '生成融资金额柱状图' },
+  { at: 22.4, kind: 'figure' },
+  { at: 22.5, kind: 'marginDone',  id: 'chart' },
+  { at: 22.7, kind: 'marginStart', id: 'review',  tag: 'REVIEW',  cn: '审校与引用核对' },
+  { at: 25.2, kind: 'marginDone',  id: 'review' },
+  { at: 26.0, kind: 'complete' },
+];
+
+const RUN_TOTAL = 26.0;
+
+// ── Live API streaming -----------------------------------------------
+async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError }) {
+  const { tone, length, selectedSources, attachments, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride } = toolbarConfig || {};
+  const toneCN = tone?.cn || '分析性';
+  const targetLength = length || 2500;
+
+  // Dynamic system prompt: enforces tone + length strictly
+  const sourceNote = (() => {
+    if (!selectedSources?.size) return '';
+    const allS = typeof SOURCES !== 'undefined' ? SOURCES : [];
+    const enriched = [...selectedSources].map(name => {
+      const found = allS.find(s => s.name === name);
+      return { name, quality: found?.quality || 'A' };
+    });
+    enriched.sort((a, b) => ({ A: 0, B: 1, C: 2 }[a.quality] - ({ A: 0, B: 1, C: 2 }[b.quality] || 0)));
+    const tiers = { A: [], B: [], C: [] };
+    enriched.forEach(s => (tiers[s.quality] || tiers.A).push(s.name));
+    let note = '\n5. 参考数据源（按数据质量优先级排序）：';
+    if (tiers.A.length) note += `\n   - A级（核心来源，优先引用，高可信度）：${tiers.A.join('、')}`;
+    if (tiers.B.length) note += `\n   - B级（可参考，适度引用）：${tiers.B.join('、')}`;
+    if (tiers.C.length) note += `\n   - C级（低优先级，谨慎引用，需注明局限性）：${tiers.C.join('、')}`;
+    return note;
+  })();
+  // For very short targets, give a sensible floor so the model doesn't produce empty output
+  const displayLength = targetLength;
+  const minLen = Math.max(targetLength, 50);
+  const maxLen = Math.max(Math.round(targetLength * 1.15), minLen + 20);
+  const lengthInstr = targetLength < 100
+    ? `目标字数：约 ${displayLength} 字（尽量精简，控制在 ${minLen}–${maxLen} 字左右即可）`
+    : `目标字数：${displayLength} 字（严格控制在 ${Math.round(targetLength * 0.9)}–${Math.round(targetLength * 1.1)} 字以内）`;
+
+  const systemPrompt = `你是一个专业的商业分析师，擅长撰写深度行业报告。
+请用中文撰写一篇分析报告，严格遵守以下要求：
+1. 写作风格：${toneCN}（全程必须体现这种风格，不得偏离）
+2. ${lengthInstr}
+3. 结构要求（必须严格执行）：
+   - 报告必须包含至少 3 个章节，每个章节用「一、」「二、」「三、」「四、」等中文数字序号开头单独成行作为标题
+   - 开头第一章节标题后紧跟一句导语（一句话总结核心观点）
+4. 数据可视化：当某一段分析涉及多个可对比的数据点（如市场份额、增长率、排名等），在该段后插入一个图表数据块，格式为：
+   [CHART:{"type":"bar","title":"图表标题","unit":"单位","data":[{"label":"标签","value":数值},{"label":"标签","value":数值}]}]
+   图表数据须真实反映正文中提到的数字，最多 6 个数据项。每篇报告插入 1-2 个图表即可，不要过度使用。
+5. 引用格式：重要数据用 §1 §2 §3 标注脚注。报告所有章节结束后，必须输出引用列表，格式：
+   [REFS]
+   [1] 来源机构名 — 文献名 — 网址 — YYYY.MM
+   [/REFS]
+   条数与正文 §N 标注一致。${sourceNote}${systemPromptExtra ? '\n' + systemPromptExtra : ''}
+输出格式：第一行必须是 [TITLE: 精炼标题（20字以内）]，然后空行，再输出各章节，最后输出 [REFS]...[/REFS]。不要任何其他前言后记。`;
+
+  // Build user message: prompt + optional attachment context
+  const attachText = attachments?.length > 0
+    ? '\n\n【附件参考资料】\n' + attachments.map(a => `《${a.name}》\n${a.content}`).join('\n\n---\n\n')
+    : '';
+  const userContent = prompt + attachText;
+
+  // max_tokens: always at least 4000 so reasoning models have room to think + output
+  // For longer targets, scale up generously (2.5 tokens/char + 2000 buffer)
+  const maxTokens = Math.min(Math.max(Math.ceil(targetLength * 2.5) + 2000, 4000), 16000);
+
+  const apiKey = model.apiKey || '';
+  const apiUrl = (model.apiUrl || 'https://api.xiaomimimo.com/v1').replace(/\/$/, '');
+
+  try {
+    const resp = await fetch(`${apiUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: model.id,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+        stream: true,
+        max_tokens: (maxTokensOverride && maxTokensOverride > 0) ? Math.min(maxTokensOverride, 131072) : maxTokens,
+        temperature: (temperature !== undefined && !isNaN(Number(temperature))) ? Number(temperature) : 0.7,
+        ...(topP != null ? { top_p: Number(topP) } : {}),
+        ...(frequencyPenalty != null ? { frequency_penalty: Number(frequencyPenalty) } : {}),
+        ...(presencePenalty != null ? { presence_penalty: Number(presencePenalty) } : {}),
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`API error ${resp.status}: ${errText.slice(0, 200)}`);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let totalTokens = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(trimmed.slice(6));
+            const delta = data.choices?.[0]?.delta;
+            // Support both standard content and reasoning-model content fields
+            const text = delta?.content || '';
+            if (text) onChunk(text);
+            // Capture token usage from final chunk (some providers send usage mid-stream)
+            if (data.usage?.total_tokens) totalTokens = data.usage.total_tokens;
+            else if (data.usage?.completion_tokens) totalTokens = (data.usage.prompt_tokens || 0) + data.usage.completion_tokens;
+          } catch {}
+        }
+      }
+    }
+    onDone(totalTokens);
+  } catch (err) {
+    onError(err.message || String(err));
+  }
+}
+
+// ── Component -----------------------------------------------------------
+function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, density = 'editorial', modelStore, toolbarConfig, onSaveReport }) {
+  const selectedModel = modelStore?.selected;
+  const isLiveMode = !!(selectedModel?.apiKey);
+
+  // effectivePrompt: just the raw user prompt (toolbar config is passed to streamReport directly)
+  const effectivePrompt = prompt;
+
+  // ── LIVE MODE state ──────────────────────────────────────────────────
+  const [liveText, setLiveText] = React.useState('');
+  const [liveStatus, setLiveStatus] = React.useState('connecting'); // connecting | streaming | done | error
+  const [liveError, setLiveError] = React.useState('');
+  const [liveStartTime] = React.useState(Date.now);
+  const [liveElapsed, setLiveElapsed] = React.useState(0);
+  const [liveTokens, setLiveTokens] = React.useState(0);
+  const liveTimerRef = React.useRef(null);
+
+  // Auto-save generated report when streaming completes
+  const savedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (liveStatus === 'done' && liveText && isLiveMode && !savedRef.current && onSaveReport) {
+      savedRef.current = true;
+      const sections = parseMarkdownReport(liveText);
+      const cleanForCount = liveText.replace(/^\[TITLE:[^\]]*\]\s*/m,'').replace(/\[REFS\][\s\S]*?\[\/REFS\]/g,'');
+      const wordCount = cleanForCount.replace(/\s+/g,' ').trim().length;
+      const refsArr = extractRefsFromText(liveText);
+      const refs = refsArr.length || [...new Set((liveText.match(/§\d+/g) || []))].length;
+      const readMins = Math.max(1, Math.ceil(wordCount / 300));
+      const now = new Date();
+      const DAY_CN = ['日','一','二','三','四','五','六'];
+
+      // Title: use first line of prompt (before comma/newline), cleaned up
+      const aiTitle = extractTitleFromText(liveText);
+      const firstSectionTitle = sections?.[0]?.en?.replace(/^[一二三四五六七八九十]+[、．]\s*/, '').trim();
+      const promptFallback = prompt.split(/[\n\r,，。.]/)[0].trim()
+        .replace(/^(请|帮我|调研|分析|写一篇|生成|撰写|输出)\s*/,'')
+        .replace(/[「」【】『』《》""'']/g,' ').trim();
+      const titleEn = aiTitle || firstSectionTitle || promptFallback.slice(0, 52) || 'AI 分析报告';
+
+      // Subtitle: remainder of first prompt line or next segment
+      const subtitleRaw = prompt.replace(/^[^\n,，。.]{0,80}[,，。.\n]/, '').trim().split('\n')[0].trim();
+      const subtitle = subtitleRaw.slice(0, 80) || prompt.slice(0, 80);
+
+      onSaveReport({
+        id: now.getTime().toString(),
+        prompt,
+        text: liveText,
+        sections,
+        refs: refsArr,
+        selectedSources: [...(toolbarConfig?.selectedSources || [])],
+        attachments: (toolbarConfig?.attachments || []).map(a => ({ id: a.id, name: a.name, size: a.size, type: a.type, content: a.content })),
+        meta: {
+          titleEn,
+          titleCn: '',
+          title: { en: titleEn, cn: '' },
+          subtitle,
+          date: `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`,
+          words: wordCount.toLocaleString(),
+          sources: refs,
+          reading: `${readMins} min`,
+          category: `AI · ${selectedModel?.name || '生成'}`,
+          issue: 'AI',
+          model: selectedModel?.name || 'AI',
+          tone: toolbarConfig?.tone?.cn || '',
+          tokens: liveTokens,
+        },
+        favorited: false,
+      });
+    }
+  }, [liveStatus, liveTokens]);
+
+  React.useEffect(() => {
+    if (!isLiveMode) return;
+    liveTimerRef.current = setInterval(() => {
+      setLiveElapsed(((Date.now() - liveStartTime) / 1000));
+    }, 200);
+    streamReport({
+      model: selectedModel,
+      prompt: effectivePrompt,
+      toolbarConfig,
+      onChunk: (chunk) => {
+        setLiveStatus('streaming');
+        setLiveText(prev => prev + chunk);
+      },
+      onDone: (tokens) => {
+        clearInterval(liveTimerRef.current);
+        setLiveTokens(tokens || 0);
+        setLiveStatus('done');
+        onTimelineComplete && onTimelineComplete();
+      },
+      onError: (msg) => {
+        clearInterval(liveTimerRef.current);
+        setLiveStatus('error');
+        setLiveError(msg);
+        onTimelineComplete && onTimelineComplete();
+      },
+    });
+    return () => clearInterval(liveTimerRef.current);
+  }, []);
+
+  // Split liveText into paragraphs for rendering
+  const liveParagraphs = React.useMemo(() => {
+    if (!liveText) return [];
+    return liveText.split(/\n\n+/).filter(Boolean).map((p, i) => ({
+      kind: i === 0 ? 'lede' : 'p', text: p.trim(),
+    }));
+  }, [liveText]);
+
+  // ── DEMO MODE state ──────────────────────────────────────────────────
+  const [elapsed, setElapsed] = React.useState(0);
+  const [playing, setPlaying] = React.useState(!isLiveMode);
+  const [speed, setSpeed] = React.useState(1);
+  const startedRef = React.useRef(Date.now());
+  const offsetRef = React.useRef(0);
+  const firedDoneRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (isLiveMode) return;
+    if (!playing) { offsetRef.current = elapsed; return; }
+    startedRef.current = Date.now();
+    const id = setInterval(() => {
+      const e = offsetRef.current + ((Date.now() - startedRef.current) / 1000) * speed;
+      setElapsed(Math.min(e, RUN_TOTAL + 0.5));
+      if (e >= RUN_TOTAL) { offsetRef.current = RUN_TOTAL; setPlaying(false); }
+    }, 80);
+    return () => clearInterval(id);
+  }, [playing, speed, isLiveMode]);
+
+  React.useEffect(() => {
+    if (isLiveMode) return;
+    if (elapsed >= RUN_TOTAL && !firedDoneRef.current) {
+      firedDoneRef.current = true;
+      onTimelineComplete && onTimelineComplete();
+    }
+  }, [elapsed, onTimelineComplete, isLiveMode]);
+
+  const { margins, paraIdx, showFigure, complete: demoComplete } = React.useMemo(() => {
+    if (isLiveMode) return { margins: [], paraIdx: -1, showFigure: false, complete: false };
+    const margins = new Map();
+    let paraIdx = -1, showFigure = false, complete = false;
+    for (const ev of RUN_EVENTS) {
+      if (ev.at > elapsed) break;
+      if (ev.kind === 'marginStart') margins.set(ev.id, { id: ev.id, tag: ev.tag, cn: ev.cn, state: 'live', t: ev.at });
+      else if (ev.kind === 'marginDone' && margins.has(ev.id)) margins.get(ev.id).state = 'done';
+      else if (ev.kind === 'marginAdd') margins.set(ev.id, { id: ev.id, tag: ev.tag, cn: ev.cn, state: 'done', t: ev.at });
+      else if (ev.kind === 'paragraph') paraIdx = Math.max(paraIdx, ev.idx);
+      else if (ev.kind === 'figure') showFigure = true;
+      else if (ev.kind === 'complete') complete = true;
+    }
+    return { margins: Array.from(margins.values()), paraIdx, showFigure, complete };
+  }, [elapsed, isLiveMode]);
+
+  const activePara = React.useMemo(() => {
+    if (isLiveMode || paraIdx < 0) return null;
+    const startEv = RUN_EVENTS.find(e => e.kind === 'paragraph' && e.idx === paraIdx);
+    const nextEv = RUN_EVENTS.find(e => e.at > (startEv?.at || 0) && (e.kind === 'paragraph' || e.kind === 'figure' || e.kind === 'complete'));
+    const start = startEv?.at || 0;
+    const finish = nextEv?.at || RUN_TOTAL;
+    const para = RUN_PARAGRAPHS[paraIdx];
+    if (!para) return null;
+    const progress = Math.max(0, Math.min(1, (elapsed - start) / Math.max((finish - start) * 0.92, 0.6)));
+    return { ...para, idx: paraIdx, revealCount: Math.floor(progress * para.text.length), complete: elapsed >= finish - 0.2 };
+  }, [paraIdx, elapsed, isLiveMode]);
+
+  // ── Unified derived values ───────────────────────────────────────────
+  const complete = isLiveMode ? (liveStatus === 'done' || liveStatus === 'error') : demoComplete;
+  const progressPct = isLiveMode
+    ? (liveStatus === 'done' ? 100 : Math.min(95, (liveText.length / 1800) * 100))
+    : Math.min(100, (elapsed / RUN_TOTAL) * 100);
+
+  const editorial = density === 'editorial';
+  const bodyCols = editorial
+    ? (marginaliaOn ? '1fr 600px 220px 1fr' : '1fr 720px 1fr')
+    : (marginaliaOn ? '1fr 540px 200px 1fr' : '1fr 660px 1fr');
+
+  // ── Live marginalia (generated from API keywords) ────────────────────
+  const liveMargins = React.useMemo(() => {
+    if (!isLiveMode) return [];
+    const out = [];
+    if (liveStatus === 'connecting') out.push({ id: 'connect', tag: 'CONNECT', cn: `正在连接 ${selectedModel?.name || '模型'}…`, state: 'live', t: 0 });
+    if (liveStatus === 'streaming' || liveStatus === 'done') {
+      out.push({ id: 'write', tag: 'WRITE', cn: `${selectedModel?.name || 'AI'} 正在撰写…`, state: liveStatus === 'done' ? 'done' : 'live', t: 0.5 });
+      const charCount = liveText.length;
+      if (charCount > 300) out.push({ id: 'p1', tag: 'PARA 1', cn: '完成第一段', state: 'done', t: 2 });
+      if (charCount > 700) out.push({ id: 'p2', tag: 'PARA 2', cn: '完成第二段', state: 'done', t: 5 });
+      if (charCount > 1100) out.push({ id: 'p3', tag: 'PARA 3', cn: '完成第三段', state: 'done', t: 8 });
+    }
+    if (liveStatus === 'done') out.push({ id: 'done', tag: 'DONE', cn: `共 ${liveText.length} 字`, state: 'done', t: liveElapsed });
+    if (liveStatus === 'error') out.push({ id: 'err', tag: 'ERROR', cn: liveError.slice(0, 60), state: 'done', t: liveElapsed });
+    return out;
+  }, [isLiveMode, liveStatus, liveText.length, liveError, selectedModel, liveElapsed]);
+
+  const displayMargins = isLiveMode ? liveMargins : margins;
+
+  return (
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Header bar */}
+      <div style={{
+        padding: '14px 36px', borderBottom: `1px solid ${t.rule}`,
+        display: 'flex', alignItems: 'center', gap: 18, background: t.paper, flexShrink: 0,
+      }}>
+        <LiveDot color={complete ? '#10b981' : (liveStatus === 'error' ? '#e5251d' : t.accent)}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1.4, color: complete ? '#10b981' : t.accent, minWidth: 120 }}>
+          {liveStatus === 'error' ? 'ERROR · 出错了' : complete ? 'DONE · 撰写完成' : isLiveMode ? `LIVE · ${selectedModel?.name}` : 'LIVE · 撰写中'}
+        </span>
+        <div style={{ flex: 1, height: 3, background: t.faint, position: 'relative' }}>
+          <div style={{
+            position: 'absolute', left: 0, top: 0, height: '100%',
+            width: `${progressPct}%`,
+            background: liveStatus === 'error' ? '#e5251d' : complete ? '#10b981' : t.accent,
+            transition: 'width 0.2s linear',
+          }}/>
+        </div>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, minWidth: 100, textAlign: 'right' }}>
+          {isLiveMode
+            ? (complete ? `完成 · ${liveElapsed.toFixed(1)}s` : `${liveElapsed.toFixed(1)}s · ${liveText.length} 字`)
+            : (complete ? '完成 · 26.0s' : `${elapsed.toFixed(1)}s / ~${RUN_TOTAL.toFixed(0)}s`)}
+        </span>
+        {!isLiveMode && <Btn t={t} size="sm" onClick={() => setPlaying(p => !p)} disabled={complete}>{playing ? '⏸' : '▶'}</Btn>}
+        {!isLiveMode && <Btn t={t} size="sm" onClick={() => setSpeed(s => s === 1 ? 2 : s === 2 ? 4 : 1)} disabled={complete}>×{speed}</Btn>}
+        {!isLiveMode && !complete && (
+          <Btn t={t} size="sm" onClick={() => { offsetRef.current = RUN_TOTAL; setElapsed(RUN_TOTAL); setPlaying(false); }}>SKIP →</Btn>
+        )}
+        {complete && <Btn t={t} size="sm" primary accent onClick={onDone}>View report ↗</Btn>}
+      </div>
+
+      {/* Essay layout */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: bodyCols, minHeight: 0, overflow: 'auto' }}>
+        <div/>
+        <div style={{ padding: '36px 0 48px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <PromptHeader t={t} prompt={prompt}/>
+          {/* Model badge in live mode */}
+          {isLiveMode && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Tag t={t} accent>◈ {selectedModel?.name} · {selectedModel?.provider}</Tag>
+              {liveStatus === 'connecting' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>正在连接…</span>}
+            </div>
+          )}
+          {!isLiveMode && (
+            <div>
+              <BilingualHead t={t} size="md" en="Cold brew, hotter capital." cn="2025 Q1 国内咖啡赛道融资速记" emphasis="From Manner's new round to the sprawl of small-town chains."/>
+            </div>
+          )}
+
+          <div style={{
+            fontFamily: t.fontCN, fontSize: editorial ? 16 : 15,
+            lineHeight: 1.85, color: t.inkSoft,
+            display: 'flex', flexDirection: 'column', gap: 18,
+            paddingTop: 18, borderTop: `2px solid ${t.ink}`,
+          }}>
+            {/* LIVE MODE rendering */}
+            {isLiveMode && liveParagraphs.map((p, i) => (
+              <Paragraph key={i} t={t} para={p} isLead={p.kind === 'lede'} isActive={i === liveParagraphs.length - 1 && liveStatus === 'streaming'}/>
+            ))}
+            {isLiveMode && liveStatus === 'error' && (
+              <div style={{ padding: '12px 16px', border: `1.5px solid #e5251d`, background: t.cardOn, fontFamily: t.fontCN, fontSize: 13, color: '#e5251d', lineHeight: 1.6 }}>
+                ✕ API 错误：{liveError}
+              </div>
+            )}
+            {isLiveMode && liveStatus === 'connecting' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.mute }}>
+                <span style={{ display: 'inline-block', width: 10, height: 18, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+                <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>connecting to {selectedModel?.name}…</span>
+              </div>
+            )}
+
+            {/* DEMO MODE rendering */}
+            {!isLiveMode && RUN_PARAGRAPHS.slice(0, paraIdx + 1).map((p, i) => {
+              const isActive = i === paraIdx && !demoComplete && !(activePara && activePara.complete);
+              const text = isActive && activePara ? activePara.text.slice(0, activePara.revealCount) : p.text;
+              return <Paragraph key={i} t={t} para={{ ...p, text }} isLead={p.kind === 'lede'} isActive={isActive}/>;
+            })}
+            {!isLiveMode && showFigure && (
+              <Figure t={t} type="chart" label="Fig. 1 · 季度融资金额分布 (亿元)" caption="数据来源：IT 桔子 · 2025 Q1 一级市场数据库" height={220}/>
+            )}
+            {!isLiveMode && paraIdx < 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.mute }}>
+                <span style={{ display: 'inline-block', width: 10, height: 18, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+                <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>thinking…</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Marginalia */}
+        {marginaliaOn && (
+          <div style={{ padding: '36px 0 36px 24px', borderLeft: `1px dashed ${t.rule}`, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'hidden' }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              MARGINALIA · 边注<span style={{ flex: 1 }}/><span>{displayMargins.length}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {displayMargins.map(m => (
+                <MarginNote key={m.id} t={t} tag={m.tag} cn={m.cn} state={m.state} time={formatTime(m.t)}/>
+              ))}
+              {complete && liveStatus !== 'error' && (
+                <div style={{ padding: '12px 14px', border: `1.5px solid #10b981`, background: t.cardOn, fontFamily: t.fontCN, fontSize: 12, lineHeight: 1.55, color: t.inkSoft }}>
+                  ✓ {isLiveMode ? `写完了，共 ${liveText.length} 字。` : '写完了。共 2,418 字，9 处引用，4 段。'}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        <div/>
+      </div>
+    </div>
+  );
+}
+
+function Paragraph({ t, para, isLead, isActive }) {
+  // Render text with §N footnote markers converted to superscripts
+  const parts = [];
+  const re = /§(\d+)/g;
+  let lastIdx = 0;
+  let match;
+  while ((match = re.exec(para.text)) !== null) {
+    parts.push(para.text.slice(lastIdx, match.index));
+    parts.push({ sup: match[1] });
+    lastIdx = match.index + match[0].length;
+  }
+  parts.push(para.text.slice(lastIdx));
+
+  const style = isLead ? {
+    margin: 0, fontWeight: 700, fontSize: 19, lineHeight: 1.55, color: t.ink,
+  } : { margin: 0 };
+
+  return (
+    <p style={style}>
+      {parts.map((p, i) => typeof p === 'string'
+        ? <React.Fragment key={i}>{p}</React.Fragment>
+        : <Sup key={i} n={p.sup} t={t}/>)}
+      {isActive && <span style={{
+        display: 'inline-block', width: 8, height: 16, background: t.accent,
+        verticalAlign: '-3px', marginLeft: 2, animation: 'essay-blink 1s steps(2) infinite',
+      }}/>}
+    </p>
+  );
+}
+
+function PromptHeader({ t, prompt }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Tag t={t} accent>◆ YOUR PROMPT · 你的提问</Tag>
+      <div style={{
+        padding: '12px 0', borderTop: `1px solid ${t.ink}`, borderBottom: `1px solid ${t.ink}`,
+        fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.6, color: t.inkSoft,
+      }}>{prompt}</div>
+    </div>
+  );
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+Object.assign(window, { Running, RUN_PARAGRAPHS, RUN_EVENTS, RUN_TOTAL });
+// Report — final published essay. Lead paragraph, sections with figures,
+// pull quotes, marginal references column. Polished editorial output.
+
+const REPORT_META = {
+  issue: '№ 241',
+  date: '2026 · MAY · 21',
+  duration: '07:42',
+  words: '2,418',
+  sources: 9,
+  reading: '6 min',
+  category: 'INDUSTRY · 行业研究',
+};
+
+const REPORT_METRICS = [
+  { value: '¥11.4亿', en: 'TOTAL', cn: '融资总额',  accent: false },
+  { value: '+38%',   en: 'YOY',   cn: '同比增长',  accent: true },
+  { value: '9',       en: 'DEALS', cn: '公开事件',  accent: false },
+  { value: '6 / 9',   en: 'JAN',   cn: '集中于 1 月', accent: false },
+];
+
+const REPORT_SECTIONS = [
+  {
+    id: 's1', num: '01', en: 'TL;DR', cn: '核心结论',
+    blocks: [
+      { kind: 'lede',
+        text: '钱没少，故事变了——资本退出"高密度精品"叙事，重新拥抱规模与下沉。' },
+      { kind: 'p',
+        text: '2025 年第一季度，国内连锁咖啡品牌共发生 9 起公开融资事件，总金额约 11.4 亿元§1。其中 6 起集中在 1 月，3 起分布在 2 月与 3 月，节奏明显前置——多数公司选择把好消息放在春节前后释放，回避后段的传统淡季窗口。' },
+      { kind: 'p',
+        text: '更值得注意的是融资标的的迁移：从过去两年的"精品 / 第三空间 / 高密度门店"叙事，转向"规模化 / 下沉 / 加盟"叙事。两端同时拿钱，中间最难。' },
+    ],
+  },
+  {
+    id: 's2', num: '02', en: 'The state of capital', cn: '资本的新姿态',
+    blocks: [
+      { kind: 'p',
+        text: 'Manner 在 1 月完成新一轮融资，估值约 30 亿美元§2，并同步释放"5 年内开设 5,000 家门店"的计划——目前 Manner 的门店数约 1,300 家，这意味着接下来 4 年要保持每年新增 ~900 家的速度。' },
+      { kind: 'quote',
+        text: '资本不再用"每平米营收"读懂咖啡，它开始用"每个县城"读懂咖啡。',
+        by: '一位连锁咖啡品牌的早期投资人 · 行业访谈' },
+      { kind: 'p',
+        text: '这是公司首次明确表态规模化路径——此前 Manner 长期被视作精品咖啡的代表，2024 年还曾因门店密度过低而被外界质疑增长上限。新的估值与计划，是一次清晰的姿态切换。' },
+    ],
+  },
+  {
+    id: 's3', num: '03', en: 'The sprawl beneath', cn: '下沉之下',
+    blocks: [
+      { kind: 'p',
+        text: '另一端则是库迪、挪瓦、本来不该有等品牌密集出现在三四线城市§3。库迪 1 月披露的加盟数据显示，下沉市场加盟商占比已超过 60%。' },
+      { kind: 'figure', label: 'Fig. 1 · 季度融资金额分布 (亿元)',
+        caption: '数据来源：IT 桔子 · 2025 Q1 一级市场数据库' },
+      { kind: 'p',
+        text: '从单店模型上看，这些品牌的客单价在 9-12 元之间，比一二线城市的精品咖啡低近一倍。模型成立的前提是低租金、低人力、半成品供应链——这是另一套生意，需要另一套估值体系。' },
+    ],
+  },
+  {
+    id: 's4', num: '04', en: 'What to watch', cn: '接下来看什么',
+    blocks: [
+      { kind: 'p',
+        text: '两个信号需要持续跟踪：其一，Manner 的展店速度是否能稳定在年化 ~900 家——这是判断"规模化叙事"能否成立的关键指标。其二，下沉市场的单店模型是否仍能维持 ~12 个月的回本周期。' },
+      { kind: 'p',
+        text: '如果两条线都顺利，2025 年 H2 会迎来下一波融资。如果有一条断了，资本就会重新回到"中间地带"，那些目前最尴尬的城市——比如杭州、苏州、宁波——可能反而成为新的故事来源。' },
+    ],
+  },
+];
+
+const REPORT_REFS = [
+  { n: '[1]', src: 'IT 桔子', title: '2025 Q1 一级市场融资数据库', url: 'itjuzi.com', date: '2025.04.02' },
+  { n: '[2]', src: '36 氪',   title: 'Manner 新一轮融资消息',         url: '36kr.com',  date: '2025.01.18' },
+  { n: '[3]', src: '窄门餐眼', title: '咖啡品牌门店分布数据',         url: 'zhaimen.cn', date: '2025.03.30' },
+  { n: '[4]', src: '行业访谈', title: '5 位早期投资人匿名访谈',       url: 'internal',   date: '2025.04.10' },
+];
+
+// ── Follow-up composer ──────────────────────────────────────────────────────
+function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }) {
+  const [text, setText] = React.useState('');
+  const [sent, setSent] = React.useState(false);
+  const [chips, setChips] = React.useState([]);
+  const editorial = true;
+
+  // Build context chips from section list
+  React.useEffect(() => {
+    const secChips = (rSections || []).slice(0, 4).map(s => ({
+      id: s.id, label: `引用 ${s.num}`, active: false,
+    }));
+    setChips(secChips);
+  }, [rSections]);
+
+  const toggleChip = (id) => setChips(prev => prev.map(c => c.id === id ? { ...c, active: !c.active } : c));
+
+  const handleSend = () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const ctxSections = chips.filter(c => c.active).map(c => c.label).join('、');
+    const ctx = ctxSections ? `（参考：${ctxSections}）` : '';
+    const combined = ctxSections
+      ? `${trimmed}${ctx}\n\n[原始报告主题: ${reportData?.meta?.subtitle || reportData?.meta?.titleEn || ''}]`
+      : trimmed;
+    if (onFollowUp) {
+      onFollowUp(combined);
+    } else {
+      setSent(true);
+      setTimeout(() => { setSent(false); setText(''); }, 2000);
+    }
+  };
+
+  return (
+    <div style={{
+      marginTop: 36, padding: '18px 22px',
+      border: `1.5px solid ${t.ink}`, background: t.cardOn,
+      display: 'flex', flexDirection: 'column', gap: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Tag t={t} filled>FOLLOW-UP</Tag>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>追问、要求改写或继续</span>
+      </div>
+      <textarea
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSend(); }}
+        placeholder="例：把第二节扩写一倍，加入更多具体数据和案例…"
+        style={{
+          fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.55, color: t.ink,
+          padding: '4px 0', border: 'none', outline: 'none', resize: 'none',
+          minHeight: 54, background: 'transparent',
+        }}/>
+      {/* Section reference chips */}
+      {chips.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>引用节：</span>
+          {chips.map(c => (
+            <button key={c.id} type="button" onClick={() => toggleChip(c.id)} style={{
+              padding: '3px 8px', border: `1px solid ${c.active ? t.accent : t.rule}`,
+              background: c.active ? t.accent : 'transparent',
+              color: c.active ? '#fff' : t.inkSoft,
+              fontFamily: t.fontMono, fontSize: 10, cursor: 'pointer', letterSpacing: 0.5,
+            }}>{c.label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Bottom toolbar — mirrors PromptComposer */}
+      <div style={{
+        borderTop: `1px solid ${t.rule}`, paddingTop: 10, marginTop: 2,
+        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: t.paperAlt,
+        marginLeft: -22, marginRight: -22, paddingLeft: 22, paddingRight: 22,
+        paddingBottom: 10,
+      }}>
+        {toolbarStore ? (
+          <>
+            <SourcesPopover t={t} store={toolbarStore}/>
+            <AttachmentsPopover t={t} store={toolbarStore}/>
+            <TonePopover t={t} store={toolbarStore}/>
+            <LengthPopover t={t} store={toolbarStore}/>
+          </>
+        ) : (
+          <>
+            <Tag t={t}>＋ 数据源</Tag>
+            <Tag t={t}>语气 · 分析性</Tag>
+            <Tag t={t}>长度 · 深度</Tag>
+          </>
+        )}
+        <span style={{ flex: 1 }}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>⌘↵</span>
+        <Btn t={t} size="sm" primary accent
+          onClick={handleSend}
+          style={sent ? { background: '#10b981', borderColor: '#10b981' } : (!text.trim() ? { opacity: 0.4 } : {})}>
+          {sent ? '✓ 已发送' : '↗ 发送追问'}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// Quick inline copy-link button used in the report right-rail share box
+function CopyLinkBtn({ t, reportData }) {
+  const [copied, setCopied] = React.useState(false);
+  const handleCopy = async () => {
+    const base = window.location.href.split('?')[0].split('#')[0];
+    const id = reportData?.meta?.issue || 'shared';
+    const url = `${base}?r=${encodeURIComponent(id)}`;
+    try { await navigator.clipboard.writeText(url); } catch { }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+  return (
+    <Btn t={t} size="sm" onClick={handleCopy}
+      style={copied ? { color: '#10b981', borderColor: '#10b981' } : {}}>
+      {copied ? '✓ 链接已复制' : '⎘ 复制链接'}
+    </Btn>
+  );
+}
+
+function parseCSV(text) {
+  if (!text || typeof text !== 'string') return null;
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  if (lines.length < 2) return null;
+  const sep = lines[0].includes('\t') ? '\t' : ',';
+  if (lines[0].split(sep).length < 2) return null;
+  const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g,''));
+  const rows = lines.slice(1).map(l => l.split(sep).map(c => c.trim().replace(/^"|"$/g,'')));
+  return { headers, rows };
+}
+function ReportCoverPlate({ t, title, category, isStatic, editorial }) {
+  // Deterministic seed from title/category string
+  const srcStr = (title || category || 'atlas').slice(0, 48);
+  let seed = 0;
+  for (let i = 0; i < srcStr.length; i++) seed = (seed * 31 + srcStr.charCodeAt(i)) | 0;
+  seed = Math.abs(seed);
+  const r = (n) => { const x = Math.sin((seed + n) * 9301.1 + n * 49.3) * 43758.5453; return x - Math.floor(x); };
+
+  const VH = editorial ? 200 : 168;
+  const PANEL = 188; // left accent panel width (in 800-unit viewBox)
+
+  // Grid-based pattern: 10 cols × 4 rows in the right zone
+  const COLS = 10, ROWS = 4;
+  const cw = (800 - PANEL) / COLS, rh = VH / ROWS;
+  const gridCells = [];
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const idx = row * COLS + col;
+      const v = r(idx);
+      if (v > 0.62) {
+        const span = r(idx + 100) > 0.7 ? 2 : 1;
+        gridCells.push({
+          x: PANEL + col * cw,
+          y: row * rh,
+          w: Math.min(span * cw, (800 - PANEL) - col * cw) - 1,
+          h: rh - 1,
+          useAccent: r(idx + 200) > 0.4,
+          opacity: 0.07 + r(idx + 300) * 0.20,
+        });
+      }
+    }
+  }
+
+  const bigLetter = (title || category || 'A').replace(/\s/g, '').charAt(0).toUpperCase();
+  const catText = (category || (isStatic ? 'INDUSTRY' : 'AI · GEN')).replace(/\s*·.*$/, '').trim().toUpperCase().slice(0, 13);
+  const subText = isStatic ? '№ 241' : 'AI · GENERATED';
+
+  return (
+    <div style={{ width: '100%', marginBottom: 22, overflow: 'hidden', borderBottom: `2px solid ${t.ink}` }}>
+      <svg viewBox={`0 0 800 ${VH}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        <defs>
+          <clipPath id={`cp-right-${seed}`}>
+            <rect x={PANEL} y={0} width={800 - PANEL} height={VH}/>
+          </clipPath>
+        </defs>
+
+        {/* Right zone background */}
+        <rect x={PANEL} width={800 - PANEL} height={VH} fill={t.faint}/>
+
+        {/* Horizontal grid rules (right zone only) */}
+        {[0.25, 0.5, 0.75].map((p, i) => (
+          <line key={i} x1={PANEL} y1={p * VH} x2={800} y2={p * VH} stroke={t.rule} strokeWidth={0.7}/>
+        ))}
+
+        {/* Giant watermark letter */}
+        <text x={(PANEL + 800) / 2} y={VH * 0.82} textAnchor="middle"
+          fontFamily="'Archivo', sans-serif" fontSize={VH * 1.5} fontWeight={900}
+          fill={t.ink} fillOpacity={0.033} clipPath={`url(#cp-right-${seed})`}>
+          {bigLetter}
+        </text>
+
+        {/* Grid pattern cells */}
+        {gridCells.map((c, i) => (
+          <rect key={i} x={c.x} y={c.y} width={c.w} height={c.h}
+            fill={c.useAccent ? t.accent : t.ink} fillOpacity={c.opacity}/>
+        ))}
+
+        {/* Thin accent diagonal stripe */}
+        <line x1={PANEL} y1={VH} x2={PANEL + VH * 0.6} y2={0} stroke={t.accent} strokeWidth={1} opacity={0.25}/>
+
+        {/* Left accent panel */}
+        <rect x={0} y={0} width={PANEL} height={VH} fill={t.accent}/>
+
+        {/* Panel inner rule lines */}
+        {[0.33, 0.67].map((p, i) => (
+          <line key={i} x1={0} y1={p * VH} x2={PANEL} y2={p * VH} stroke="rgba(255,255,255,0.12)" strokeWidth={0.8}/>
+        ))}
+
+        {/* ATLAS label top-left */}
+        <text x={14} y={20} fontFamily="'JetBrains Mono', monospace" fontSize={7}
+          fill="rgba(255,255,255,0.55)" fontWeight={700} letterSpacing={3.5}>
+          ATLAS
+        </text>
+
+        {/* Large decorative "AI" or "01" ghost text */}
+        <text x={12} y={VH * 0.78} fontFamily="'Archivo', sans-serif" fontSize={VH * 0.62} fontWeight={900}
+          fill="rgba(255,255,255,0.09)" letterSpacing={-3}>
+          {isStatic ? '01' : 'AI'}
+        </text>
+
+        {/* Category label */}
+        <text x={14} y={VH - 30} fontFamily="'JetBrains Mono', monospace" fontSize={9.5}
+          fill="white" fontWeight={700} letterSpacing={1.8}>
+          {catText}
+        </text>
+
+        {/* Sub-label */}
+        <text x={14} y={VH - 13} fontFamily="'JetBrains Mono', monospace" fontSize={7.5}
+          fill="rgba(255,255,255,0.52)" fontWeight={400} letterSpacing={1}>
+          {subText}
+        </text>
+
+        {/* Panel separator */}
+        <line x1={PANEL} y1={0} x2={PANEL} y2={VH} stroke={t.ink} strokeWidth={1.5}/>
+
+        {/* Bottom accent strip */}
+        <rect x={0} y={VH - 4} width={800} height={4} fill={t.accent}/>
+      </svg>
+    </div>
+  );
+}
+
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport }) {
+  const [activeSec, setActiveSec] = React.useState('s1');
+  const containerRef = React.useRef(null);
+  const [editMode, setEditMode] = React.useState(false);
+  const [edits, setEdits] = React.useState({});
+
+  const getEdit = (key, fallback) => edits[key] !== undefined ? edits[key] : fallback;
+  const setEdit = (key, val) => setEdits(prev => ({ ...prev, [key]: val }));
+
+  const handleSaveEdits = () => {
+    if (!reportData) return;
+    const d = JSON.parse(JSON.stringify(reportData));
+    for (const [key, val] of Object.entries(edits)) {
+      const p = key.split('.');
+      if (p[0] === 'meta') { d.meta[p[1]] = val; }
+      else if (p[0].startsWith('s')) {
+        const si = +p[0].slice(1);
+        if (p[1] === 'title') d.sections[si].en = val;
+        else if (p[1].startsWith('b')) { const bi = +p[1].slice(1); d.sections[si].blocks[bi].text = val; }
+      }
+    }
+    if (onSaveReport) onSaveReport(d);
+    setEditMode(false);
+    setEdits({});
+  };
+  const handleCancelEdits = () => { setEditMode(false); setEdits({}); };
+
+  // Data: use reportData prop if provided, else fall back to static constants
+  const isStatic     = !reportData;
+  const rMeta        = reportData?.meta     || REPORT_META;
+  const rMetrics     = reportData?.metrics  || REPORT_METRICS;
+  const rSections    = reportData?.sections || REPORT_SECTIONS;
+  const rRefs        = reportData?.refs     || REPORT_REFS;
+  const rAttachments = reportData?.attachments || [];
+
+  // Teaser: first lede block sentence from first section
+  const teaser = React.useMemo(() => {
+    const lede = rSections?.[0]?.blocks?.find(b => b.kind === 'lede');
+    if (!lede?.text) return null;
+    const raw = lede.text.replace(/\*\*/g, '').trim();
+    const sentence = raw.match(/^[^。！？.!?]{6,}[。！？.!?]/)?.[0];
+    return sentence || (raw.length > 90 ? raw.slice(0, 90) + '…' : raw);
+  }, [rSections]);
+
+  // Metrics: use stored for static; derive from meta for AI reports
+  const metricsArr = rMetrics.length > 0 ? rMetrics : [
+    { value: rMeta.words  || '—', en: 'WORDS',  cn: '字数',  accent: false },
+    { value: String(rMeta.sources || '—'), en: 'REFS', cn: '引用', accent: false },
+    { value: rMeta.reading || '—', en: 'READ',  cn: '阅读',  accent: false },
+    { value: rMeta.tokens  ? rMeta.tokens.toLocaleString() : '—', en: 'TOKENS', cn: 'Tokens', accent: rMeta.tokens > 0 },
+  ];
+
+  // Scroll-spy
+  React.useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const handler = () => {
+      const headings = rSections.map(s => ({ id: s.id, el: root.querySelector(`[data-sec="${s.id}"]`) }));
+      const top = root.scrollTop + 120;
+      let current = headings[0]?.id;
+      for (const h of headings) { if (h.el && h.el.offsetTop <= top) current = h.id; }
+      setActiveSec(current);
+    };
+    root.addEventListener('scroll', handler);
+    return () => root.removeEventListener('scroll', handler);
+  }, [rSections]);
+
+  const editorial = density === 'editorial';
+  const bodyCols = editorial
+    ? (marginaliaOn ? '180px 1fr 600px 220px 1fr' : '180px 1fr 720px 1fr')
+    : (marginaliaOn ? '160px 1fr 540px 200px 1fr' : '160px 1fr 660px 1fr');
+
+  const scrollTo = (id) => {
+    const el = containerRef.current?.querySelector(`[data-sec="${id}"]`);
+    if (el) containerRef.current.scrollTo({ top: el.offsetTop - 80, behavior: 'smooth' });
+  };
+
+  return (
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Report header bar */}
+      <div style={{ padding: '12px 36px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, background: t.paper }}>
+        <Tag t={t} accent>◆ {rMeta.issue || REPORT_META.issue} · DONE</Tag>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
+          {rMeta.words} 字 · {rMeta.sources} 来源 · {rMeta.reading} 阅读
+          {rMeta.tokens > 0 && <span style={{ marginLeft: 8, color: t.accent }}>· {rMeta.tokens.toLocaleString()} tokens</span>}
+        </span>
+        <span style={{ flex: 1 }}/>
+        <Btn t={t} size="sm" onClick={onRerun || undefined} style={!onRerun ? { opacity: 0.4 } : {}}>▸ 重跑</Btn>
+        <Btn t={t} size="sm" onClick={onToggleFavorite || undefined}
+          style={isFavorited ? { background: '#c8a84b', borderColor: '#c8a84b', color: '#fff' } : (!onToggleFavorite ? { opacity: 0.4 } : {})}>
+          {isFavorited ? '★ 已收藏' : '☆ 收藏'}
+        </Btn>
+        {!isStatic && !editMode && (
+          <Btn t={t} size="sm" onClick={() => setEditMode(true)}>✎ 编辑</Btn>
+        )}
+        {editMode && <>
+          <Btn t={t} size="sm" onClick={handleSaveEdits} primary accent>✓ 保存</Btn>
+          <Btn t={t} size="sm" onClick={handleCancelEdits}>✕ 取消</Btn>
+        </>}
+        <Btn t={t} size="sm" primary accent onClick={onExport}>↗ 导出 / 分享</Btn>
+      </div>
+
+      {/* Scrollable body */}
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: bodyCols }}>
+        {/* Left rail: section index */}
+        <aside style={{ padding: '32px 16px 40px 28px', position: 'sticky', top: 0, alignSelf: 'start', maxHeight: '100vh', overflowY: 'auto' }}>
+          {/* Cover back-to-top */}
+          <button type="button" onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} style={{
+            display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
+            padding: '8px 0 12px 10px', marginBottom: 6,
+            borderBottom: `1px solid ${t.rule}`,
+          }}>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>CONTENTS · 目录</span>
+          </button>
+
+          {/* Cover entry */}
+          <button type="button" onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} style={{
+            display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
+            padding: '7px 0 7px 10px',
+            borderLeft: activeSec === 's1' ? `3px solid transparent` : `3px solid transparent`,
+          }}>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>00 · COVER</span>
+          </button>
+
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {rSections.map(s => {
+              const cnMatch = s.en.match(/^([一二三四五六七八九十]+[、．])\s*/);
+              const prefix = cnMatch?.[1] || '';
+              const label = prefix ? s.en.slice(cnMatch[0].length) : s.en;
+              return (
+              <button key={s.id} type="button" onClick={() => scrollTo(s.id)} style={{
+                display: 'block', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
+                padding: '7px 0 7px 10px',
+                borderLeft: activeSec === s.id ? `3px solid ${t.accent}` : `3px solid transparent`,
+                fontFamily: t.fontBody, color: t.ink,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  {prefix
+                    ? <span style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: 12, color: activeSec === s.id ? t.accent : t.mute }}>{prefix}</span>
+                    : <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.5 }}>{s.num} ·</span>
+                  }
+                  <span style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 11, color: activeSec === s.id ? t.ink : t.inkSoft, lineHeight: 1.4 }}>{label}</span>
+                </div>
+              </button>
+              );
+            })}
+          </div>
+
+          {/* Tone / model badge */}
+          {!isStatic && rMeta.tone && (
+            <div style={{ marginTop: 20, padding: '8px 10px', border: `1px solid ${t.rule}`, background: t.faint }}>
+              <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 1.2, marginBottom: 4 }}>STYLE</div>
+              <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.inkSoft }}>{rMeta.tone}</div>
+            </div>
+          )}
+        </aside>
+
+        {/* Outer gutter */}
+        <div/>
+
+        {/* Center body */}
+        <article style={{ padding: '32px 0 80px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* ═══════════════ COVER ═══════════════ */}
+          <header style={{ display: 'flex', flexDirection: 'column', paddingBottom: 0, marginBottom: 8 }}>
+
+            {/* Cover plate visual */}
+            <ReportCoverPlate t={t}
+              title={rMeta.titleEn || rMeta.title?.en || rMeta.subtitle || ''}
+              category={rMeta.category || ''}
+              isStatic={isStatic}
+              editorial={editorial}/>
+
+            {/* Row 1 · category / date / byline */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 12, borderBottom: `1px solid ${t.rule}`, marginBottom: 22 }}>
+              <Tag t={t} accent>◆ {rMeta.category || REPORT_META.category}</Tag>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.8 }}>
+                {rMeta.date || REPORT_META.date}
+              </span>
+              <span style={{ flex: 1 }}/>
+              {!isStatic && rMeta.model && (
+                <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.5 }}>
+                  ◈ {rMeta.model}
+                </span>
+              )}
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2, fontWeight: 700 }}>ATLAS</span>
+            </div>
+
+            {/* Row 2 · issue badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+              <div style={{ width: 4, height: 32, background: t.accent, flexShrink: 0 }}/>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, letterSpacing: 2.5, textTransform: 'uppercase', fontWeight: 700 }}>
+                  {isStatic ? `ISSUE ${rMeta.issue || '№ 241'}` : 'AI · GENERATED'}
+                </span>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>
+                  {[rMeta.reading && `${rMeta.reading} READ`, rMeta.words && `${rMeta.words} 字`].filter(Boolean).join('  ·  ')}
+                </span>
+              </div>
+            </div>
+
+            {/* Row 3 · Main headline */}
+            {isStatic ? (
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: editorial ? 68 : 54, lineHeight: 0.92, letterSpacing: -2.5, color: t.ink }}>
+                  Cold brew,<br/>
+                  <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>hotter</span> capital.
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontFamily: t.fontCN, fontWeight: 900, fontSize: editorial ? 52 : 40, lineHeight: 1.05, letterSpacing: -1, color: t.ink }}>
+                  {(rMeta.subtitle || rMeta.title?.cn || rMeta.titleEn || rMeta.title?.en || '').slice(0, 60)}
+                </div>
+              </div>
+            )}
+
+            {/* Row 4 · Subtitle / Chinese secondary title */}
+            {isStatic ? (
+              <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 18 : 15, lineHeight: 1.5, color: t.inkSoft, marginBottom: 24 }}>
+                2025 Q1 国内咖啡赛道融资速记——从 Manner 的新一轮，到下沉市场的快速展店。
+              </div>
+            ) : (
+              (rMeta.titleEn || rMeta.title?.en) && (
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: editorial ? 16 : 14, lineHeight: 1.5, color: t.mute, marginBottom: 22, letterSpacing: 0.5 }}>
+                  {(rMeta.titleEn || rMeta.title?.en || '').slice(0, 80)}
+                </div>
+              )
+            )}
+
+            {/* Row 5 · Teaser lede (italic pullout) */}
+            {teaser && (
+              <div style={{
+                fontFamily: t.fontSerif, fontStyle: 'italic',
+                fontSize: editorial ? 16 : 14, lineHeight: 1.8,
+                color: t.ink,
+                borderLeft: `3px solid ${t.accent}`, paddingLeft: 18,
+                marginBottom: 28,
+              }}>
+                {teaser}
+              </div>
+            )}
+
+            {/* Row 6 · Metrics bar */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${metricsArr.length}, 1fr)`,
+              borderTop: `2px solid ${t.ink}`, borderBottom: `1px solid ${t.rule}`,
+              paddingTop: 16, paddingBottom: 16,
+            }}>
+              {metricsArr.map((m, i) => (
+                <div key={m.en} style={{ paddingLeft: i === 0 ? 0 : 18, borderLeft: i === 0 ? 'none' : `1px solid ${t.rule}` }}>
+                  <Metric {...m} t={t}/>
+                </div>
+              ))}
+            </div>
+          </header>
+          {/* ════════════════════════════════════ */}
+
+          {editMode && (
+            <div style={{ padding: '6px 12px', background: 'rgba(255,215,0,0.12)', border: `1px dashed ${t.accent}`, fontFamily: t.fontMono, fontSize: 10, color: t.accent, letterSpacing: 1 }}>
+              ✎ 编辑模式 — 点击文字框修改内容，完成后点击「保存」
+            </div>
+          )}
+          {rSections.map((s, sIdx) => {
+            const titleKey = `s${sIdx}.title`;
+            const rawTitle = getEdit(titleKey, s.en);
+            const cnNumMatch = rawTitle.match(/^([一二三四五六七八九十]+[、．])\s*/);
+            const cnNumPrefix = cnNumMatch?.[1] || '';
+            const sectionTitle = cnNumPrefix ? rawTitle.slice(cnNumMatch[0].length) : rawTitle;
+            return (
+            <section key={s.id} data-sec={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 28, scrollMarginTop: 80 }}>
+              <div style={{ borderTop: `2px solid ${t.ink}`, paddingTop: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  {cnNumPrefix ? (
+                    <span style={{ fontFamily: t.fontCN, fontWeight: 900, fontSize: 22, color: t.accent, letterSpacing: 0 }}>{cnNumPrefix}</span>
+                  ) : (
+                    <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.accent, letterSpacing: 0.5 }}>§ {s.num}</span>
+                  )}
+                  {editMode
+                    ? <input type="text" value={sectionTitle} onChange={e => setEdit(titleKey, cnNumPrefix + e.target.value)}
+                        style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: editorial ? 18 : 16, color: t.ink, border: '1.5px dashed currentColor', background: 'rgba(255,215,0,0.07)', padding: '2px 6px', outline: 'none', flex: 1 }}/>
+                    : <span style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: editorial ? 18 : 16, letterSpacing: 0.5, color: t.ink }}>{sectionTitle}</span>
+                  }
+                  {s.cn && !editMode && <span style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 500, color: t.mute }}>· {s.cn}</span>}
+                </div>
+              </div>
+              <div style={{ fontFamily: t.fontCN, fontSize: editorial ? 16 : 15, lineHeight: 1.85, color: t.inkSoft, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {s.blocks.map((b, bIdx) => {
+                  const bKey = `s${sIdx}.b${bIdx}`;
+                  const blockWithEdits = editMode ? { ...b, text: getEdit(bKey, b.text) } : b;
+                  return <ReportBlock key={bIdx} block={blockWithEdits} t={t}
+                    editMode={editMode} onChange={v => setEdit(bKey, v)}/>;
+                })}
+              </div>
+            </section>
+            );
+          })}
+
+          {/* Follow-up composer */}
+          <FollowUpComposer t={t} reportData={reportData} rSections={rSections} onFollowUp={onFollowUp} toolbarStore={toolbarStore}/>
+          {rAttachments.length > 0 && (
+            <div style={{ marginTop: 48, borderTop: `2px solid ${t.ink}`, paddingTop: 28 }}>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.6, marginBottom: 20 }}>
+                APPENDIX · 附件 ({rAttachments.length})
+              </div>
+              {rAttachments.map((att) => {
+                const csvData = parseCSV(att.content);
+                const isText = typeof att.content === 'string' && att.content !== '[binary]';
+                return (
+                  <div key={att.id} style={{ marginBottom: 32 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                      <span style={{ color: t.accent }}>📎</span>
+                      <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 13 }}>{att.name}</span>
+                      <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, padding: '2px 6px', border: `1px solid ${t.rule}` }}>
+                        {att.content === '[binary]' ? 'BINARY' : csvData ? 'CSV' : 'TEXT'} · {(att.size/1024).toFixed(1)} KB
+                      </span>
+                    </div>
+                    {csvData ? (
+                      <div style={{ overflowX: 'auto', border: `1px solid ${t.rule}` }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: t.fontCN, fontSize: 12 }}>
+                          <thead><tr>
+                            {csvData.headers.map((h,j) => <th key={j} style={{ padding: '6px 10px', borderBottom: `1.5px solid ${t.ink}`, background: t.faint, fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10, textAlign: 'left' }}>{h}</th>)}
+                          </tr></thead>
+                          <tbody>
+                            {csvData.rows.slice(0,100).map((row,j) => (
+                              <tr key={j} style={{ background: j%2===0 ? t.paper : t.faint }}>
+                                {row.map((cell,k) => <td key={k} style={{ padding: '4px 10px', borderBottom: `1px solid ${t.rule}`, color: t.inkSoft }}>{cell}</td>)}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : isText ? (
+                      <pre style={{ fontFamily: t.fontMono, fontSize: 11, color: t.inkSoft, background: t.faint, padding: '12px 14px', borderLeft: `3px solid ${t.accent}`, overflow: 'auto', maxHeight: 280, whiteSpace: 'pre-wrap', margin: 0 }}>
+                        {att.content.slice(0,2000)}{att.content.length > 2000 ? '\n…截断' : ''}
+                      </pre>
+                    ) : (
+                      <div style={{ padding: '10px 14px', background: t.faint, fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>[二进制文件]</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </article>
+
+        {/* Right rail: references */}
+        {marginaliaOn && (
+          <aside style={{ padding: '32px 0 32px 24px', borderLeft: `1px dashed ${t.rule}` }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, marginBottom: 14 }}>
+              REFERENCES · 引用 ({rRefs.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {rRefs.map((r, i) => (
+                <div key={r.n} style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 12, borderBottom: `1px dashed ${t.rule}` }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, fontWeight: 700 }}>{r.n}</span>
+                    <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' }}>{r.src}</span>
+                  </div>
+                  <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, lineHeight: 1.45, marginLeft: 24 }}>{r.title}</span>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 24 }}>{r.url} · {r.date}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              marginTop: 18, padding: 12, border: `1.5px solid ${t.ink}`, background: t.cardOn,
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>SHARE · 分享</span>
+              <Btn t={t} size="sm" onClick={onExport} primary accent>↗ 导出 / 分享</Btn>
+              <CopyLinkBtn t={t} reportData={reportData}/>
+            </div>
+          </aside>
+        )}
+        <div/>
+      </div>
+    </div>
+  );
+}
+
+// ── Inline data chart (bar) rendered from AI-parsed CHART blocks ─────────
+function DataChart({ t, data }) {
+  if (!data?.data?.length) return null;
+  const { title, unit = '', data: items } = data;
+  const maxVal = Math.max(...items.map(d => d.value), 0.001);
+  const barColors = [t.accent, t.inkSoft, t.ink, t.mute];
+
+  return (
+    <div style={{
+      margin: '6px 0', padding: '16px 20px',
+      border: `1.5px solid ${t.ink}`, background: t.cardOn,
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      {title && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, letterSpacing: 1.2 }}>▪ CHART</span>
+          <span style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 12, color: t.ink }}>{title}</span>
+          {unit && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>（{unit}）</span>}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {items.map((item, i) => {
+          const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
+          return (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 56px', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontFamily: t.fontCN, fontSize: 11, color: t.inkSoft, textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
+              <div style={{ height: 16, background: t.faint, position: 'relative', overflow: 'hidden' }}>
+                <div style={{
+                  position: 'absolute', left: 0, top: 0, height: '100%',
+                  width: `${pct}%`, background: i === 0 ? t.accent : (i % 2 === 0 ? t.ink : t.inkSoft),
+                  opacity: i === 0 ? 1 : 0.65,
+                  transition: 'width 0.4s ease',
+                }}/>
+              </div>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, fontWeight: 700, textAlign: 'right' }}>
+                {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}{unit ? ` ${unit}` : ''}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EditableText({ editMode, value, onChange, multiline = true, style = {} }) {
+  if (!editMode) return null; // caller renders display; this only renders when editing
+  const base = {
+    width: '100%', boxSizing: 'border-box', background: 'rgba(255,215,0,0.07)',
+    border: '1.5px dashed currentColor', outline: 'none', borderRadius: 2,
+    padding: '3px 6px', fontFamily: 'inherit', fontSize: 'inherit',
+    color: 'inherit', lineHeight: 'inherit', resize: 'vertical', ...style,
+  };
+  if (multiline) {
+    const rows = Math.max(2, Math.ceil((value || '').length / 72));
+    return <textarea rows={rows} value={value || ''} onChange={e => onChange(e.target.value)} style={base}/>;
+  }
+  return <input type="text" value={value || ''} onChange={e => onChange(e.target.value)} style={{ ...base, resize: 'none' }}/>;
+}
+
+function ReportBlock({ block, t, editMode, onChange }) {
+  if (block.kind === 'chart') return <DataChart t={t} data={block.data}/>;
+  if (block.kind === 'figure') return <Figure t={t} type="chart" label={block.label} caption={block.caption} height={240}/>;
+
+  if (block.kind === 'lede') {
+    if (editMode) return <EditableText editMode value={block.text} onChange={onChange}
+      style={{ fontWeight: 700, fontSize: 19, lineHeight: 1.55 }}/>;
+    return <p style={{ margin: 0, fontWeight: 700, fontSize: 19, lineHeight: 1.55, color: t.ink }}>{renderFootnotes(block.text, t)}</p>;
+  }
+  if (block.kind === 'quote') {
+    if (editMode) return <EditableText editMode value={block.text} onChange={onChange} style={{ fontStyle: 'italic' }}/>;
+    return <PullQuote t={t} attribution={block.by}>{block.text}</PullQuote>;
+  }
+  if (editMode) return <EditableText editMode value={block.text} onChange={onChange}/>;
+  return <p style={{ margin: 0 }}>{renderFootnotes(block.text, t)}</p>;
+}
+
+function renderMd(text, t) {
+  if (!text) return null;
+  const parts = [];
+  const re = /(\*\*[^*\n]+\*\*|§\d+)/g;
+  let last = 0, match;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push(<React.Fragment key={`t${last}`}>{text.slice(last, match.index)}</React.Fragment>);
+    const token = match[0];
+    if (token.startsWith('**')) {
+      parts.push(<strong key={`b${match.index}`}>{token.slice(2,-2)}</strong>);
+    } else {
+      parts.push(<Sup key={`s${match.index}`} n={token.slice(1)} t={t}/>);
+    }
+    last = match.index + token.length;
+  }
+  if (last < text.length) parts.push(<React.Fragment key="end">{text.slice(last)}</React.Fragment>);
+  return parts;
+}
+// Keep alias for backward compat
+const renderFootnotes = renderMd;
+
+function extractRefsFromText(rawText) {
+  const refsBlock = rawText.match(/\[REFS\]([\s\S]*?)\[\/REFS\]/);
+  if (!refsBlock) return [];
+  const lines = refsBlock[1].trim().split('\n').filter(l => l.trim());
+  const refs = [];
+  for (const line of lines) {
+    const rm = line.match(/^\[(\d+)\]\s*(.+)/);
+    if (!rm) continue;
+    const parts = rm[2].split('—').map(s => s.trim());
+    refs.push({ n: '['+rm[1]+']', src: parts[0]||'来源', title: parts[1]||parts[0]||'参考资料', url: parts[2]||'', date: parts[3]||'' });
+  }
+  return refs;
+}
+function extractTitleFromText(rawText) {
+  const tm = rawText.match(/^\[TITLE:\s*(.+?)\]/m);
+  return tm ? tm[1].trim() : null;
+}
+// ── Markdown → Report Sections parser ───────────────────────────────────────
+function parseMarkdownReport(rawText) {
+  if (!rawText?.trim()) return [];
+  const NUMS = ['01','02','03','04','05','06','07','08','09','10'];
+  const cleanText = rawText
+    .replace(/^\[TITLE:[^\]]*\]\s*/m, '')
+    .replace(/\[REFS\][\s\S]*?\[\/REFS\]/g, '');
+
+  // Tokenize line by line
+  const tokens = [];
+  for (const raw of cleanText.split('\n')) {
+    const line = raw.trim();
+    if (!line) { tokens.push({ type: 'blank' }); continue; }
+    // Chart data block: [CHART:{...}]
+    const chartMatch = line.match(/^\[CHART:(\{.*\})\]$/);
+    if (chartMatch) {
+      try {
+        const chartData = JSON.parse(chartMatch[1]);
+        tokens.push({ type: 'chart', data: chartData });
+      } catch { tokens.push({ type: 'text', text: line }); }
+      continue;
+    }
+    // Heading patterns
+    if (/^[一二三四五六七八九十]+[、．]/.test(line) ||
+        /^#{1,3}\s/.test(line) ||
+        (/^\*\*/.test(line) && /\*\*$/.test(line) && /[一二三四五六七八九十]+[、．]|第[一二三四五六七八九十\d]+[节章]/.test(line)) ||
+        /^第[一二三四五六七八九十\d]+[节章][·：:\s]/.test(line)) {
+      const text = line.replace(/^\*{1,2}|\*{1,2}$/g,'').replace(/^#{1,3}\s*/,'').trim();
+      tokens.push({ type: 'heading', text });
+    } else if (line.startsWith('> ')) {
+      tokens.push({ type: 'quote-line', text: line.slice(2).trim() });
+    } else {
+      tokens.push({ type: 'text', text: line });
+    }
+  }
+
+  // Group into sections
+  const sections = [];
+  let sIdx = 0;
+  let currentTitle = null;
+  let currentBlocks = [];
+  let textBuffer = [];
+  let isFirstBlock = true;
+  let inQuote = false;
+  let quoteLines = [];
+
+  const flushText = () => {
+    const txt = textBuffer.join(' ').trim();
+    if (txt) { currentBlocks.push({ kind: isFirstBlock ? 'lede' : 'p', text: txt }); isFirstBlock = false; }
+    textBuffer = [];
+  };
+  const flushQuote = () => {
+    if (inQuote && quoteLines.length > 0) {
+      const qText = quoteLines[0];
+      const by = quoteLines.slice(1).join(' ').replace(/^[—\s]+/,'').trim();
+      currentBlocks.push({ kind: 'quote', text: qText, by });
+      isFirstBlock = false;
+      inQuote = false; quoteLines = [];
+    }
+  };
+  const commitSection = () => {
+    flushQuote(); flushText();
+    if (currentBlocks.length > 0) {
+      sIdx++;
+      sections.push({ id: `s${sIdx}`, num: NUMS[sIdx-1] || String(sIdx).padStart(2,'0'), en: currentTitle || '正文', cn: '', blocks: currentBlocks });
+    }
+    currentTitle = null; currentBlocks = []; isFirstBlock = true;
+  };
+
+  for (const token of tokens) {
+    if (token.type === 'heading') { commitSection(); currentTitle = token.text; }
+    else if (token.type === 'blank') { flushQuote(); flushText(); }
+    else if (token.type === 'chart') {
+      flushQuote(); flushText();
+      currentBlocks.push({ kind: 'chart', data: token.data });
+      isFirstBlock = false;
+    }
+    else if (token.type === 'quote-line') {
+      flushText();
+      if (!inQuote) { inQuote = true; quoteLines = [token.text]; }
+      else { const attr = token.text.replace(/^[—\s]+/,''); if (attr) quoteLines.push(attr); }
+    }
+    else if (token.type === 'text') {
+      flushQuote();
+      textBuffer.push(token.text);
+    }
+  }
+  commitSection();
+  return sections.filter(s => s.blocks.length > 0);
+}
+
+Object.assign(window, { Report, REPORT_META, REPORT_SECTIONS, REPORT_REFS });
+// Library — magazine-style archive of past reports. Grid of "issues",
+// filterable by category. Each card opens the report view.
+
+const LIBRARY_ENTRIES = [
+  {
+    issue: 241, status: 'NEW',
+    title: { en: 'Cold brew, hotter capital.', cn: '2025 Q1 国内咖啡赛道融资速记' },
+    category: 'INDUSTRY · 行业研究', tag: 'RESEARCH',
+    date: '5月21日', words: '2,418', reading: '6 min', sources: 9,
+    by: 'ATLAS · 04:07–07:42',
+    teaser: '钱没少，故事变了——资本退出"高密度精品"叙事，重新拥抱规模与下沉。',
+    feature: true,
+  },
+  {
+    issue: 240, status: '',
+    title: { en: 'Q1 sales · South China', cn: '华南区 Q1 品类增长复盘' },
+    category: 'DATA · 数据分析', tag: 'DATA',
+    date: '5月18日', words: '1,524', reading: '4 min', sources: 4,
+    by: 'ATLAS · 02:41',
+    teaser: '低线城市贡献了 70% 增量，但毛利空间收窄到 8 个百分点。',
+  },
+  {
+    issue: 239, status: '',
+    title: { en: 'Notion AI · ChatGPT Teams', cn: 'AI 协作工具竞品拆解' },
+    category: 'COMPETITOR · 竞品', tag: 'RESEARCH',
+    date: '5月15日', words: '3,102', reading: '9 min', sources: 14,
+    by: 'ATLAS · 11:08',
+    teaser: '两家在「知识检索」上的产品差异，比定价策略更值得讨论。',
+  },
+  {
+    issue: 238, status: '',
+    title: { en: 'Weekly · Wk20 / 2026', cn: '团队周报 · 第 20 周' },
+    category: 'INTERNAL · 内部', tag: 'INTERNAL',
+    date: '5月12日', words: '812', reading: '3 min', sources: 2,
+    by: 'ATLAS · 01:24',
+    teaser: '上线 2 个功能，客户 A 谈判进入第二阶段，HR 系统迁移延期。',
+  },
+  {
+    issue: 237, status: '',
+    title: { en: 'Home robotics scan', cn: '家用清洁机器人赛道扫描' },
+    category: 'INDUSTRY · 行业研究', tag: 'RESEARCH',
+    date: '5月09日', words: '2,710', reading: '7 min', sources: 11,
+    by: 'ATLAS · 08:55',
+    teaser: '价格带正在被 1,500-2,500 元这一段重新定义。',
+  },
+  {
+    issue: 236, status: '',
+    title: { en: 'Remote work · rent', cn: '远程办公对一线城市租房市场影响' },
+    category: 'SOCIETY · 社会观察', tag: 'RESEARCH',
+    date: '5月05日', words: '2,194', reading: '5 min', sources: 8,
+    by: 'ATLAS · 06:38',
+    teaser: '远郊租金回升了 4-6%，市中心仍在跌——但比一年前已收窄。',
+  },
+  {
+    issue: 235, status: '',
+    title: { en: 'Q1 board memo', cn: '一季度董事会备忘录' },
+    category: 'INTERNAL · 内部', tag: 'INTERNAL',
+    date: '5月02日', words: '1,406', reading: '4 min', sources: 3,
+    by: 'ATLAS · 02:18',
+    teaser: '三大业务线达成、超出、未达 Q1 目标的分布与原因。',
+  },
+  {
+    issue: 234, status: 'ARCHIVED',
+    title: { en: 'Q4 retro · go-to-market', cn: 'Q4 GTM 复盘' },
+    category: 'INTERNAL · 内部', tag: 'INTERNAL',
+    date: '4月28日', words: '1,802', reading: '5 min', sources: 5,
+    by: 'ATLAS · 03:51',
+    teaser: '渠道侧的 CAC 显著优于直销，但 LTV 还需要 2 个季度验证。',
+  },
+];
+
+const LIB_FILTERS = [
+  { k: 'ALL',        en: 'All',         cn: '全部' },
+  { k: 'RESEARCH',   en: 'Research',    cn: '研究' },
+  { k: 'DATA',       en: 'Data',        cn: '数据分析' },
+  { k: 'INTERNAL',   en: 'Internal',    cn: '内部' },
+];
+
+function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
+  const [filter, setFilter] = React.useState('ALL');
+  const [sort, setSort] = React.useState('date');
+
+  // Merge saved (generated) + static entries
+  const generatedEntries = savedReports.map(r => ({
+    _id: r.id,
+    issue: '—',
+    status: 'NEW',
+    title: r.meta.title,
+    category: r.meta.category,
+    tag: 'AI',
+    date: r.meta.date,
+    words: r.meta.words,
+    reading: r.meta.reading,
+    sources: r.meta.sources,
+    by: `ATLAS · ${r.meta.model || 'AI'}`,
+    teaser: r.meta.subtitle || r.prompt?.slice(0, 80),
+    favorited: r.favorited,
+    feature: false,
+  }));
+  const staticEntries = LIBRARY_ENTRIES.map(e => ({ ...e, favorited: false }));
+  const allEntries = [...generatedEntries, ...staticEntries];
+
+  const LIB_FILTERS_DYNAMIC = [
+    { k: 'ALL',       en: 'All',       cn: '全部' },
+    { k: 'FAVORITES', en: '★ Fav',     cn: '收藏' },
+    { k: 'AI',        en: 'Generated', cn: 'AI 生成' },
+    { k: 'RESEARCH',  en: 'Research',  cn: '研究' },
+    { k: 'DATA',      en: 'Data',      cn: '数据' },
+    { k: 'INTERNAL',  en: 'Internal',  cn: '内部' },
+  ];
+
+  const filtered = allEntries.filter(e => {
+    if (filter === 'FAVORITES') return e.favorited;
+    if (filter === 'ALL') return true;
+    return e.tag === filter;
+  });
+
+  const feature = filtered.find(e => e.feature) || filtered[0];
+  const rest = filtered.filter(e => e !== feature);
+  const total = allEntries.length;
+
+  return (
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
+      {/* Masthead */}
+      <div style={{ padding: '36px 36px 24px', display: 'grid', gridTemplateColumns: '1fr auto', gap: 32, alignItems: 'flex-end', borderBottom: `2px solid ${t.ink}` }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 12 }}>
+            <Tag t={t} accent>◆ THE ARCHIVE · 报告库</Tag>
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{total} entries · 全部 {total} 期</span>
+          </div>
+          <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 80, lineHeight: 0.92, letterSpacing: -3, color: t.ink }}>
+            Every essay <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>Atlas</span><br/>has ever filed.
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>SINCE</span>
+          <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 28, letterSpacing: -0.5 }}>2025 · 09 · 12</span>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{total} issues</span>
+        </div>
+      </div>
+
+      {/* Filters bar */}
+      <div style={{ padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${t.rule}`, background: t.paper, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>FILTER ·</span>
+        {LIB_FILTERS_DYNAMIC.map(f => (
+          <button key={f.k} type="button" onClick={() => setFilter(f.k)} style={{
+            padding: '5px 12px', border: `1px solid ${filter === f.k ? t.ink : t.rule}`,
+            background: filter === f.k ? t.ink : 'transparent',
+            color: filter === f.k ? t.paper : t.ink,
+            fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10,
+            letterSpacing: 1.2, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+          }}>
+            <span style={{ textTransform: 'uppercase' }}>{f.en}</span>
+            <span style={{ fontFamily: t.fontCN, fontWeight: 500, fontSize: 11, opacity: 0.65, letterSpacing: 0 }}>{f.cn}</span>
+          </button>
+        ))}
+        <span style={{ flex: 1 }}/>
+        <button type="button" onClick={() => setSort(s => s === 'date' ? 'words' : 'date')}
+          style={{ padding: '5px 10px', border: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 10, color: t.ink, cursor: 'pointer', letterSpacing: 1, textTransform: 'uppercase' }}>
+          {sort === 'date' ? 'BY DATE ↓' : 'BY LENGTH ↓'}
+        </button>
+      </div>
+
+      {filtered.length === 0 && (
+        <div style={{ padding: '48px 36px', fontFamily: t.fontCN, fontSize: 16, color: t.mute, textAlign: 'center' }}>
+          {filter === 'FAVORITES' ? '还没有收藏的报告' : '没有符合条件的报告'}
+        </div>
+      )}
+
+      {/* Featured */}
+      {feature && (
+        <article onClick={() => onOpen(feature)} style={{ padding: '36px 36px', borderBottom: `1px solid ${t.ink}`, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 36, cursor: 'pointer', background: t.paper, transition: 'background 0.12s' }}
+          onMouseEnter={e => e.currentTarget.style.background = t.faint}
+          onMouseLeave={e => e.currentTarget.style.background = t.paper}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Tag t={t} accent filled>◆ {feature._id ? 'AI · GENERATED' : `ISSUE № ${feature.issue} · LATEST`}</Tag>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.category}</span>
+            </div>
+            <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 48, lineHeight: 0.96, letterSpacing: -1.6 }}>{feature.title.en}</div>
+            <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 22, lineHeight: 1.3, color: t.inkSoft }}>{feature.title.cn}</div>
+            <div style={{ fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.7, color: t.inkSoft, marginTop: 4 }}>{feature.teaser}</div>
+            <div style={{ display: 'flex', gap: 16, marginTop: 8, alignItems: 'center' }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{feature.date}</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.words} 字</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.sources} 来源</span>
+              <span style={{ flex: 1 }}/>
+              {feature.favorited && <span style={{ color: '#c8a84b', fontSize: 16 }}>★</span>}
+              <Btn t={t} size="sm" accent primary>Read ↗</Btn>
+            </div>
+          </div>
+          <CoverArt t={t} entry={feature}/>
+        </article>
+      )}
+
+      {/* Rest grid */}
+      <div style={{ padding: '24px 36px 48px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, borderTop: `1px solid ${t.rule}`, borderLeft: `1px solid ${t.rule}` }}>
+        {rest.map((e, i) => (
+          <LibraryCard key={e._id || e.issue} entry={e} t={t} onOpen={onOpen}
+            onToggleFavorite={e._id && onToggleFavorite ? (ev) => { ev.stopPropagation(); onToggleFavorite(e._id); } : null}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LibraryCard({ entry, t, onOpen, onToggleFavorite }) {
+  return (
+    <article onClick={() => onOpen(entry)} style={{
+      borderRight: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
+      padding: '22px 22px', cursor: 'pointer', background: t.paper,
+      display: 'flex', flexDirection: 'column', gap: 12, minHeight: 280,
+      transition: 'background 0.12s', position: 'relative',
+    }}
+      onMouseEnter={e => e.currentTarget.style.background = t.faint}
+      onMouseLeave={e => e.currentTarget.style.background = t.paper}>
+      {/* Favorite star */}
+      {(entry.favorited || onToggleFavorite) && (
+        <div onClick={onToggleFavorite} style={{
+          position: 'absolute', top: 12, right: 12,
+          color: entry.favorited ? '#c8a84b' : t.rule,
+          fontSize: 16, cursor: onToggleFavorite ? 'pointer' : 'default',
+          transition: 'color 0.15s', zIndex: 1,
+        }}
+          onMouseEnter={e => { if (onToggleFavorite) e.target.style.color = '#c8a84b'; }}
+          onMouseLeave={e => { if (onToggleFavorite) e.target.style.color = entry.favorited ? '#c8a84b' : t.rule; }}>
+          {entry.favorited ? '★' : '☆'}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>
+          {entry._id ? 'AI · 生成' : `№ ${entry.issue}`}
+        </span>
+        <Tag t={t}>{entry.tag}</Tag>
+      </div>
+      <CoverArt t={t} entry={entry} mini/>
+      <div>
+        <div style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 17, letterSpacing: -0.3, lineHeight: 1.1, marginBottom: 4 }}>
+          {entry.title.en}
+        </div>
+        <div style={{ fontFamily: t.fontCN, fontWeight: 600, fontSize: 13, color: t.inkSoft, lineHeight: 1.3 }}>
+          {entry.title.cn}
+        </div>
+      </div>
+      <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, lineHeight: 1.5, flex: 1 }}>
+        {entry.teaser}
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', paddingTop: 8, borderTop: `1px solid ${t.rule}` }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.5 }}>{entry.date}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>·</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{entry.words} 字</span>
+        <span style={{ flex: 1 }}/>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>↗</span>
+      </div>
+    </article>
+  );
+}
+
+// Simple typographic "cover art" — bold geometric composition per category
+function CoverArt({ t, entry, mini = false }) {
+  const h = mini ? 110 : 280;
+  // Color & shapes vary by tag
+  const variants = {
+    RESEARCH: { bg: t.ink, fg: t.paper, accent: t.accent },
+    DATA:     { bg: t.accent, fg: t.paper, accent: t.ink },
+    INTERNAL: { bg: t.paperAlt, fg: t.ink, accent: t.accent },
+  };
+  const v = variants[entry.tag] || variants.RESEARCH;
+  const seed = entry.issue;
+  return (
+    <div style={{
+      height: h, background: v.bg, color: v.fg,
+      border: `1px solid ${t.ink}`,
+      position: 'relative', overflow: 'hidden',
+      fontFamily: t.fontDisplay,
+    }}>
+      <CoverArtComposition issue={entry.issue} v={v} t={t} mini={mini}/>
+      <div style={{ position: 'absolute', top: 10, left: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: mini ? 8 : 10, letterSpacing: 1.4, opacity: 0.85 }}>VOL.04</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: mini ? 8 : 10, letterSpacing: 1.4, opacity: 0.85 }}>№ {entry.issue}</span>
+      </div>
+      <div style={{ position: 'absolute', bottom: 10, right: 12 }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: mini ? 8 : 10, letterSpacing: 1.2, opacity: 0.85 }}>{entry.date}</span>
+      </div>
+    </div>
+  );
+}
+
+function CoverArtComposition({ issue, v, t, mini }) {
+  // Pseudo-random but deterministic composition per issue
+  const r = (s) => ((Math.sin((issue + s) * 91.3) + 1) / 2);
+  const big = mini ? 36 : 88;
+  return (
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+      {/* Big number */}
+      <text x={50} y={64 + (mini ? 4 : 0)} textAnchor="middle"
+        fontFamily="Archivo, sans-serif" fontWeight="900"
+        fontSize={mini ? 48 : 78} letterSpacing="-4"
+        fill={v.fg} opacity="0.18">{issue}</text>
+      {/* Random shapes */}
+      <circle cx={20 + r(1) * 30} cy={30 + r(2) * 20} r={4 + r(3) * 6}
+        fill={v.accent} opacity="0.85"/>
+      <rect x={60} y={20 + r(4) * 10} width={28} height={3} fill={v.fg} opacity="0.6"/>
+      <line x1={10} y1={70} x2={92} y2={70} stroke={v.fg} strokeWidth="0.3" opacity="0.6"/>
+      <text x={10} y={92} fontFamily="JetBrains Mono, monospace" fontSize="3.5" letterSpacing="0.4"
+        fill={v.fg} opacity="0.7">A · T · L · A · S · ESSAYS</text>
+    </svg>
+  );
+}
+
+Object.assign(window, { Library, LIBRARY_ENTRIES });
+// Sources — knowledge base / data source management.
+// Plus the ExportModal overlay used from the report screen.
+
+const SOURCE_CATEGORIES = [
+  { k: 'all',   en: 'All',         cn: '全部',    count: 23 },
+  { k: 'db',    en: 'Databases',   cn: '数据库',  count: 4 },
+  { k: 'files', en: 'Files & Docs', cn: '文件',   count: 9 },
+  { k: 'web',   en: 'Web crawl',   cn: '网络抓取', count: 6 },
+  { k: 'api',   en: 'APIs',        cn: 'API',     count: 4 },
+];
+
+const SOURCES = [
+  {
+    name: '乘联会 · 销量月报', en: 'CPCA monthly sales',
+    type: 'web', kind: 'WEB · RSS', size: '12.3 MB', docs: 96,
+    lastSync: '5月20日 18:02', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '官方乘联会数据，按月发布。涵盖乘用车 / 新能源 / 出口三个口径。',
+  },
+  {
+    name: 'IT 桔子 · 一级市场数据库', en: 'IT Juzi · primary market',
+    type: 'api', kind: 'API · v3', size: '—', docs: 8400,
+    lastSync: '5月21日 09:14', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '融资事件 / 估值 / 投资方关系。仅 Q1-Q2 数据进入此次报告范围。',
+  },
+  {
+    name: '小红书讨论抓取', en: 'Xiaohongshu discussions',
+    type: 'web', kind: 'WEB · scraper', size: '4.1 MB', docs: 218,
+    lastSync: '5月19日 22:40', cadence: 'weekly', status: 'warn', quality: 'B',
+    note: '218 条相关讨论，已自动去重 / 过滤广告。下次抓取建议增加关键词。',
+  },
+  {
+    name: '36 氪报道精选', en: '36Kr articles',
+    type: 'web', kind: 'WEB · RSS', size: '8.6 MB', docs: 412,
+    lastSync: '5月21日 06:30', cadence: 'daily', status: 'ok', quality: 'A',
+  },
+  {
+    name: '内部销售数据库', en: 'Internal sales DB',
+    type: 'db', kind: 'PostgreSQL', size: '1.4 GB', docs: '~ 240k 行',
+    lastSync: '5月21日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '只读连接。涵盖近 24 个月所有渠道、品类、城市维度的销售数据。',
+  },
+  {
+    name: '客户访谈纪要 (Q1)', en: 'Customer interview transcripts',
+    type: 'files', kind: 'FILES · 18 项', size: '3.2 MB', docs: 18,
+    lastSync: '5月14日 11:22', cadence: 'manual', status: 'ok', quality: 'A',
+    note: '已经过隐私脱敏处理。仅 Atlas 内部可见。',
+  },
+  {
+    name: '团队 Notion 知识库', en: 'Team Notion workspace',
+    type: 'api', kind: 'NOTION · workspace', size: '—', docs: 1240,
+    lastSync: '5月21日 13:55', cadence: 'realtime', status: 'ok', quality: 'B',
+    note: '索引滞后约 15 分钟。',
+  },
+  {
+    name: 'J.D. Power 中国汽车', en: 'J.D. Power China auto',
+    type: 'files', kind: 'FILES · PDF', size: '24 MB', docs: 6,
+    lastSync: '5月02日 09:10', cadence: 'manual', status: 'stale', quality: 'A',
+    note: '上次更新已超过 14 天。建议刷新。',
+  },
+  {
+    name: 'BigQuery · 行为日志', en: 'BigQuery · event log',
+    type: 'db', kind: 'BigQuery', size: '83 GB', docs: '~ 84M 事件',
+    lastSync: '5月21日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
+  },
+  {
+    name: '窄门餐眼 · 门店数据', en: 'Zhaimen · stores',
+    type: 'api', kind: 'API · v1', size: '—', docs: 4800,
+    lastSync: '5月20日 16:40', cadence: 'daily', status: 'ok', quality: 'A',
+  },
+];
+
+const STATUS_META = {
+  ok:    { label: 'IN SYNC',   cn: '同步中',  color: '#2a8c5c' },
+  warn:  { label: 'NEEDS ATT', cn: '待处理',  color: '#c2540a' },
+  stale: { label: 'STALE',     cn: '已过期',  color: '#9b1c14' },
+  off:   { label: 'OFFLINE',   cn: '未连接',  color: '#767368' },
+};
+
+const QUALITY_META = {
+  A: { label: 'A · 高', color: '#0f0f0f' },
+  B: { label: 'B · 中', color: '#767368' },
+  C: { label: 'C · 低', color: '#9b1c14' },
+};
+
+// ── Add Source Modal ──────────────────────────────────────────────────────
+function AddSourceModal({ t, onClose, onAdd }) {
+  const [kind, setKind] = React.useState('web');
+  const [name, setName] = React.useState('');
+  const [quality, setQuality] = React.useState('A');
+  const [noteVal, setNoteVal] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  // web
+  const [url, setUrl] = React.useState('');
+  const [crawlDepth, setCrawlDepth] = React.useState('page');
+  const [keyword, setKeyword] = React.useState('');
+  const [cadence, setCadence] = React.useState('每日');
+  // api
+  const [apiUrl, setApiUrl] = React.useState('');
+  const [authType, setAuthType] = React.useState('none');
+  const [apiKey, setApiKey] = React.useState('');
+  const [testState, setTestState] = React.useState('idle');
+  const [apiCadence, setApiCadence] = React.useState('每日');
+  // db
+  const [dbType, setDbType] = React.useState('PostgreSQL');
+  const [connMode, setConnMode] = React.useState('string');
+  const [connStr, setConnStr] = React.useState('');
+  const [dbHost, setDbHost] = React.useState('');
+  const [dbPort, setDbPort] = React.useState('');
+  const [dbName, setDbName] = React.useState('');
+  const [dbUser, setDbUser] = React.useState('');
+  const [dbPass, setDbPass] = React.useState('');
+  const [dbCadence, setDbCadence] = React.useState('每日');
+  // files
+  const [files, setFiles] = React.useState([]);
+  const [dragOver, setDragOver] = React.useState(false);
+  const fileInputRef = React.useRef(null);
+
+  const FILE_ACCEPT = '.pdf,.xlsx,.xls,.docx,.doc,.pptx,.ppt,.csv,.txt,.md,.json,.zip,.png,.jpg,.jpeg';
+  const EXT_COLORS = { pdf:'#c0392b', xlsx:'#27ae60', xls:'#27ae60', docx:'#2980b9', doc:'#2980b9', pptx:'#e67e22', ppt:'#e67e22', csv:'#8e44ad', json:'#16a085', zip:'#7f8c8d' };
+  const fmtSz = (b) => b < 1024 ? b+'B' : b < 1048576 ? (b/1024).toFixed(1)+'KB' : (b/1048576).toFixed(1)+'MB';
+
+  const handleFiles = (fileList) => {
+    const added = Array.from(fileList).map(f => ({ id: Date.now() + Math.random(), name: f.name, size: f.size }));
+    setFiles(prev => [...prev, ...added]);
+    if (!name.trim() && added.length > 0) setName(added[0].name.replace(/\.[^.]+$/, ''));
+  };
+
+  const canSave = () => {
+    if (!name.trim()) return false;
+    if (kind === 'web') return !!url.trim();
+    if (kind === 'api') return !!apiUrl.trim();
+    if (kind === 'db') return connMode === 'string' ? !!connStr.trim() : !!dbHost.trim();
+    if (kind === 'files') return files.length > 0;
+    return true;
+  };
+
+  const handleAdd = () => {
+    if (!canSave() || saving) return;
+    setSaving(true);
+    setTimeout(() => {
+      const kindLabels = { web: { page:'当前页', domain:'整站', deep:'多层' }, auth: { none:'公开', key:'API Key', bearer:'Bearer' } };
+      let kindStr = '';
+      let finalCadence = cadence;
+      if (kind === 'web') { kindStr = `WEB · ${kindLabels.web[crawlDepth]}`; }
+      else if (kind === 'api') { kindStr = `API · ${kindLabels.auth[authType]}`; finalCadence = apiCadence; }
+      else if (kind === 'db') { kindStr = dbType; finalCadence = dbCadence; }
+      else if (kind === 'files') { kindStr = `FILES · ${files.length} 项`; finalCadence = 'manual'; }
+      onAdd({
+        name: name.trim(), en: name.trim(), type: kind, kind: kindStr,
+        lastSync: '刚刚', cadence: finalCadence, status: 'ok', quality,
+        docs: kind === 'files' ? files.length : 0,
+        size: kind === 'files' ? fmtSz(files.reduce((s, f) => s + f.size, 0)) : '—',
+        note: noteVal.trim() || '已接入，等待首次同步。',
+      });
+      onClose();
+    }, 900);
+  };
+
+  const inp = { border: `1px solid ${t.rule}`, padding: '7px 10px', fontFamily: t.fontCN, fontSize: 13, background: t.paper, color: t.ink, outline: 'none', width: '100%', boxSizing: 'border-box' };
+  const lbl = { fontFamily: t.fontCN, fontSize: 12, color: t.mute, marginBottom: 5 };
+  const muted = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, opacity: 0.6 };
+
+  const renderTypeFields = () => {
+    if (kind === 'web') return (
+      <React.Fragment>
+        <div>
+          <div style={lbl}>网页地址 *</div>
+          <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..." style={inp}/>
+        </div>
+        <OptionRadio t={t} label="抓取范围" value={crawlDepth} onChange={setCrawlDepth}
+          options={[['page','当前页'],['domain','整站'],['deep','多层']]}/>
+        <div>
+          <div style={lbl}>关键词过滤 <span style={muted}>(选填)</span></div>
+          <input value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="例：竞品分析、用户评价" style={inp}/>
+        </div>
+        <OptionRadio t={t} label="同步频率" value={cadence} onChange={setCadence}
+          options={[['每小时','时'],['每日','日'],['每周','周'],['手动','手动']]}/>
+      </React.Fragment>
+    );
+
+    if (kind === 'api') return (
+      <React.Fragment>
+        <div>
+          <div style={lbl}>接口地址 *</div>
+          <input value={apiUrl} onChange={e => setApiUrl(e.target.value)} placeholder="https://api.example.com/v1/data" style={inp}/>
+        </div>
+        <OptionRadio t={t} label="认证方式" value={authType} onChange={setAuthType}
+          options={[['none','无'],['key','API Key'],['bearer','Bearer Token']]}/>
+        {authType !== 'none' && (
+          <div>
+            <div style={lbl}>{authType === 'key' ? 'API Key' : 'Bearer Token'}</div>
+            <input value={apiKey} onChange={e => setApiKey(e.target.value)} type="password" placeholder="sk-…" style={inp}/>
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button type="button"
+            onClick={() => { setTestState('testing'); setTimeout(() => setTestState('ok'), 1200 + Math.random() * 600); }}
+            disabled={!apiUrl.trim() || testState === 'testing'}
+            style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, padding: '5px 14px', border: `1px solid ${testState==='ok'?'#2a8c5c':testState==='fail'?'#c0392b':t.ink}`, background: 'transparent', color: testState==='ok'?'#2a8c5c':testState==='fail'?'#c0392b':t.ink, cursor: 'pointer' }}>
+            {testState === 'testing' ? '测试中…' : testState === 'ok' ? '✓ 连接正常' : testState === 'fail' ? '✕ 连接失败' : '测试连接'}
+          </button>
+          {testState === 'ok' && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: '#2a8c5c' }}>响应正常</span>}
+        </div>
+        <OptionRadio t={t} label="同步频率" value={apiCadence} onChange={setApiCadence}
+          options={[['每小时','时'],['每日','日'],['每周','周']]}/>
+      </React.Fragment>
+    );
+
+    if (kind === 'db') return (
+      <React.Fragment>
+        <OptionRadio t={t} label="数据库类型" value={dbType} onChange={setDbType}
+          options={[['PostgreSQL','PG'],['MySQL','MySQL'],['BigQuery','BQ'],['MongoDB','Mongo'],['Snowflake','Snow']]}/>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[['string','连接字符串'],['fields','分项填写']].map(([v, l]) => (
+            <button key={v} type="button" onClick={() => setConnMode(v)}
+              style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, padding: '4px 10px', border: `1px solid ${connMode===v?t.ink:t.rule}`, background: connMode===v?t.ink:'transparent', color: connMode===v?t.paper:t.mute, cursor: 'pointer' }}>{l}</button>
+          ))}
+        </div>
+        {connMode === 'string' ? (
+          <div>
+            <div style={lbl}>连接字符串 *</div>
+            <input value={connStr} onChange={e => setConnStr(e.target.value)} placeholder="postgresql://user:pass@host:5432/db" style={inp}/>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 84px', gap: 8 }}>
+              <div><div style={lbl}>主机 *</div><input value={dbHost} onChange={e=>setDbHost(e.target.value)} placeholder="localhost" style={inp}/></div>
+              <div><div style={lbl}>端口</div><input value={dbPort} onChange={e=>setDbPort(e.target.value)} placeholder="5432" style={inp}/></div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <div><div style={lbl}>数据库名</div><input value={dbName} onChange={e=>setDbName(e.target.value)} placeholder="mydb" style={inp}/></div>
+              <div><div style={lbl}>用户名</div><input value={dbUser} onChange={e=>setDbUser(e.target.value)} placeholder="admin" style={inp}/></div>
+              <div><div style={lbl}>密码</div><input value={dbPass} onChange={e=>setDbPass(e.target.value)} type="password" placeholder="••••••" style={inp}/></div>
+            </div>
+          </div>
+        )}
+        <OptionRadio t={t} label="同步频率" value={dbCadence} onChange={setDbCadence}
+          options={[['每小时','时'],['每日','日'],['每周','周']]}/>
+      </React.Fragment>
+    );
+
+    if (kind === 'files') return (
+      <React.Fragment>
+        <input ref={fileInputRef} type="file" multiple accept={FILE_ACCEPT} style={{ display: 'none' }}
+          onChange={e => handleFiles(e.target.files)}/>
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
+          onClick={() => fileInputRef.current?.click()}
+          style={{ border: `1.5px dashed ${dragOver ? t.ink : t.rule}`, padding: '22px 16px', textAlign: 'center', cursor: 'pointer', background: dragOver ? t.faint : 'transparent', transition: 'all 0.12s' }}>
+          <div style={{ fontFamily: t.fontMono, fontSize: 10, color: dragOver ? t.ink : t.mute, letterSpacing: 0.8, marginBottom: 6 }}>拖拽文件或点击上传</div>
+          <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, lineHeight: 2, opacity: 0.7 }}>
+            PDF · XLSX · XLS · DOCX · DOC · PPTX · PPT<br/>CSV · TXT · MD · JSON · ZIP · PNG · JPG
+          </div>
+        </div>
+        {files.length > 0 && (
+          <div style={{ border: `1px solid ${t.rule}`, maxHeight: 150, overflowY: 'auto' }}>
+            {files.map(f => {
+              const ext = f.name.split('.').pop().toLowerCase();
+              const bg = EXT_COLORS[ext] || '#555';
+              return (
+                <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: `1px solid ${t.rule}` }}>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 8, background: bg, color: '#fff', padding: '1px 5px', flexShrink: 0, borderRadius: 1 }}>{ext.toUpperCase()}</span>
+                  <span style={{ flex: 1, fontFamily: t.fontCN, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: t.ink }}>{f.name}</span>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>{fmtSz(f.size)}</span>
+                  <button type="button" onClick={() => setFiles(prev => prev.filter(x => x.id !== f.id))}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 15, padding: '0 2px', lineHeight: 1 }}>×</button>
+                </div>
+              );
+            })}
+            <div style={{ padding: '5px 10px', fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 0.5 }}>
+              共 {files.length} 个文件 · {fmtSz(files.reduce((s, f) => s + f.size, 0))}
+            </div>
+          </div>
+        )}
+        <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute }}>同步方式：<span style={{ color: t.ink }}>手动上传</span></div>
+      </React.Fragment>
+    );
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(15,15,15,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: t.paper, border: `1.5px solid ${t.ink}`, width: '100%', maxWidth: 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '14px 20px', borderBottom: `1.5px solid ${t.ink}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <Tag t={t} accent>＋ ADD SOURCE · 添加数据源</Tag>
+          <span style={{ flex: 1 }}/>
+          <button type="button" onClick={onClose} style={{ border: `1px solid ${t.ink}`, background: t.paper, padding: '3px 8px', fontFamily: t.fontMono, fontSize: 11, cursor: 'pointer', color: t.ink }}>ESC</button>
+        </div>
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto', flex: 1 }}>
+          <OptionRadio t={t} label="数据源类型" value={kind} onChange={v => { setKind(v); setTestState('idle'); }}
+            options={[['web','网页'],['api','API'],['db','数据库'],['files','文件']]}/>
+          <div>
+            <div style={lbl}>数据源名称 *</div>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="例：产品用户反馈库" style={inp}/>
+          </div>
+          {renderTypeFields()}
+          <OptionRadio t={t} label="数据质量" value={quality} onChange={setQuality}
+            options={[['A','A · 高'],['B','B · 中'],['C','C · 低']]}/>
+          <div>
+            <div style={lbl}>备注 <span style={muted}>(选填)</span></div>
+            <input value={noteVal} onChange={e => setNoteVal(e.target.value)} placeholder="说明数据范围、限制或注意事项" style={inp}/>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: `1px solid ${t.rule}`, flexShrink: 0 }}>
+            <Btn t={t} size="md" onClick={onClose}>取消</Btn>
+            <Btn t={t} size="md" primary accent onClick={handleAdd} disabled={!canSave() || saving}>{saving ? '接入中…' : '确认接入 ↗'}</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── References Drawer ──────────────────────────────────────────────────────
+function RefsDrawer({ t, src, onClose }) {
+  const refs = Array.from({ length: Math.min(src.docs || 6, 10) }, (_, i) => ({
+    n: i + 1,
+    title: `${src.name}文档 #${String(i+1).padStart(3,'0')} — ${['分析报告','数据集','行业综述','调研报告','市场数据','用户研究','竞品分析','技术白皮书','年度报告','专家访谈'][i % 10]}`,
+    date: `2025.${String(Math.floor(Math.random()*12)+1).padStart(2,'0')}.${String(Math.floor(Math.random()*28)+1).padStart(2,'0')}`,
+    used: Math.random() > 0.4,
+  }));
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(15,15,15,0.5)', display:'flex', justifyContent:'flex-end' }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:t.paper, border:`1.5px solid ${t.ink}`, width:400, display:'flex', flexDirection:'column', height:'100%' }}>
+        <div style={{ padding:'14px 20px', borderBottom:`1.5px solid ${t.ink}`, display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+          <Tag t={t} accent>◆ REFERENCES</Tag>
+          <span style={{ fontFamily:t.fontCN, fontSize:13, fontWeight:600 }}>{src.name}</span>
+          <span style={{ flex:1 }}/>
+          <button onClick={onClose} style={{ border:`1px solid ${t.ink}`, background:t.paper, padding:'3px 8px', fontFamily:t.fontMono, fontSize:11, cursor:'pointer', color:t.ink }}>✕</button>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', padding:'12px 20px', display:'flex', flexDirection:'column', gap:8 }}>
+          {refs.map(r => (
+            <div key={r.n} style={{ padding:'10px 12px', border:`1px solid ${t.rule}`, background:r.used?t.faint:'transparent', display:'flex', gap:10, alignItems:'flex-start' }}>
+              <span style={{ fontFamily:t.fontMono, fontSize:10, color:t.accent, fontWeight:700, minWidth:24 }}>#{r.n}</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.ink, lineHeight:1.45 }}>{r.title}</div>
+                <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, marginTop:3 }}>{r.date} {r.used && '· 已在报告中引用'}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Edit Access Modal ──────────────────────────────────────────────────────
+function EditAccessModal({ t, src, onClose, onSave }) {
+  const [level, setLevel] = React.useState('team');
+  const [allowedModels, setAllowedModels] = React.useState(true);
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(15,15,15,0.5)', display:'flex', alignItems:'center', justifyContent:'center', padding:40 }} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:t.paper, border:`1.5px solid ${t.ink}`, width:'100%', maxWidth:400, display:'flex', flexDirection:'column' }}>
+        <div style={{ padding:'14px 20px', borderBottom:`1.5px solid ${t.ink}`, display:'flex', alignItems:'center', gap:10 }}>
+          <Tag t={t}>EDIT ACCESS</Tag>
+          <span style={{ fontFamily:t.fontCN, fontSize:13, fontWeight:600, flex:1 }}>{src.name}</span>
+          <button onClick={onClose} style={{ border:`1px solid ${t.ink}`, background:t.paper, padding:'3px 8px', fontFamily:t.fontMono, fontSize:11, cursor:'pointer', color:t.ink }}>ESC</button>
+        </div>
+        <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:14 }}>
+          <OptionRadio t={t} label="访问级别" value={level} onChange={setLevel}
+            options={[['owner','管理员'],['team','团队'],['read','只读']]}/>
+          <OptionToggle t={t} label="允许 AI 模型读取此数据源" value={allowedModels} onChange={setAllowedModels}/>
+          <OptionToggle t={t} label="在报告中自动引用" value={true} onChange={null}/>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end', paddingTop:6, borderTop:`1px solid ${t.rule}` }}>
+            <Btn t={t} size="md" onClick={onClose}>取消</Btn>
+            <Btn t={t} size="md" primary accent onClick={() => { onSave && onSave(level); onClose(); }}>保存</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Sources({ t }) {
+  const [cat, setCat] = React.useState('all');
+  const [sourceList, setSourceList] = React.useState(SOURCES);
+  const [syncingAll, setSyncingAll] = React.useState(false);
+  const [syncAllDone, setSyncAllDone] = React.useState(false);
+  const [showAdd, setShowAdd] = React.useState(false);
+
+  // Compute real citation counts from saved reports
+  const usageCounts = React.useMemo(() => {
+    try {
+      const reports = JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]');
+      const counts = {};
+      reports.forEach(r => {
+        (r.selectedSources || []).forEach(name => {
+          counts[name] = (counts[name] || 0) + 1;
+        });
+      });
+      return counts;
+    } catch { return {}; }
+  }, []);
+
+  const filtered = sourceList.filter(s => cat === 'all' || s.type === cat);
+  const total = sourceList.length;
+  const warn = sourceList.filter(s => s.status === 'warn' || s.status === 'stale').length;
+
+  const handleSyncAll = () => {
+    setSyncingAll(true);
+    setSyncAllDone(false);
+    setTimeout(() => {
+      setSyncingAll(false);
+      setSyncAllDone(true);
+      setSourceList(prev => prev.map(s => ({ ...s, status: 'ok', lastSync: '刚刚' })));
+      setTimeout(() => setSyncAllDone(false), 3000);
+    }, 2200);
+  };
+
+  const handleAdd = (newSrc) => {
+    setSourceList(prev => [newSrc, ...prev]);
+  };
+
+  const handleDisconnect = (name) => {
+    setSourceList(prev => prev.filter(s => s.name !== name));
+  };
+
+  return (
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
+      {/* Header */}
+      <div style={{ padding: '32px 36px 20px', borderBottom: `2px solid ${t.ink}`, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32 }}>
+        <div>
+          <Tag t={t} accent>◆ SOURCES · 数据源</Tag>
+          <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 56, lineHeight: 0.96, letterSpacing: -1.6, marginTop: 14 }}>
+            Where the<br/>
+            <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 500, color: t.accent }}>essays</span> come from.
+          </div>
+          <div style={{ fontFamily: t.fontCN, fontSize: 15, color: t.mute, marginTop: 10, maxWidth: 480 }}>
+            Atlas 接入的数据库、文件库、网络抓取和 API。每次撰写都会自动选择最相关的来源。
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', gap: 18, paddingLeft: 24, borderLeft: `1px solid ${t.rule}` }}>
+          <Metric value={total} en="SOURCES" cn="数据源" t={t}/>
+          <Metric value="14,196" en="DOCS" cn="文档" t={t}/>
+          <Metric value={warn} en="ATTN" cn="待处理" t={t} accent={warn > 0}/>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div style={{ padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${t.rule}` }}>
+        {SOURCE_CATEGORIES.map(c => (
+          <button key={c.k} type="button" onClick={() => setCat(c.k)} style={{
+            padding: '6px 12px', border: `1px solid ${cat === c.k ? t.ink : t.rule}`,
+            background: cat === c.k ? t.ink : 'transparent',
+            color: cat === c.k ? t.paper : t.ink,
+            fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10,
+            letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
+            <span>{c.en}</span>
+            <span style={{ fontFamily: t.fontCN, opacity: 0.7 }}>{c.cn}</span>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, opacity: 0.7 }}>{c.count}</span>
+          </button>
+        ))}
+        <span style={{ flex: 1 }}/>
+        <Btn t={t} size="sm" onClick={handleSyncAll} disabled={syncingAll}
+          style={syncAllDone ? { color: '#10b981', borderColor: '#10b981' } : {}}>
+          {syncingAll ? '⟳ 同步中…' : syncAllDone ? '✓ 全部同步完成' : '⟳ SYNC ALL · 全部同步'}
+        </Btn>
+        <Btn t={t} size="sm" primary accent onClick={() => setShowAdd(true)}>＋ ADD SOURCE · 添加</Btn>
+      </div>
+
+      {/* Table */}
+      <div style={{ padding: '0 36px 48px' }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: '48px 1.7fr 110px 1fr 1fr 90px 80px 28px',
+          alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: `1.5px solid ${t.ink}`,
+          fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute, textTransform: 'uppercase',
+        }}>
+          <span>—</span><span>Source · 名称</span><span>Kind · 类型</span>
+          <span>Last sync · 上次同步</span><span>Status · 状态</span>
+          <span>Quality</span><span>被引用</span><span/>
+        </div>
+        {filtered.map((s, i) => (
+          <SourceRow key={s.name} src={s} t={t} index={i} usageCount={usageCounts[s.name] || 0} onDisconnect={() => handleDisconnect(s.name)}/>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ padding: '32px 0', textAlign: 'center', fontFamily: t.fontCN, fontSize: 13, color: t.mute }}>
+            没有符合条件的数据源
+          </div>
+        )}
+      </div>
+
+      {showAdd && <AddSourceModal t={t} onClose={() => setShowAdd(false)} onAdd={handleAdd}/>}
+    </div>
+  );
+}
+
+function SourceRow({ src, t, index, usageCount = 0, onDisconnect }) {
+  const [open, setOpen] = React.useState(false);
+  const [syncing, setSyncing] = React.useState(false);
+  const [syncDone, setSyncDone] = React.useState(false);
+  const [showRefs, setShowRefs] = React.useState(false);
+  const [showAccess, setShowAccess] = React.useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
+  const [srcData, setSrcData] = React.useState(src);
+
+  const status = STATUS_META[srcData.status] || STATUS_META.off;
+  const quality = QUALITY_META[srcData.quality] || QUALITY_META.B;
+
+  const handleSync = (e) => {
+    e.stopPropagation();
+    setSyncing(true); setSyncDone(false);
+    setTimeout(() => {
+      setSyncing(false); setSyncDone(true);
+      setSrcData(prev => ({ ...prev, status: 'ok', lastSync: '刚刚' }));
+      setTimeout(() => setSyncDone(false), 2500);
+    }, 1800);
+  };
+
+  return (
+    <div style={{ borderBottom: `1px solid ${t.rule}` }}>
+      <div onClick={() => setOpen(o => !o)} style={{
+        display: 'grid', gridTemplateColumns: '48px 1.7fr 110px 1fr 1fr 90px 80px 28px',
+        alignItems: 'center', gap: 12, padding: '14px 0', cursor: 'pointer',
+      }}
+        onMouseEnter={e => e.currentTarget.style.background = t.faint}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+        <SourceIcon t={t} kind={srcData.type}/>
+        <div>
+          <div style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 600 }}>{srcData.name}</div>
+          <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginTop: 2 }}>{srcData.en}</div>
+        </div>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, letterSpacing: 0.5 }}>{srcData.kind}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.ink }}>
+          {srcData.lastSync}
+          <span style={{ display: 'block', fontSize: 9, color: t.mute, marginTop: 2 }}>{srcData.cadence}</span>
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 8, background: status.color,
+            animation: syncing ? 'essay-pulse 1s infinite' : 'none' }}/>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, letterSpacing: 1 }}>
+            {syncing ? 'SYNCING' : status.label}
+          </span>
+        </span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: quality.color, letterSpacing: 1, fontWeight: 700 }}>{quality.label}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 11, color: usageCount > 0 ? t.ink : t.mute }}>
+          {usageCount > 0 ? `${usageCount} 次` : '—'}
+        </span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 12, color: t.mute, transition: 'transform 0.15s', transform: `rotate(${open ? 90 : 0}deg)` }}>›</span>
+      </div>
+
+      {open && (
+        <div style={{ padding: '14px 0 22px 60px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: `1px dashed ${t.rule}`, background: t.paperAlt }}>
+          {srcData.note && (
+            <div style={{ fontFamily: t.fontCN, fontSize: 13, lineHeight: 1.6, color: t.inkSoft, maxWidth: 720 }}>
+              {srcData.note}
+            </div>
+          )}
+          {!confirmDisconnect ? (
+            <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+              <Btn t={t} size="sm" onClick={handleSync} disabled={syncing}
+                style={syncDone ? { color: '#10b981', borderColor: '#10b981' } : {}}>
+                {syncing ? '⟳ 同步中…' : syncDone ? '✓ 同步完成' : '⟳ Sync now'}
+              </Btn>
+              <Btn t={t} size="sm" onClick={e => { e.stopPropagation(); setShowRefs(true); }}>
+                {usageCount > 0 ? `已引用 ${usageCount} 篇报告` : '暂无引用记录'}
+              </Btn>
+              <Btn t={t} size="sm" onClick={e => { e.stopPropagation(); setShowAccess(true); }}>
+                Edit access
+              </Btn>
+              <Btn t={t} size="sm" accent onClick={e => { e.stopPropagation(); setConfirmDisconnect(true); }}>
+                Disconnect
+              </Btn>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontFamily: t.fontCN, fontSize: 13, color: '#e5251d' }}>
+                确定要断开「{srcData.name}」的连接？此操作不可撤销。
+              </span>
+              <Btn t={t} size="sm" onClick={e => { e.stopPropagation(); setConfirmDisconnect(false); }}>取消</Btn>
+              <Btn t={t} size="sm" accent onClick={e => { e.stopPropagation(); onDisconnect && onDisconnect(); }}>确认断开</Btn>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showRefs && <RefsDrawer t={t} src={srcData} onClose={() => setShowRefs(false)}/>}
+      {showAccess && <EditAccessModal t={t} src={srcData} onClose={() => setShowAccess(false)} onSave={(lvl) => setSrcData(prev => ({ ...prev, accessLevel: lvl }))}/>}
+    </div>
+  );
+}
+
+function SourceIcon({ t, kind }) {
+  const map = {
+    web:   { symbol: '◐', label: 'W' },
+    api:   { symbol: '⌖', label: 'A' },
+    db:    { symbol: '▦', label: 'D' },
+    files: { symbol: '◇', label: 'F' },
+  };
+  const m = map[kind] || map.files;
+  return (
+    <div style={{
+      width: 32, height: 32, border: `1.5px solid ${t.ink}`, background: t.cardOn,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 14, color: t.ink,
+    }}>{m.symbol}</div>
+  );
+}
+
+// ─── Export modal ─────────────────────────────────────────────────────
+
+const EXPORT_FORMATS = [
+  { k: 'pdf',    en: 'PDF',      cn: '便于打印 / 邮件附件', size: '~ 480 KB · 8 页', recommended: true },
+  { k: 'docx',   en: 'DOCX',    cn: '继续在 Word 编辑',    size: '~ 320 KB' },
+  { k: 'md',     en: 'Markdown', cn: '纯文本，含元数据',    size: '~ 18 KB' },
+  { k: 'notion', en: 'NOTION',  cn: '复制 Markdown 到 Notion', size: '一键粘贴' },
+  { k: 'link',   en: 'LINK',    cn: '复制分享链接',         size: '存于本地' },
+];
+
+// ── Export helper functions ─────────────────────────────────────────────
+function _dlBlob(blob, name) {
+  const u = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: u, download: name });
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(u); }, 120);
+}
+function _esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _slug(s) { return String(s||'report').slice(0,40).replace(/[^\w一-鿿]+/g,'-').replace(/^-|-$/g,'').toLowerCase() || 'report'; }
+
+function _loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('脚本加载失败: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+// ── Build inline report HTML (rendered in current document, for html2canvas) ──
+function _buildInlineChartHTML(cd) {
+  if (!cd?.data?.length) return '';
+  const max = Math.max(...cd.data.map(x => x.value), 0.001);
+  const bars = cd.data.map(it => {
+    const pct = Math.round((it.value / max) * 100);
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+      <span style="width:90px;text-align:right;font-size:11px;color:#666;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${_esc(it.label)}</span>
+      <div style="flex:1;height:15px;background:#e8e6e0;position:relative">
+        <div style="position:absolute;left:0;top:0;height:100%;width:${pct}%;background:#0f0f0f"></div>
+      </div>
+      <span style="width:50px;font-size:11px;font-weight:700;text-align:right;flex-shrink:0">${it.value}${cd.unit?' '+cd.unit:''}</span>
+    </div>`;
+  }).join('');
+  return `<div style="margin:10px 0;padding:14px 16px;border:1.5px solid #0f0f0f;background:#fff">
+    ${cd.title?`<div style="font-size:11.5px;font-weight:700;margin-bottom:9px">▪ ${_esc(cd.title)}${cd.unit?'（'+cd.unit+'）':''}</div>`:''}
+    ${bars}
+  </div>`;
+}
+
+function _buildInlineBodyHTML(d, {includeCover=true}={}) {
+  const m = d.meta || {};
+  let html = '';
+  if (includeCover) {
+    const metaRow = [m.date, m.words&&m.words+'字', m.sources&&m.sources+' 来源', m.reading].filter(Boolean).join(' · ');
+    html += `<div style="padding:48px 0 36px;margin-bottom:40px;border-bottom:3px solid #0f0f0f">
+      <div style="font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#999;margin-bottom:20px;font-family:monospace">${_esc(m.issue||'')} · ATLAS ESSAYS</div>
+      <div style="font-size:44px;font-weight:900;line-height:.93;letter-spacing:-1.5px;margin-bottom:10px">${_esc(d.title||'')}</div>
+      ${d.subtitle?`<div style="font-size:15px;font-weight:700;color:#555;margin-bottom:14px">${_esc(d.subtitle)}</div>`:''}
+      <div style="font-size:10px;color:#999;margin-bottom:10px;font-family:monospace">${metaRow}</div>
+    </div>`;
+  }
+  for (const s of d.sections||[]) {
+    const cnM = s.en.match(/^([一二三四五六七八九十]+[、．])\s*/);
+    const prefix = cnM?.[1]||''; const label = prefix ? s.en.slice(cnM[0].length) : s.en;
+    html += `<div style="margin-top:26px;padding-top:14px;border-top:2px solid #0f0f0f">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        ${prefix?`<span style="font-size:19px;font-weight:900">${prefix}</span>`:`<span style="font-size:9px;font-family:monospace;color:#999">${_esc(s.num)}</span>`}
+        <span style="font-size:15px;font-weight:800">${_esc(label)}</span>
+      </div>`;
+    for (const b of s.blocks||[]) {
+      if (b.kind==='lede')  html += `<p style="font-weight:700;font-size:15px;line-height:1.65;margin:0 0 11px">${_esc(b.text)}</p>`;
+      else if (b.kind==='p') html += `<p style="margin:0 0 9px;font-size:13.5px;line-height:1.85">${_esc(b.text)}</p>`;
+      else if (b.kind==='quote') html += `<blockquote style="margin:10px 0 10px 16px;padding-left:10px;border-left:3px solid #0f0f0f;font-style:italic;color:#555;font-size:13px">${_esc(b.text)}${b.by?`<div style="font-style:normal;font-size:11px;color:#888;margin-top:3px">— ${_esc(b.by)}</div>`:''}</blockquote>`;
+      else if (b.kind==='chart') html += _buildInlineChartHTML(b.data);
+    }
+    html += '</div>';
+  }
+  if ((d.refs||[]).length>0) {
+    html += `<div style="margin-top:26px;padding-top:14px;border-top:2px solid #0f0f0f">
+      <div style="font-size:15px;font-weight:800;margin-bottom:10px">参考来源 · References</div>`;
+    for (const r of d.refs) {
+      html += `<div style="display:flex;gap:8px;font-size:12px;margin-bottom:6px;padding-bottom:6px;border-bottom:0.5px dashed #ccc">
+        <b style="color:#c8a84b;font-family:monospace;min-width:26px">${_esc(r.n)}</b>
+        <div><b>${_esc(r.src)}</b> — ${_esc(r.title)}<br><span style="color:#999;font-size:10px">${_esc(r.url)} · ${_esc(r.date)}</span></div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  return html;
+}
+
+async function _exportPDFDownload(d, {pageSize='A4', includeCover=true}={}) {
+  // Lazy-load libraries (~750KB, first-time only)
+  await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+
+  // Page dimensions in mm and matching pixel width at 96dpi
+  const pgMM = { A4:[210,297], LET:[216,279], B5:[176,250] };
+  const [pgW, pgH] = pgMM[pageSize] || pgMM.A4;
+  const pxW = Math.round(pgW * 3.78); // 1mm ≈ 3.78px at 96dpi
+
+  // Render report in a hidden off-screen div inside THIS document
+  // (so Google Fonts already loaded in <head> are available to html2canvas)
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `position:fixed;left:${-(pxW+200)}px;top:0;width:${pxW}px;padding:48px 52px;background:#ffffff;color:#0f0f0f;font-family:'Noto Sans SC','Hanken Grotesk',sans-serif;font-size:14px;line-height:1.85;box-sizing:border-box;overflow:visible`;
+  wrap.innerHTML = _buildInlineBodyHTML(d, { includeCover });
+  document.body.appendChild(wrap);
+
+  // Brief pause for layout + font-display
+  await new Promise(r => setTimeout(r, 600));
+
+  try {
+    const canvas = await window.html2canvas(wrap, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      width: pxW,
+      windowWidth: pxW,
+    });
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pgW, pgH] });
+
+    const imgW = pgW;
+    const imgH = (canvas.height / canvas.width) * imgW;
+    let y = 0, pg = 0;
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    while (y < imgH) {
+      if (pg++ > 0) pdf.addPage();
+      pdf.addImage(dataUrl, 'JPEG', 0, -y, imgW, imgH);
+      y += pgH;
+      if (pg > 50) break; // safety cap
+    }
+
+    pdf.save(_slug(d.title) + '.pdf');
+  } finally {
+    document.body.removeChild(wrap);
+  }
+}
+
+function _buildMarkdown(d) {
+  const lines = [`# ${d.title || ''}`, ''];
+  if (d.subtitle) lines.push(`> ${d.subtitle}`, '');
+  const m = d.meta || {};
+  const meta = [m.date, m.words&&(m.words+'字'), m.sources&&(m.sources+' 来源'), m.reading, m.tokens&&(m.tokens.toLocaleString()+' tokens')].filter(Boolean).join(' · ');
+  if (meta) lines.push(meta, '', '---', '');
+  for (const s of d.sections||[]) {
+    lines.push(`## ${s.en}${s.cn?' · '+s.cn:''}`, '');
+    for (const b of s.blocks||[]) {
+      if (b.kind==='lede') lines.push(`**${b.text}**`, '');
+      else if (b.kind==='p') lines.push(b.text, '');
+      else if (b.kind==='quote') { lines.push(`> ${b.text}`); if(b.by) lines.push(`> — ${b.by}`); lines.push(''); }
+      else if (b.kind==='chart'&&b.data) {
+        lines.push(`**[图表: ${b.data.title||''}]**`);
+        for (const it of b.data.data||[]) lines.push(`- ${it.label}: **${it.value}**${b.data.unit?' '+b.data.unit:''}`);
+        lines.push('');
+      }
+    }
+  }
+  if (d.refs?.length) {
+    lines.push('---', '', '## 参考来源 · References', '');
+    for (const r of d.refs) { lines.push(`${r.n} **${r.src}** — ${r.title}`); lines.push(`   ${r.url} · ${r.date}`, ''); }
+  }
+  return lines.join('\n');
+}
+
+function _chartPrintHTML(cd) {
+  if (!cd?.data?.length) return '';
+  const max = Math.max(...cd.data.map(x=>x.value), 0.001);
+  const rows = cd.data.map(it=>{
+    const pct = Math.round((it.value/max)*100);
+    return `<tr><td style="text-align:right;padding:2pt 6pt 2pt 0;width:90pt;font-size:8.5pt;color:#555">${_esc(it.label)}</td>
+    <td style="padding:2pt 4pt"><div style="background:#e8e6e0;height:13pt;position:relative"><div style="background:#0f0f0f;height:100%;width:${pct}%"></div></div></td>
+    <td style="padding:2pt 0 2pt 4pt;width:55pt;font-size:8.5pt;font-weight:bold">${it.value}${cd.unit?' '+cd.unit:''}</td></tr>`;
+  }).join('');
+  return `<div style="margin:8pt 0;border:1pt solid #0f0f0f;padding:10pt">
+    <p style="font-size:8.5pt;font-weight:bold;margin:0 0 6pt 0">▪ ${_esc(cd.title||'')}${cd.unit?'（'+cd.unit+'）':''}</p>
+    <table style="width:100%;border-collapse:collapse">${rows}</table></div>`;
+}
+
+function _buildBodyHTML(d) {
+  return (d.sections||[]).map(s => {
+    const cnM = s.en.match(/^([一二三四五六七八九十]+[、．])\s*/);
+    const prefix = cnM?.[1]||''; const label = prefix ? s.en.slice(cnM[0].length) : s.en;
+    const blocks = (s.blocks||[]).map(b => {
+      if (b.kind==='lede') return `<p class="lede">${_esc(b.text)}</p>`;
+      if (b.kind==='quote') return `<blockquote>${_esc(b.text)}${b.by?`<footer>— ${_esc(b.by)}</footer>`:''}</blockquote>`;
+      if (b.kind==='chart') return _chartPrintHTML(b.data);
+      return `<p>${_esc(b.text)}</p>`;
+    }).join('');
+    return `<div class="section"><div class="sec-hd">
+      ${prefix?`<span class="cn-n">${prefix}</span>`:`<span class="sec-n">${_esc(s.num)}</span>`}
+      <span class="sec-t">${_esc(label)}</span>
+    </div>${blocks}</div>`;
+  }).join('');
+}
+
+function _buildPrintHTML(d, {pageSize='A4',includeCover=true}={}) {
+  const szMap = {A4:'A4',LET:'letter',B5:'B5'};
+  const title = _esc(d.title||'Atlas Report');
+  const m = d.meta||{};
+  const metaStr = [m.date,m.words&&m.words+'字',m.sources&&m.sources+' 来源',m.reading].filter(Boolean).join(' · ');
+  const cover = includeCover ? `<div class="cover"><div class="cov-tag">ATLAS ESSAYS · ${_esc(m.issue||'')}</div>
+    <div class="cov-title">${title}</div>
+    ${d.subtitle?`<div class="cov-sub">${_esc(d.subtitle)}</div>`:''}
+    <div class="cov-meta">${metaStr}</div><div class="cov-rule"></div></div>` : '';
+  const refs = d.refs?.length ? `<div class="section refs"><div class="sec-hd"><span class="sec-t">参考来源 · References</span></div>
+    ${d.refs.map(r=>`<div class="ref"><span class="ref-n">${_esc(r.n)}</span><div><b>${_esc(r.src)}</b> — ${_esc(r.title)}<br><small>${_esc(r.url)} · ${_esc(r.date)}</small></div></div>`).join('')}
+    </div>` : '';
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>${title}</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;900&family=Noto+Sans+SC:wght@400;700;900&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+@page{size:${szMap[pageSize]||'A4'};margin:22mm 24mm}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans SC',sans-serif;font-size:10.5pt;line-height:1.85;color:#0f0f0f}
+.cover{min-height:90vh;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:36pt;page-break-after:always}
+.cov-tag{font-family:'Archivo',sans-serif;font-size:8pt;font-weight:700;letter-spacing:3pt;text-transform:uppercase;color:#888;margin-bottom:20pt}
+.cov-title{font-family:'Archivo',sans-serif;font-size:42pt;font-weight:900;line-height:.94;letter-spacing:-1pt;margin-bottom:10pt}
+.cov-sub{font-size:13pt;font-weight:700;color:#555;margin-bottom:14pt}
+.cov-meta{font-family:'JetBrains Mono',monospace;font-size:8pt;color:#888;margin-bottom:10pt}
+.cov-rule{height:2pt;background:#0f0f0f}
+.section{margin-top:18pt;padding-top:12pt;border-top:1.5pt solid #0f0f0f}
+.sec-hd{display:flex;align-items:baseline;gap:7pt;margin-bottom:8pt}
+.cn-n{font-size:17pt;font-weight:900}
+.sec-n{font-family:'JetBrains Mono',monospace;font-size:8.5pt;color:#888}
+.sec-t{font-size:12.5pt;font-weight:800}
+.lede{font-weight:700;font-size:11.5pt;line-height:1.6;margin-bottom:7pt}
+p{margin-bottom:5pt}
+blockquote{margin:7pt 0 7pt 14pt;padding-left:8pt;border-left:2.5pt solid #0f0f0f;font-style:italic;color:#555}
+blockquote footer{font-style:normal;font-size:8.5pt;color:#888;margin-top:2pt}
+.refs .ref{display:flex;gap:7pt;margin-bottom:7pt;padding-bottom:7pt;border-bottom:.5pt dashed #ccc;font-size:9pt}
+.ref-n{font-family:'JetBrains Mono',monospace;font-size:8.5pt;font-weight:700;color:#c8a84b;min-width:24pt}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+${cover}${_buildBodyHTML(d)}${refs}
+</body></html>`;
+}
+
+function _buildWordHTML(d) {
+  const title = _esc(d.title||'Atlas Report');
+  const m = d.meta||{};
+  const metaLine = [m.date,m.words&&m.words+'字',m.sources&&m.sources+' 来源',m.reading].filter(Boolean).join(' · ');
+  const body = (d.sections||[]).map(s => {
+    const blocks = (s.blocks||[]).map(b => {
+      if (b.kind==='lede') return `<p><b>${_esc(b.text)}</b></p>`;
+      if (b.kind==='quote') return `<blockquote style="margin-left:18pt;font-style:italic;color:#555">${_esc(b.text)}${b.by?`<br>— ${_esc(b.by)}`:''}</blockquote>`;
+      if (b.kind==='chart'&&b.data) { const its=(b.data.data||[]).map(i=>`<li>${_esc(i.label)}: <b>${i.value}${b.data.unit?' '+b.data.unit:''}</b></li>`).join(''); return `<p><b>【图表: ${_esc(b.data.title||'')}】</b></p><ul>${its}</ul>`; }
+      return `<p>${_esc(b.text)}</p>`;
+    }).join('');
+    return `<h2 style="font-size:13pt;margin-top:18pt;padding-top:10pt;border-top:1.5pt solid #0f0f0f">${_esc(s.en)}${s.cn?' · '+_esc(s.cn):''}</h2>${blocks}`;
+  }).join('');
+  const refs = d.refs?.length ? `<hr/><h2>参考来源</h2>${d.refs.map(r=>`<p><b>${_esc(r.n)} ${_esc(r.src)}</b> — ${_esc(r.title)} <small>(${_esc(r.url)}, ${_esc(r.date)})</small></p>`).join('')}` : '';
+  return `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${title}</title>
+<style>body{font-family:"Noto Sans SC",sans-serif;font-size:11pt;line-height:1.85;color:#0f0f0f}h1{font-size:20pt;font-weight:900;line-height:.94;margin-bottom:8pt}p{margin:5pt 0}blockquote{color:#555}</style>
+</head><body><h1>${title}</h1>${d.subtitle?`<p style="color:#555;font-size:12pt;font-weight:700">${_esc(d.subtitle)}</p>`:''}<p style="font-size:8.5pt;color:#888">${metaLine}</p><hr/>${body}${refs}</body></html>`;
+}
+
+function ExportModal({ t, onClose, exportData }) {
+  const [format, setFormat] = React.useState('pdf');
+  const [includeCover, setIncludeCover] = React.useState(true);
+  const [includeMarginalia, setIncludeMarginalia] = React.useState(true);
+  const [pageSize, setPageSize] = React.useState('A4');
+  const [linkScope, setLinkScope] = React.useState('link');
+  const [linkPwd, setLinkPwd] = React.useState('');
+  const [allowFollowUp, setAllowFollowUp] = React.useState(true);
+  const [showAnalytics, setShowAnalytics] = React.useState(false);
+  const [status, setStatus] = React.useState('idle'); // idle | loading | done | error
+  const [statusMsg, setStatusMsg] = React.useState('');
+  const [copiedUrl, setCopiedUrl] = React.useState('');
+
+  // Fall back to static report data if no exportData provided
+  const d = exportData || {
+    title: 'Cold brew, hotter capital.',
+    subtitle: '2025 Q1 国内咖啡赛道融资速记',
+    sections: REPORT_SECTIONS,
+    refs: REPORT_REFS,
+    meta: REPORT_META,
+  };
+  const displayTitle = d.title || 'Atlas Report';
+
+  const setDone = (msg) => { setStatus('done'); setStatusMsg(msg); setTimeout(() => setStatus('idle'), 3500); };
+  const setErr  = (msg) => { setStatus('error'); setStatusMsg(msg); setTimeout(() => setStatus('idle'), 5000); };
+
+  const handleAction = async () => {
+    setStatus('loading');
+    try {
+      if (format === 'md') {
+        const text = _buildMarkdown(d);
+        _dlBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), _slug(d.title) + '.md');
+        setDone('✓ Markdown 文件已下载');
+
+      } else if (format === 'pdf') {
+        await _exportPDFDownload(d, { pageSize, includeCover });
+        setDone('✓ PDF 已下载');
+
+      } else if (format === 'docx') {
+        const html = _buildWordHTML(d);
+        _dlBlob(new Blob(['﻿', html], { type: 'application/vnd.ms-word;charset=utf-8' }), _slug(d.title) + '.doc');
+        setDone('✓ Word 文档已下载（.doc 格式，可用 Word / WPS 打开）');
+
+      } else if (format === 'notion') {
+        const md = _buildMarkdown(d);
+        await navigator.clipboard.writeText(md);
+        setDone('✓ 已复制 Markdown → 在 Notion 新建页面后直接 Cmd+V 粘贴');
+
+      } else if (format === 'link') {
+        const base = window.location.href.split('?')[0].split('#')[0];
+        const param = btoa(encodeURIComponent(JSON.stringify({ id: d.id || 'shared', title: d.title, ts: Date.now() }))).slice(0, 32);
+        const url = `${base}?r=${param}`;
+        await navigator.clipboard.writeText(url);
+        setCopiedUrl(url);
+        setDone('✓ 链接已复制到剪贴板');
+      }
+    } catch (err) {
+      setErr('✕ 操作失败：' + (err.message || String(err)));
+    }
+  };
+
+  const selected = EXPORT_FORMATS.find(f => f.k === format);
+  const isLink = format === 'link';
+  const isNotion = format === 'notion';
+  const btnLabel = status === 'loading'
+    ? (format === 'pdf' ? '生成 PDF 中…' : '处理中…')
+    : isLink ? '复制链接 ↗'
+    : isNotion ? '复制 Markdown ↗'
+    : `下载 ${selected?.en} ↓`;
+
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 100,
+      background: 'rgba(15,15,15,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 40,
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '100%', maxWidth: 900, maxHeight: '90vh',
+        background: t.paper, border: `1.5px solid ${t.ink}`,
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '14px 22px', borderBottom: `1.5px solid ${t.ink}`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+          <Tag t={t} accent>◆ EXPORT · 导出 / 分享</Tag>
+          <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 15, letterSpacing: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+            {displayTitle}
+          </span>
+          <button type="button" onClick={onClose} style={{
+            border: `1px solid ${t.ink}`, background: t.paper, padding: '4px 9px',
+            fontFamily: t.fontMono, fontSize: 11, cursor: 'pointer', color: t.ink, flexShrink: 0,
+          }}>ESC</button>
+        </div>
+
+        {/* Body: 3 columns */}
+        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '220px 1fr 220px' }}>
+
+          {/* Left: format picker */}
+          <div style={{ borderRight: `1px solid ${t.rule}`, overflowY: 'auto' }}>
+            <div style={{ padding: '10px 16px 4px', fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>FORMAT · 格式</div>
+            {EXPORT_FORMATS.map(f => (
+              <button key={f.k} type="button" onClick={() => { setFormat(f.k); setStatus('idle'); }} style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                background: format === f.k ? t.faint : 'transparent',
+                borderLeft: format === f.k ? `3px solid ${t.accent}` : '3px solid transparent',
+                border: 'none', borderLeft: format === f.k ? `3px solid ${t.accent}` : `3px solid transparent`,
+                padding: '10px 16px', cursor: 'pointer',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 12, letterSpacing: 1 }}>{f.en}</span>
+                  {f.recommended && <Tag t={t} accent>推荐</Tag>}
+                </div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.inkSoft, marginTop: 2 }}>{f.cn}</div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>{f.size}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Center: options */}
+          <div style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, borderBottom: `1px solid ${t.rule}`, paddingBottom: 6 }}>OPTIONS · 选项</div>
+
+            {!isLink && !isNotion && (
+              <>
+                <OptionToggle t={t} label="包含杂志封面 (Cover sheet)" value={includeCover} onChange={setIncludeCover}/>
+                <OptionToggle t={t} label="包含边注 (Marginalia)" value={includeMarginalia} onChange={setIncludeMarginalia}/>
+              </>
+            )}
+
+            {format === 'pdf' && (
+              <OptionRadio t={t} label="纸张大小" value={pageSize} onChange={setPageSize}
+                options={[['A4','A4'],['LET','Letter'],['B5','B5']]}/>
+            )}
+
+            {isLink && (
+              <>
+                <OptionRadio t={t} label="访问范围" value={linkScope} onChange={setLinkScope}
+                  options={[['link','公开'],['team','团队'],['pwd','密码']]}/>
+                {linkScope === 'pwd' && (
+                  <div>
+                    <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, marginBottom: 6 }}>访问密码</div>
+                    <input value={linkPwd} onChange={e => setLinkPwd(e.target.value)}
+                      placeholder="设置密码…"
+                      style={{ width: '100%', border: `1.5px solid ${t.ink}`, padding: '6px 10px', fontFamily: t.fontMono, fontSize: 12, background: t.paper, color: t.ink, outline: 'none' }}/>
+                  </div>
+                )}
+                <OptionToggle t={t} label="允许追问 (Follow-up)" value={allowFollowUp} onChange={setAllowFollowUp}/>
+                <OptionToggle t={t} label="显示阅读统计 (Analytics)" value={showAnalytics} onChange={setShowAnalytics}/>
+                {copiedUrl && (
+                  <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, wordBreak: 'break-all', padding: '8px 10px', background: t.faint, border: `1px solid ${t.accent}` }}>
+                    {copiedUrl}
+                  </div>
+                )}
+              </>
+            )}
+
+            {isNotion && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.inkSoft, lineHeight: 1.7 }}>
+                  点击下方按钮将报告复制为 Notion 兼容的 Markdown 格式。
+                </div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, lineHeight: 1.7 }}>
+                  1. 点击「复制 Markdown」<br/>
+                  2. 在 Notion 中新建页面<br/>
+                  3. 直接 <strong>Cmd+V</strong>（Mac）或 <strong>Ctrl+V</strong>（Win）粘贴<br/>
+                  4. Notion 会自动解析标题和段落结构
+                </div>
+              </div>
+            )}
+
+            {/* Status feedback */}
+            {status !== 'idle' && (
+              <div style={{
+                padding: '10px 14px', marginTop: 4,
+                background: status === 'error' ? 'rgba(229,37,29,0.08)' : status === 'done' ? 'rgba(16,185,129,0.08)' : t.faint,
+                border: `1px solid ${status === 'error' ? '#e5251d' : status === 'done' ? '#10b981' : t.rule}`,
+                fontFamily: t.fontCN, fontSize: 12,
+                color: status === 'error' ? '#e5251d' : status === 'done' ? '#10b981' : t.inkSoft,
+                lineHeight: 1.5,
+              }}>
+                {status === 'loading'
+                  ? (format === 'pdf' ? '⏳ 正在渲染页面并生成 PDF，首次约需 3–5 秒…' : '⏳ 正在处理，请稍候…')
+                  : statusMsg}
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div style={{ marginTop: 'auto', paddingTop: 14, borderTop: `1px solid ${t.rule}`, display: 'flex', gap: 8 }}>
+              <span style={{ flex: 1 }}/>
+              <Btn t={t} size="md" onClick={onClose}>取消 · Cancel</Btn>
+              <Btn t={t} size="md" primary accent onClick={handleAction} disabled={status === 'loading'}>
+                {btnLabel}
+              </Btn>
+            </div>
+          </div>
+
+          {/* Right: preview */}
+          <div style={{ background: t.paperAlt, padding: '16px', borderLeft: `1px solid ${t.rule}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>PREVIEW · 预览</div>
+            <div style={{
+              flex: 1, background: '#fff', border: `1px solid ${t.ink}`,
+              boxShadow: `3px 3px 0 ${t.ink}`,
+              padding: '13px 11px', display: 'flex', flexDirection: 'column', gap: 5,
+            }}>
+              {includeCover && !isLink && !isNotion ? (
+                <>
+                  <div style={{ fontFamily: 'Archivo', fontSize: 7, fontWeight: 700, letterSpacing: 2, color: '#888', textTransform: 'uppercase' }}>ATLAS · {d.meta?.issue||''}</div>
+                  <div style={{ fontFamily: 'Archivo', fontSize: 16, fontWeight: 900, lineHeight: 0.95, letterSpacing: -0.5, color: '#0f0f0f', marginTop: 4 }}>{displayTitle.slice(0,30)}{displayTitle.length>30?'…':''}</div>
+                  {d.subtitle && <div style={{ fontFamily: 'Noto Sans SC', fontSize: 8, lineHeight: 1.3, color: '#555', marginTop: 2 }}>{d.subtitle.slice(0,40)}</div>}
+                  <div style={{ height: 1.5, background: '#0f0f0f', margin: '5px 0' }}/>
+                </>
+              ) : (
+                <div style={{ fontFamily: 'Archivo', fontSize: 10, fontWeight: 800, color: '#0f0f0f', marginBottom: 4 }}>{displayTitle.slice(0,30)}</div>
+              )}
+              {(d.sections||[]).slice(0,3).map((s,i) => (
+                <div key={i} style={{ marginBottom: 3 }}>
+                  <div style={{ fontFamily: 'Archivo', fontSize: 7, fontWeight: 800, color: '#0f0f0f', letterSpacing: 0.5 }}>{s.en.slice(0,28)}</div>
+                  <div style={{ background: '#f0eee9', height: 4, width: `${75 - i*10}%`, marginTop: 2 }}/>
+                  <div style={{ background: '#f0eee9', height: 4, width: `${90 - i*5}%`, marginTop: 2 }}/>
+                </div>
+              ))}
+              {includeMarginalia && !isLink && !isNotion && (
+                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 5.5, color: '#aaa', marginTop: 3 }}>§ marginalia · references</div>
+              )}
+            </div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, lineHeight: 1.5 }}>
+              {format === 'pdf' && `${pageSize} · ~480 KB`}
+              {format === 'docx' && '~320 KB · Word/WPS'}
+              {format === 'md' && `~${Math.round((_buildMarkdown(d).length/1024))}KB · UTF-8`}
+              {format === 'notion' && 'Markdown 格式 · 可直接粘贴'}
+              {format === 'link' && `有效期 30d · ${linkScope==='pwd'?'密码保护':'公开访问'}`}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OptionToggle({ t, label, value, onChange }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: onChange ? 'pointer' : 'default' }}>
+      <span style={{
+        width: 36, height: 20, border: `1.5px solid ${t.ink}`,
+        background: value ? t.ink : t.paper, position: 'relative', flexShrink: 0,
+      }}>
+        <span style={{
+          position: 'absolute', top: 1, left: value ? 17 : 1,
+          width: 14, height: 14, background: value ? t.paper : t.ink, transition: 'left 0.12s',
+        }}/>
+      </span>
+      <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, flex: 1 }}>{label}</span>
+      <input type="checkbox" checked={value} onChange={onChange ? (e => onChange(e.target.checked)) : undefined}
+        style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }}/>
+    </label>
+  );
+}
+
+function OptionRadio({ t, label, value, onChange, options }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, flex: 1 }}>{label}</span>
+      <div style={{ display: 'flex', border: `1.5px solid ${t.ink}` }}>
+        {options.map(([k, l], i) => (
+          <button key={k}
+            type="button"
+            onClick={() => onChange(k)}
+            style={{
+              padding: '5px 10px', border: 'none',
+              borderLeft: i === 0 ? 'none' : `1px solid ${t.ink}`,
+              background: value === k ? t.ink : t.paper,
+              color: value === k ? t.paper : t.ink,
+              fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1, cursor: 'pointer',
+            }}>{l}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Sources, ExportModal, SOURCES, SOURCE_CATEGORIES });
+// Root app — route state + Tweaks integration.
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "red",
+  "theme": "cream",
+  "density": "editorial",
+  "marginalia": true,
+  "headerLarge": true
+}/*EDITMODE-END*/;
+
+const FOOTER_CONTEXT = {
+  home:    { page: '01', section: 'COVER · 封面' },
+  running: { page: '02', section: 'IN PROGRESS · 撰写中' },
+  report:  { page: '03', section: 'FEATURE · 正文' },
+  library: { page: '04', section: 'ARCHIVE · 报告库' },
+  sources: { page: '05', section: 'SOURCES · 数据源' },
+};
+
+const SAMPLE_FIRST_PROMPT = '梳理 2025 年 Q1 国内咖啡赛道的融资动态，重点说说 Manner、库迪和挪瓦的新动向，给一份 2000 字的内部分析。';
+
+// ── Pet Widget (Rubber Hose Retro) ───────────────────────────────────────────
+const PET_W = 100;
+
+const PET_QA_KB = [
+  { kw:/导出|export/i,          ans:'点击右上角的 Export 按钮，支持 PDF、Markdown 和 HTML 三种格式～' },
+  { kw:/数据源|source/i,        ans:'目前支持手动输入，正在接入 Google 数据和 RSS 源，敬请期待！' },
+  { kw:/图表|chart|可视化/i,     ans:'报告里会自动生成 Fig. 标注区域，图表渲染功能在路线图上～' },
+  { kw:/模型|model|claude|gpt/i,ans:'可以在右上角 Model 选择器切换，支持 Claude 全系列和自定义 API！' },
+  { kw:/保存|save/i,            ans:'报告生成后点击 Save 按钮，保存到左侧 Library 里随时查看。' },
+  { kw:/收费|price|付费|免费/i,  ans:'Atlas 目前处于 Beta，完全免费！使用时需要自备 API Key。' },
+  { kw:/api.?key|apikey|密钥/i, ans:'顶部栏 → Model 设置 → 填入你的 Anthropic API Key 即可开始。' },
+  { kw:/多久|多长时间|speed|速度/i,ans:'根据报告长度约需 3–12 分钟。High 模式更细致，Low 模式更快！' },
+  { kw:/模板|template/i,        ans:'在主页右下角点击 "＋ Add Template" 可以新建自己的提示词模板～' },
+  { kw:/你好|hello|hi|嗨/i,     ans:'你好呀！我是 Atlas 的小助手，有什么可以帮你的吗？😊' },
+];
+
+function getPetReply(msg) {
+  for (const q of PET_QA_KB) { if (q.kw.test(msg)) return q.ans; }
+  return ['这个我暂时不清楚～可以去 GitHub Issues 提问！','好问题！我的知识库还在更新中，稍后再来问？','嗯……让我想想（其实我也不确定 😅）','这个问题好有深度，建议查看文档或联系支持！'][Math.floor(Math.random()*4)];
+}
+
+const CLICK_REACTIONS = [
+  { w:28, mood:'jump',    bubble:'啊！吓我一跳！',    dur:800 },
+  { w:18, mood:'idle',    bubble:'>///<',              dur:600 },
+  { w:18, mood:'dance',   bubble:'嗨～找我有事？',     dur:700 },
+  { w:16, mood:'think',   bubble:'？有什么需要~',      dur:700 },
+  { w:12, mood:'wave',    bubble:'来找我啦，抱抱！',    dur:600 },
+  { w:8,  mood:'scratch', bubble:'...说吧',            dur:500 },
+];
+
+function PetWidget({ t }) {
+  const [mood, setMood] = React.useState('idle');
+  const [blink, setBlink] = React.useState(false);
+  const [eyeDir, setEyeDir] = React.useState(0);
+  const [bubble, setBubble] = React.useState(null);
+  const [inputOpen, setInputOpen] = React.useState(false);
+  const [inputVal, setInputVal] = React.useState('');
+  const [activeTab, setActiveTab] = React.useState('cmd');
+  const [chatHistory, setChatHistory] = React.useState([]);
+  const [minimized, setMinimized] = React.useState(false);
+  const [petLeft, setPetLeft] = React.useState(null);
+  const [facingRight, setFacingRight] = React.useState(false);
+  const animRef = React.useRef(null);
+  const petPosRef = React.useRef({ x: 0, ready: false });
+  const bubTimerRef = React.useRef(null);
+  const autoTimerRef = React.useRef(null);
+  const audioCtxRef = React.useRef(null);
+  const chatEndRef = React.useRef(null);
+
+  // ── init ───────────────────────────────────────────────────────────────────
+  React.useEffect(() => {
+    petPosRef.current.x = window.innerWidth - PET_W - 24;
+    petPosRef.current.ready = true;
+  }, []);
+
+  // blink
+  React.useEffect(() => {
+    let t; const lp = () => { t = setTimeout(() => { setBlink(true); setTimeout(() => { setBlink(false); lp(); }, 140); }, 1800 + Math.random() * 4200); }; lp();
+    return () => clearTimeout(t);
+  }, []);
+
+  // eye wander
+  React.useEffect(() => {
+    let t; const lp = () => {
+      t = setTimeout(() => {
+        const d = [-1,-1,0,0,0,1,1][Math.floor(Math.random()*7)];
+        setEyeDir(d);
+        setTimeout(() => setEyeDir(0), 1100 + Math.random()*500);
+        lp();
+      }, 3500 + Math.random()*6000);
+    }; lp();
+    return () => clearTimeout(t);
+  }, []);
+
+  // autonomous behaviour scheduler
+  React.useEffect(() => {
+    if (!['idle','sleep'].includes(mood)) return;
+    const sl = mood === 'sleep';
+    const pool = sl
+      ? [['sleep',4],['idle',1]]
+      : [
+          ['lookaround',2],['nod',1.8],['wave',1.5],['scratch',1.4],
+          ['jump',1.4],['think',1.3],['fidget',1.2],['stretch',1],
+          ['walk',1.8],['run',0.3],['sleep',0.15],
+        ];
+    const tot = pool.reduce((s,[,w])=>s+w,0);
+    let rnd = Math.random()*tot, pick = pool[0][0];
+    for (const [b,w] of pool) { rnd-=w; if(rnd<=0){pick=b;break;} }
+    const delay = sl ? 8000+Math.random()*8000 : 900+Math.random()*2200;
+    autoTimerRef.current = setTimeout(()=>exec(pick), delay);
+    return () => clearTimeout(autoTimerRef.current);
+  }, [mood]);
+
+  // scroll chat to bottom
+  React.useEffect(() => {
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory]);
+
+  // helpers
+  const showBubble = (msg, ms=2600) => {
+    if (bubTimerRef.current) clearTimeout(bubTimerRef.current);
+    setBubble(msg);
+    bubTimerRef.current = setTimeout(()=>setBubble(null), ms);
+  };
+  const stopAnim = () => { if(animRef.current){cancelAnimationFrame(animRef.current);animRef.current=null;} };
+
+  const toCorner = () => {
+    stopAnim();
+    const tx = window.innerWidth - PET_W - 24;
+    if (Math.abs(petPosRef.current.x - tx) < 5) { setPetLeft(null); setFacingRight(false); setMood('idle'); return; }
+    setFacingRight(true); setMood('walk');
+    const tick = () => {
+      const d = tx - petPosRef.current.x;
+      if (Math.abs(d) < 4) { petPosRef.current.x = tx; setPetLeft(null); setFacingRight(false); setMood('idle'); animRef.current=null; return; }
+      petPosRef.current.x += (d>0?1:-1)*2.8; setPetLeft(petPosRef.current.x);
+      animRef.current = requestAnimationFrame(tick);
+    };
+    animRef.current = requestAnimationFrame(tick);
+  };
+
+  const startWalk = (fast) => {
+    stopAnim();
+    if (!petPosRef.current.ready) petPosRef.current.x = window.innerWidth - PET_W - 24;
+    setMood(fast?'run':'walk'); setFacingRight(false);
+    const spd=fast?3.4:1.9, steps=70+Math.floor(Math.random()*110);
+    let dir=-1, i=0;
+    const tick = () => {
+      i++; petPosRef.current.x += dir*spd;
+      const mn=16, mx=window.innerWidth-PET_W-16;
+      if(petPosRef.current.x<=mn){petPosRef.current.x=mn;dir=1;setFacingRight(true);}
+      if(petPosRef.current.x>=mx){petPosRef.current.x=mx;dir=-1;setFacingRight(false);}
+      setPetLeft(petPosRef.current.x);
+      if(i<steps){animRef.current=requestAnimationFrame(tick);}else{animRef.current=null;toCorner();}
+    };
+    animRef.current = requestAnimationFrame(tick);
+  };
+
+  const playGuitar = () => {
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||window.webkitAudioContext)();
+      const ctx = audioCtxRef.current;
+      [220,277,330,415,554].forEach((freq,i) => {
+        setTimeout(() => {
+          const o=ctx.createOscillator(), g=ctx.createGain();
+          o.connect(g); g.connect(ctx.destination);
+          o.type='sawtooth'; o.frequency.value=freq;
+          g.gain.setValueAtTime(0.12,ctx.currentTime);
+          g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+1.4);
+          o.start(ctx.currentTime); o.stop(ctx.currentTime+1.4);
+        }, i*55);
+      });
+    } catch(e) {}
+  };
+
+  const exec = (b) => {
+    if(b==='walk'){startWalk(false);return;}
+    if(b==='run'){startWalk(true);return;}
+    if(b==='lookaround'){
+      // rapid left-right-up eye sweep
+      const dirs = [1,0,-1,0,1,0,-1,0];
+      dirs.forEach((d,i)=>setTimeout(()=>setEyeDir(d), i*220));
+      return;
+    }
+    if(b==='nod'){
+      // brief think posture → idle (head-look-up effect)
+      setMood('think');
+      setTimeout(()=>setMood('idle'), 900+Math.random()*300);
+      return;
+    }
+    if(b==='fidget'){
+      // quick wave arm raise then drop
+      setMood('wave');
+      setTimeout(()=>setMood('idle'), 500);
+      return;
+    }
+    const cfg = {
+      jump:    { msg:['嘿！','跳！','耶～'], dur:1800, msgMs:1600 },
+      stretch: { msg:[], dur:2800, msgMs:0 },
+      think:   { msg:['该写什么报告？🤔','数据有意思...','嗯嗯~'], dur:3200, msgMs:2800 },
+      wave:    { msg:['👋 你好！','嗨！'], dur:2200, msgMs:2000 },
+      scratch: { msg:[], dur:2200, msgMs:0 },
+      sleep:   { msg:['呼呼... 💤'], dur:0, msgMs:8000 },
+    };
+    const c = cfg[b] || {}; const m = c.msg?.[Math.floor(Math.random()*(c.msg.length||1))];
+    if(m) showBubble(m, c.msgMs||2600);
+    setMood(b);
+    if(c.dur) setTimeout(()=>setMood('idle'), c.dur);
+  };
+
+  const handleCmd = (raw) => {
+    setInputVal('');
+    const cmd = raw.trim(); if(!cmd) return;
+    if(autoTimerRef.current) clearTimeout(autoTimerRef.current);
+    stopAnim();
+    if(/散步|走走|溜达/.test(cmd)){showBubble('好嘞，溜达一圈！🐾');setTimeout(()=>startWalk(false),400);}
+    else if(/跑|冲|奔/.test(cmd)){showBubble('冲冲冲！💨');setTimeout(()=>startWalk(true),400);}
+    else if(/睡觉|休息|困/.test(cmd)){exec('sleep');}
+    else if(/起来|醒|起床/.test(cmd)){setMood('idle');showBubble('哈欠~ 起来啦！☀️');}
+    else if(/吉他|弹|摇滚|guitar/.test(cmd)){setMood('guitar');playGuitar();showBubble('🎸 叮当当！',4500);setTimeout(()=>setMood('idle'),5200);}
+    else if(/跳舞|舞|dance/.test(cmd)){setMood('dance');showBubble('🕺 嗨起来！',3500);setTimeout(()=>setMood('idle'),4000);}
+    else if(/转圈|转/.test(cmd)){setMood('spin');showBubble('dizzy~ 😵',2200);setTimeout(()=>setMood('idle'),2700);}
+    else if(/分析|报告|工作|帮我/.test(cmd)){setMood('work');showBubble('📊 正在分析...',3800);setTimeout(()=>{setMood('idle');showBubble('✨ 完成！');},4400);}
+    else if(/挥手|摆手|打招呼/.test(cmd)){exec('wave');showBubble('👋 你好！',2200);}
+    else if(/挠头|scratch|抓头/.test(cmd)){exec('scratch');}
+    else if(/伸懒腰|懒腰/.test(cmd)){exec('stretch');}
+    else if(/回来|回家|过来/.test(cmd)){showBubble('回来啦！');toCorner();}
+    else if(/跳|蹦/.test(cmd)){exec('jump');}
+    else{showBubble(['好的！🐾','嗯！','收到！','啊？😅','知道啦~'][Math.floor(Math.random()*5)]);}
+  };
+
+  const handleQA = (question) => {
+    if (!question.trim()) return;
+    setInputVal('');
+    const userMsg = question.trim();
+    setChatHistory(h => [...h, { role:'user', text:userMsg }]);
+    setMood('think');
+    setTimeout(() => {
+      const reply = getPetReply(userMsg);
+      setChatHistory(h => [...h, { role:'pet', text:reply }]);
+      setMood('idle');
+      showBubble('回答好了！', 1400);
+    }, 1200 + Math.random()*600);
+  };
+
+  // Click reaction handler
+  const handlePetClick = () => {
+    if (inputOpen) { setInputOpen(false); return; }
+    const tot = CLICK_REACTIONS.reduce((s,r)=>s+r.w,0);
+    let rnd = Math.random()*tot, react = CLICK_REACTIONS[0];
+    for (const r of CLICK_REACTIONS) { rnd -= r.w; if (rnd <= 0) { react = r; break; } }
+    stopAnim(); if(autoTimerRef.current) clearTimeout(autoTimerRef.current);
+    showBubble(react.bubble, react.dur + 800);
+    setMood(react.mood);
+    setTimeout(() => { setMood('idle'); setTimeout(() => setInputOpen(true), 150); }, react.dur);
+  };
+
+  // ── derived animation values ──────────────────────────────────────────────
+  const isWalk = mood==='walk' || mood==='run';
+  const isSleep = mood==='sleep';
+  const ws = mood==='run' ? '0.32s' : '0.6s';
+  const halfDelay = mood==='run' ? '-0.16s' : '-0.3s';
+
+  const driftAnim = ({
+    walk:  `rh-walk-bounce ${ws} ease-in-out infinite`,
+    run:   `rh-run-bounce ${ws} ease-in-out infinite`,
+    dance: 'rh-dance-body 0.56s ease-in-out infinite',
+    sleep: 'rh-sleep-drift 5s ease-in-out infinite',
+    jump:  'rh-jump 0.65s ease forwards',
+  })[mood] || 'rh-drift 2.6s ease-in-out infinite';
+
+  const swayStyle = mood==='run'
+    ? { animation:'none', transform:'rotate(-5deg)', transformOrigin:'55px 110px' }
+    : mood==='sleep'
+    ? { animation:'none', transform:'rotate(-4deg)', transformOrigin:'55px 110px' }
+    : mood==='spin'
+    ? { animation:'rh-spin 0.7s linear 3 forwards', transformOrigin:'55px 110px' }
+    : isWalk
+    ? { animation:'none', transformOrigin:'55px 110px' }
+    : { animation:'rh-sway 7s ease-in-out infinite', transformOrigin:'55px 110px' };
+
+  const armLAnim = isSleep           ? { animation:'none', transform:'rotate(12deg)' }
+    : mood==='stretch'               ? { animation:'rh-arm-l-stretch 2.5s ease-in-out 1 forwards' }
+    : mood==='dance'                 ? { animation:'rh-arm-l-dance 0.56s ease-in-out infinite' }
+    : mood==='run'                   ? { animation:`rh-arm-l-run ${ws} ease-in-out ${halfDelay} infinite` }
+    : isWalk                         ? { animation:`rh-arm-l-walk ${ws} ease-in-out ${halfDelay} infinite` }
+    :                                  { animation:'rh-arm-l-idle 2.8s ease-in-out -0.9s infinite' };
+
+  const armRAnim = isSleep           ? { animation:'none', transform:'rotate(-12deg)' }
+    : mood==='stretch'               ? { animation:'rh-arm-r-stretch 2.5s ease-in-out 1 forwards' }
+    : mood==='dance'                 ? { animation:'rh-arm-r-dance 0.56s ease-in-out infinite' }
+    : mood==='wave'                  ? { animation:'rh-arm-wave 0.5s ease-in-out infinite' }
+    : mood==='scratch'               ? { animation:'rh-arm-scratch 0.28s ease-in-out infinite' }
+    : mood==='guitar'                ? { animation:'rh-arm-strum 0.38s ease-in-out infinite' }
+    : mood==='run'                   ? { animation:`rh-arm-r-run ${ws} ease-in-out 0s infinite` }
+    : isWalk                         ? { animation:`rh-arm-r-walk ${ws} ease-in-out 0s infinite` }
+    :                                  { animation:'rh-arm-r-idle 2.8s ease-in-out 0s infinite' };
+
+  const legLAnim = mood==='dance'    ? { animation:'rh-leg-l-dance 0.56s ease-in-out -0.28s infinite' }
+    : isWalk                         ? { animation:`rh-leg-l-walk ${ws} ease-in-out ${halfDelay} infinite` }
+    :                                  { animation:'rh-leg-idle 3.2s ease-in-out -1.1s infinite' };
+
+  const legRAnim = mood==='dance'    ? { animation:'rh-leg-r-dance 0.56s ease-in-out 0s infinite' }
+    : isWalk                         ? { animation:`rh-leg-r-walk ${ws} ease-in-out 0s infinite` }
+    :                                  { animation:'rh-leg-idle 3.2s ease-in-out 0s infinite' };
+
+  const eyeShX = mood==='think' ? 2 : eyeDir * 2;
+  const eyeShY = mood==='think' ? -4 : 0;
+  const blushOp = ['dance','run','jump','wave','guitar'].includes(mood) ? 0.65 : isSleep ? 0.18 : 0.3;
+
+  const mouthD = ({
+    idle:'M42 55 Q55 62 68 55',    walk:'M42 55 Q55 62 68 55',
+    run:'M38 54 Q55 67 72 54',     dance:'M38 54 Q55 68 72 54',
+    wave:'M40 55 Q55 64 70 55',    scratch:'M44 57 Q55 60 66 57',
+    guitar:'M46 56 Q62 60 68 53',  work:'M44 56 Q55 59 66 56',
+    think:'M46 57 Q56 54 66 56',   jump:'M40 54 Q55 65 70 54',
+    spin:'M44 55 Q55 62 66 55',    stretch:'M42 54 Q55 61 68 54',
+  })[mood] || 'M42 55 Q55 62 68 55';
+
+  const browLd = ({
+    run:'M30 18 Q41 12 52 17',     dance:'M30 19 Q41 13 52 18',
+    scratch:'M30 22 Q41 20 52 24', work:'M30 24 Q41 28 52 24',
+    think:'M30 21 Q41 15 52 20',   jump:'M30 19 Q41 13 52 18',
+  })[mood] || 'M30 22 Q41 16 52 21';
+
+  const browRd = ({
+    run:'M58 17 Q69 12 80 18',     dance:'M58 18 Q69 13 80 19',
+    scratch:'M58 24 Q69 20 80 22', work:'M58 24 Q69 28 80 24',
+    think:'M58 20 Q69 15 80 21',   jump:'M58 18 Q69 13 80 19',
+  })[mood] || 'M58 21 Q69 16 80 22';
+
+  // ── minimized pill ────────────────────────────────────────────────────────
+  if (minimized) return (
+    <div onClick={()=>setMinimized(false)} title="唤醒宠物" style={{
+      position:'fixed',bottom:24,right:24,zIndex:9990,width:46,height:46,borderRadius:'50%',
+      background:'#f8f4ec',border:'2.5px solid #1c1c1c',cursor:'pointer',
+      display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,
+      boxShadow:'0 3px 14px rgba(0,0,0,0.22)',animation:'rh-breathe 3.8s ease-in-out infinite',
+    }}>🐾</div>
+  );
+
+  const posStyle = petLeft!==null
+    ? {position:'fixed',left:petLeft,bottom:22,zIndex:9990,userSelect:'none'}
+    : {position:'fixed',right:22,bottom:22,zIndex:9990,userSelect:'none'};
+
+  // shared panel styles
+  const tabStyle = (active) => ({
+    flex:1, padding:'5px 0', fontFamily:'monospace', fontSize:9, letterSpacing:1.2,
+    textTransform:'uppercase', border:'none', borderBottom: active ? `2px solid ${t?.ink||'#111'}` : '2px solid transparent',
+    background:'transparent', color: active ? (t?.ink||'#111') : (t?.mute||'#888'),
+    cursor:'pointer',
+  });
+
+  return (
+    <div style={posStyle}>
+      {/* × button */}
+      <button onClick={e=>{e.stopPropagation();setMinimized(true);}} style={{
+        position:'absolute',top:-10,right:-10,zIndex:12,width:22,height:22,borderRadius:'50%',
+        background:'rgba(0,0,0,0.22)',border:'none',cursor:'pointer',color:'#fff',
+        fontSize:11,fontWeight:700,lineHeight:'22px',textAlign:'center',
+      }}>×</button>
+
+      {/* ── Upgraded 3-tab panel ── */}
+      {inputOpen&&(
+        <div onClick={e=>e.stopPropagation()} style={{
+          position:'absolute',bottom:'106%',right:0,background:t?.paper||'#fff',
+          border:`2px solid ${t?.ink||'#111'}`,width:256,
+          boxShadow:`4px 4px 0 ${t?.ink||'#111'}`,animation:'essay-fadein 0.15s ease',zIndex:11,
+        }}>
+          {/* tab bar */}
+          <div style={{ display:'flex', borderBottom:`1.5px solid ${t?.rule||'#ddd'}`, padding:'0 2px' }}>
+            {[['cmd','发指令'],['qa','问问我'],['help','帮助']].map(([id,label])=>(
+              <button key={id} onClick={()=>setActiveTab(id)} style={tabStyle(activeTab===id)}>{label}</button>
+            ))}
+          </div>
+
+          {/* ── CMD tab ── */}
+          {activeTab==='cmd'&&(
+            <div style={{ padding:'10px 12px' }}>
+              <div style={{ fontFamily:t?.fontMono||'monospace', fontSize:9, color:t?.mute||'#888', marginBottom:6, letterSpacing:1.5 }}>ATLAS PET · 发指令</div>
+              <input autoFocus value={inputVal}
+                onChange={e=>setInputVal(e.target.value)}
+                onKeyDown={e=>{if(e.key==='Enter'){handleCmd(inputVal);setInputOpen(false);}if(e.key==='Escape')setInputOpen(false);}}
+                placeholder="散步、弹吉他、跳舞、工作…"
+                style={{ width:'100%', border:`1.5px solid ${t?.rule||'#ddd'}`, padding:'6px 8px',
+                  fontFamily:t?.fontCN||'sans-serif', fontSize:12, color:t?.ink||'#111',
+                  background:t?.faint||'#f9f9f9', outline:'none', boxSizing:'border-box' }}/>
+              <div style={{ display:'flex', gap:4, marginTop:8, flexWrap:'wrap' }}>
+                {['散步','跑步','弹吉他','跳舞','转圈','工作','挥手','睡觉','回来'].map(h=>(
+                  <button key={h} onClick={()=>{handleCmd(h);setInputOpen(false);}} style={{
+                    padding:'2px 6px', fontFamily:t?.fontMono||'monospace', fontSize:8,
+                    border:`1px solid ${t?.rule||'#ddd'}`, background:'transparent',
+                    cursor:'pointer', color:t?.inkSoft||'#555', letterSpacing:0.5,
+                  }}>{h}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Q&A tab ── */}
+          {activeTab==='qa'&&(
+            <div style={{ display:'flex', flexDirection:'column', height:280 }}>
+              <div style={{ flex:1, overflowY:'auto', padding:'10px 12px', display:'flex', flexDirection:'column', gap:8 }}>
+                {chatHistory.length===0&&(
+                  <div style={{ fontFamily:t?.fontCN||'sans-serif', fontSize:12, color:t?.mute||'#999', textAlign:'center', marginTop:28, lineHeight:1.7 }}>
+                    有任何关于 Atlas 的问题<br/>都可以问我～
+                  </div>
+                )}
+                {chatHistory.map((msg,i)=>(
+                  <div key={i} style={{ display:'flex', justifyContent: msg.role==='user'?'flex-end':'flex-start' }}>
+                    <div style={{
+                      maxWidth:'80%', padding:'7px 10px',
+                      background: msg.role==='user' ? (t?.ink||'#111') : (t?.faint||'#f5f5f5'),
+                      color: msg.role==='user' ? (t?.paper||'#fff') : (t?.ink||'#111'),
+                      fontFamily: t?.fontCN||'sans-serif', fontSize:12, lineHeight:1.5,
+                      border: msg.role==='pet' ? `1px solid ${t?.rule||'#ddd'}` : 'none',
+                    }}>{msg.text}</div>
+                  </div>
+                ))}
+                {mood==='think'&&(
+                  <div style={{ display:'flex', justifyContent:'flex-start' }}>
+                    <div style={{ padding:'7px 10px', border:`1px solid ${t?.rule||'#ddd'}`, color:t?.mute||'#888', fontFamily:t?.fontMono||'monospace', fontSize:10, letterSpacing:1 }}>思考中 ···</div>
+                  </div>
+                )}
+                <div ref={chatEndRef}/>
+              </div>
+              <div style={{ borderTop:`1px solid ${t?.rule||'#ddd'}`, padding:'8px 10px', display:'flex', gap:6 }}>
+                <input autoFocus={activeTab==='qa'} value={inputVal} onChange={e=>setInputVal(e.target.value)}
+                  onKeyDown={e=>{if(e.key==='Enter')handleQA(inputVal);if(e.key==='Escape')setInputOpen(false);}}
+                  placeholder="问我任何关于 Atlas 的问题…"
+                  style={{ flex:1, border:`1.5px solid ${t?.rule||'#ddd'}`, padding:'5px 8px', fontFamily:t?.fontCN||'sans-serif', fontSize:12, color:t?.ink||'#111', background:t?.faint||'#f9f9f9', outline:'none' }}/>
+                <button onClick={()=>handleQA(inputVal)} style={{ padding:'5px 10px', border:`1.5px solid ${t?.ink||'#111'}`, background:t?.ink||'#111', color:t?.paper||'#fff', fontFamily:t?.fontMono||'monospace', fontSize:9, cursor:'pointer', letterSpacing:1 }}>↵</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Help tab ── */}
+          {activeTab==='help'&&(
+            <div style={{ padding:'10px 12px', maxHeight:260, overflowY:'auto' }}>
+              <div style={{ fontFamily:t?.fontMono||'monospace', fontSize:9, color:t?.mute||'#888', marginBottom:10, letterSpacing:1.5 }}>QUICK HELP · 常见问题</div>
+              {[
+                ['如何开始生成报告？','在主页输入框描述你的需求，选择模型后点击 Generate。'],
+                ['支持哪些 AI 模型？','Claude 全系列（Opus/Sonnet/Haiku）及自定义 OpenAI 兼容 API。'],
+                ['报告如何导出？','报告页右上角 Export 按钮，支持 PDF / Markdown / HTML。'],
+                ['如何自定义模板？','主页"Or pick a starter"区域底部有"＋ Add Template"入口。'],
+                ['API Key 在哪里填？','顶部工具栏 → Model 图标 → 对应模型的密钥输入框。'],
+                ['遇到问题去哪里反馈？','GitHub Issues 或邮件联系我们。'],
+              ].map(([q,a],i)=>(
+                <HelpItem key={i} t={t} q={q} a={a}/>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Speech bubble */}
+      {bubble&&!inputOpen&&(
+        <div style={{
+          position:'absolute',bottom:'106%',right:0,background:t?.paper||'#fff',
+          border:`1.5px solid ${t?.ink||'#111'}`,padding:'8px 14px',fontSize:12.5,
+          fontFamily:t?.fontCN||'sans-serif',whiteSpace:'nowrap',color:t?.ink||'#111',
+          boxShadow:`3px 3px 0 ${t?.ink||'#111'}`,animation:'essay-fadein 0.15s ease',
+          zIndex:10,pointerEvents:'none',maxWidth:226,
+        }}>
+          {bubble}
+          <div style={{position:'absolute',bottom:-9,right:26,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:`9px solid ${t?.ink||'#111'}`}}/>
+          <div style={{position:'absolute',bottom:-7,right:27,borderLeft:'6px solid transparent',borderRight:'6px solid transparent',borderTop:`8px solid ${t?.paper||'#fff'}`}}/>
+        </div>
+      )}
+
+      {/* Direction flip + SVG pet */}
+      <div style={{transform:`scaleX(${facingRight?-1:1})`,display:'inline-block',transformOrigin:'50% 100%'}}>
+        <svg viewBox="0 0 110 152" width={PET_W} height="138" style={{display:'block',overflow:'visible',cursor:'pointer'}}
+          onClick={handlePetClick} title="点击互动 💬">
+
+          {/* shadow */}
+          <ellipse cx="55" cy="150" rx="28" ry="4.5" fill="rgba(0,0,0,0.09)" style={{filter:'blur(3px)'}}/>
+
+          {/* LAYER: breathe */}
+          <g style={{animation:'rh-breathe 3.8s cubic-bezier(0.45,0,0.55,1) infinite',transformOrigin:'55px 110px'}}>
+          {/* LAYER: drift / vertical motion */}
+          <g style={{animation:driftAnim}}>
+          {/* LAYER: sway / tilt */}
+          <g style={swayStyle}>
+
+            {/* Left leg – pivot (44,108) */}
+            <g transform="translate(44,108)">
+              <g style={{transformOrigin:'0px 0px',...legLAnim}}>
+                <path d="M0 0 Q-5 10 -7 20" stroke="#f8f4ec" strokeWidth="12.5" fill="none" strokeLinecap="round"/>
+                <path d="M0 0 Q-5 10 -7 20" stroke="#1c1c1c" strokeWidth="14.5" fill="none" strokeLinecap="round" opacity="0.1"/>
+                <circle cx="-7" cy="20" r="9" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.5"/>
+              </g>
+            </g>
+            {/* Right leg – pivot (66,108) */}
+            <g transform="translate(66,108)">
+              <g style={{transformOrigin:'0px 0px',...legRAnim}}>
+                <path d="M0 0 Q5 10 7 20" stroke="#f8f4ec" strokeWidth="12.5" fill="none" strokeLinecap="round"/>
+                <path d="M0 0 Q5 10 7 20" stroke="#1c1c1c" strokeWidth="14.5" fill="none" strokeLinecap="round" opacity="0.1"/>
+                <circle cx="7" cy="20" r="9" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.5"/>
+              </g>
+            </g>
+
+            {/* Body */}
+            <ellipse cx="55" cy="85" rx="26" ry="27" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.8"/>
+
+            {/* Guitar prop */}
+            {mood==='guitar'&&(
+              <g transform="translate(2,52) rotate(-10,16,28)">
+                <rect x="14" y="0" width="5.5" height="36" rx="2.5" fill="#5c3320" stroke="#1c1c1c" strokeWidth="1.2"/>
+                <ellipse cx="16.5" cy="47" rx="14" ry="11.5" fill="#c0392b" stroke="#1c1c1c" strokeWidth="1.5"/>
+                <ellipse cx="16.5" cy="47" rx="10" ry="8" fill="#e74c3c"/>
+                <circle cx="16.5" cy="47" r="4.5" fill="#8B0000"/>
+                {[10,18,26].map(y=><line key={y} x1="12" y1={y} x2="21" y2={y} stroke="rgba(255,255,255,0.3)" strokeWidth="1"/>)}
+                {[13,16.5,20].map(x=><line key={x} x1={x} y1="1" x2={x} y2="37" stroke="rgba(220,220,220,0.6)" strokeWidth="0.7"/>)}
+                {[[9,2],[14,0],[19,0],[24,2]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r="2.2" fill="#f0a500"/>)}
+              </g>
+            )}
+
+            {/* Work tablet */}
+            {mood==='work'&&(
+              <g>
+                <rect x="25" y="88" width="60" height="40" rx="4" fill="#1e1e2e" stroke="#1c1c1c" strokeWidth="1.8"/>
+                <rect x="41" y="84" width="28" height="8" rx="4" fill="#888" stroke="#1c1c1c" strokeWidth="1.5"/>
+                <rect x="29" y="95" width="32" height="3" rx="1.5" fill="#4ade80" opacity="0.85"/>
+                <rect x="29" y="101" width="44" height="3" rx="1.5" fill="#4ade80" opacity="0.7"/>
+                <rect x="29" y="107" width="26" height="3" rx="1.5" fill="#22d3ee" opacity="0.85"/>
+                <rect x="29" y="113" width="36" height="3" rx="1.5" fill="#4ade80" opacity="0.6"/>
+                <rect x="29" y="119" width="20" height="3" rx="1.5" fill="#f59e0b" opacity="0.8"/>
+                <circle cx="71" cy="98" r="5" fill="#f59e0b" opacity="0.9"/>
+              </g>
+            )}
+
+            {/* Left arm – pivot (30,80) */}
+            <g transform="translate(30,80)">
+              <g style={{transformOrigin:'0px 0px',...armLAnim}}>
+                <path d="M0 0 Q-2 12 0 23" stroke="#f8f4ec" strokeWidth="12.5" fill="none" strokeLinecap="round"/>
+                <path d="M0 0 Q-2 12 0 23" stroke="#1c1c1c" strokeWidth="14.5" fill="none" strokeLinecap="round" opacity="0.1"/>
+                <circle cx="0" cy="23" r="9" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.5"/>
+              </g>
+            </g>
+            {/* Right arm – pivot (80,80) */}
+            <g transform="translate(80,80)">
+              <g style={{transformOrigin:'0px 0px',...armRAnim}}>
+                <path d="M0 0 Q2 12 0 23" stroke="#f8f4ec" strokeWidth="12.5" fill="none" strokeLinecap="round"/>
+                <path d="M0 0 Q2 12 0 23" stroke="#1c1c1c" strokeWidth="14.5" fill="none" strokeLinecap="round" opacity="0.1"/>
+                <circle cx="0" cy="23" r="9" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.5"/>
+              </g>
+            </g>
+
+            {/* Think bubble */}
+            {mood==='think'&&(
+              <>
+                <circle cx="78" cy="30" r="3" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="1.5"/>
+                <circle cx="86" cy="20" r="5" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="1.8"/>
+                <circle cx="97" cy="8" r="10" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2"/>
+                <text x="93" y="13" fontSize="12" fill="#1c1c1c">?</text>
+              </>
+            )}
+
+            {/* HEAD layer */}
+            <g style={{animation:'rh-head 4s ease-in-out -0.7s infinite'}}>
+              <circle cx="55" cy="41" r="34" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.8"/>
+
+              {isSleep&&<>
+                <text x="76" y="22" fontSize="11" fontFamily="Georgia,serif" fill="#b0b0b0">z</text>
+                <text x="84" y="13" fontSize="16" fontFamily="Georgia,serif" fill="#a0a0a0">Z</text>
+                <text x="93" y="4"  fontSize="20" fontFamily="Georgia,serif" fill="#909090">Z</text>
+              </>}
+              {isSleep&&<path d="M55 62 Q56.5 70 56 75" stroke="rgba(150,200,255,0.5)" strokeWidth="4" fill="none" strokeLinecap="round"/>}
+
+              {!isSleep&&mood!=='dance'&&<>
+                <g style={{transformOrigin:'41px 37px'}}>
+                  <circle cx="41" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
+                  <circle cx={41+eyeShX} cy={37+eyeShY} r="7" fill="#1c1c1c"/>
+                  <circle cx={38+eyeShX} cy={35+eyeShY} r="3" fill="white"/>
+                </g>
+                <ellipse cx="41" cy="26" rx="13" ry="10" fill="#f8f4ec"
+                  style={{transform:blink?'translateY(14px)':'translateY(0px)',transition:'transform 0.07s',transformOrigin:'41px 26px'}}/>
+                <g style={{transformOrigin:'69px 37px'}}>
+                  <circle cx="69" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
+                  <circle cx={69+eyeShX} cy={37+eyeShY} r="7" fill="#1c1c1c"/>
+                  <circle cx={66+eyeShX} cy={35+eyeShY} r="3" fill="white"/>
+                </g>
+                <ellipse cx="69" cy="26" rx="13" ry="10" fill="#f8f4ec"
+                  style={{transform:blink?'translateY(14px)':'translateY(0px)',transition:'transform 0.07s',transformOrigin:'69px 26px'}}/>
+              </>}
+
+              {isSleep&&<>
+                <path d="M28 40 Q41 54 54 40" fill="none" stroke="#1c1c1c" strokeWidth="3" strokeLinecap="round"/>
+                <path d="M56 40 Q69 54 82 40" fill="none" stroke="#1c1c1c" strokeWidth="3" strokeLinecap="round"/>
+              </>}
+
+              {mood==='dance'&&<>
+                <circle cx="41" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
+                <text x="33" y="43" fontSize="14" fill="#1c1c1c">★</text>
+                <circle cx="69" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
+                <text x="61" y="43" fontSize="14" fill="#1c1c1c">★</text>
+              </>}
+
+              {mood==='guitar'&&<>
+                <rect x="27" y="28" width="28" height="16" rx="8" fill="rgba(10,10,10,0.88)"/>
+                <rect x="55" y="28" width="28" height="16" rx="8" fill="rgba(10,10,10,0.88)"/>
+                <line x1="27" y1="36" x2="55" y2="36" stroke="rgba(10,10,10,0.88)" strokeWidth="5"/>
+              </>}
+
+              <path d={browLd} fill="none" stroke="#1c1c1c" strokeWidth="2.5" strokeLinecap="round"/>
+              <path d={browRd} fill="none" stroke="#1c1c1c" strokeWidth="2.5" strokeLinecap="round"/>
+
+              <ellipse cx="24" cy="50" rx="7" ry="4.5" fill="#ff9090" opacity={blushOp} style={{transition:'opacity 0.4s'}}/>
+              <ellipse cx="86" cy="50" rx="7" ry="4.5" fill="#ff9090" opacity={blushOp} style={{transition:'opacity 0.4s'}}/>
+
+              {!isSleep&&<path d={mouthD} fill="none" stroke="#1c1c1c" strokeWidth="2.2" strokeLinecap="round"/>}
+
+              {mood==='guitar'&&<>
+                <text x="88" y="20" fontFamily="Georgia,serif" fontSize="18" fill="rgba(200,140,30,0.85)"
+                  style={{animation:'rh-drift 0.5s ease-in-out infinite'}}>♪</text>
+                <text x="96" y="11" fontFamily="Georgia,serif" fontSize="13" fill="rgba(200,140,30,0.7)"
+                  style={{animation:'rh-drift 0.5s ease-in-out -0.25s infinite'}}>♩</text>
+              </>}
+
+            </g>
+
+          </g>
+          </g>
+          </g>
+
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function HelpItem({ t, q, a }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div style={{ borderBottom:`1px solid ${t?.rule||'#eee'}`, paddingBottom:6, marginBottom:6 }}>
+      <button onClick={()=>setOpen(o=>!o)} style={{ width:'100%', textAlign:'left', background:'none', border:'none', cursor:'pointer', padding:'3px 0', display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+        <span style={{ fontFamily:t?.fontCN||'sans-serif', fontSize:11.5, color:t?.ink||'#111', lineHeight:1.4 }}>{q}</span>
+        <span style={{ fontFamily:t?.fontMono||'monospace', fontSize:10, color:t?.mute||'#888', flexShrink:0 }}>{open?'▲':'▼'}</span>
+      </button>
+      {open&&<div style={{ fontFamily:t?.fontCN||'sans-serif', fontSize:11, color:t?.mute||'#888', lineHeight:1.6, paddingTop:4, paddingLeft:2 }}>{a}</div>}
+    </div>
+  );
+}
+
+// ── Saved Reports Store ──────────────────────────────────────────────────────
+const SAVED_REPORTS_KEY = 'atlas_saved_reports';
+
+function useSavedReports() {
+  const [reports, setReports] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_REPORTS_KEY) || '[]'); } catch { return []; }
+  });
+  React.useEffect(() => {
+    const handler = () => {
+      try { setReports(JSON.parse(localStorage.getItem(SAVED_REPORTS_KEY) || '[]')); } catch {}
+    };
+    window.addEventListener('atlas-reports-updated', handler);
+    return () => window.removeEventListener('atlas-reports-updated', handler);
+  }, []);
+  const save = React.useCallback((report) => {
+    setReports(prev => {
+      const next = [report, ...prev.filter(r => r.id !== report.id)];
+      try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  const toggleFav = React.useCallback((id) => {
+    setReports(prev => {
+      const next = prev.map(r => r.id === id ? { ...r, favorited: !r.favorited } : r);
+      try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  const removeReports = React.useCallback((ids) => {
+    const idSet = new Set(ids);
+    setReports(prev => {
+      const next = prev.filter(r => !idSet.has(r.id));
+      try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  return { reports, save, toggleFav, removeReports };
+}
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const t = essayTokens({ theme: tweaks.theme, accent: tweaks.accent });
+
+  const modelStore = useModelStore();
+  const toolbarStore = useToolbarStore();
+  const savedReports = useSavedReports();
+  const [activeReportId, setActiveReportId] = React.useState(null);
+
+  const [route, setRoute] = React.useState('home');
+  const [prompt, setPrompt] = React.useState(SAMPLE_FIRST_PROMPT);
+  const [showExport, setShowExport] = React.useState(false);
+  const [runKey, setRunKey] = React.useState(0);
+  const [runDone, setRunDone] = React.useState(false);
+
+  const goRun = () => { setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false); setRoute('running'); };
+
+  const handleSaveReport = React.useCallback((report) => {
+    savedReports.save(report);
+    setActiveReportId(report.id);
+  }, [savedReports]);
+
+  const activeReport = activeReportId ? savedReports.reports.find(r => r.id === activeReportId) : null;
+  const reportData = activeReport ? { meta: activeReport.meta, metrics: [], sections: activeReport.sections, refs: activeReport.refs || [], attachments: activeReport.attachments || [] } : null;
+
+  const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
+
+  // Map tweak accent (named) → hex (already keyed in essayTokens)
+  const accentSwatches = [
+    { v: 'red',    swatch: '#e5251d', label: 'Red' },
+    { v: 'amber',  swatch: '#c2540a', label: 'Amber' },
+    { v: 'forest', swatch: '#1f6f44', label: 'Sage' },
+    { v: 'cobalt', swatch: '#1d4ed8', label: 'Blue' },
+  ];
+
+  return (
+    <div style={{
+      width: '100vw', height: '100vh',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      background: t.paper, color: t.ink,
+    }}>
+      <TopBar t={t} route={route} setRoute={setRoute}
+        runState={route === 'running' && !runDone ? 'running' : 'idle'}
+        tweaks={tweaks} setTweak={setTweak} modelStore={modelStore}/>
+      <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
+        {route === 'home' && (
+          <Home t={t} prompt={prompt} setPrompt={setPrompt}
+            onStart={goRun} density={tweaks.density} modelStore={modelStore}
+            toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}/>
+        )}
+        {route === 'running' && (
+          <Running key={runKey} t={t} prompt={prompt}
+            onDone={() => setRoute('report')}
+            onTimelineComplete={() => setRunDone(true)}
+            marginaliaOn={tweaks.marginalia} density={tweaks.density}
+            modelStore={modelStore} toolbarConfig={{
+              tone: toolbarStore.currentTone,
+              length: toolbarStore.effectiveLength,
+              selectedSources: toolbarStore.selectedSources,
+              attachments: toolbarStore.attachments,
+              temperature: modelStore.temperature,
+              systemPromptExtra: modelStore.systemPromptExtra,
+              topP: modelStore.topP,
+              frequencyPenalty: modelStore.frequencyPenalty,
+              presencePenalty: modelStore.presencePenalty,
+              maxTokensOverride: modelStore.maxTokensOverride,
+            }}
+            onSaveReport={handleSaveReport}/>
+        )}
+        {route === 'report' && (
+          <Report t={t} onExport={() => setShowExport(true)}
+            marginaliaOn={tweaks.marginalia} density={tweaks.density}
+            reportData={reportData}
+            isFavorited={activeReport?.favorited || false}
+            onToggleFavorite={activeReport ? () => savedReports.toggleFav(activeReportId) : null}
+            onRerun={activeReport ? () => { setPrompt(activeReport.prompt); goRun(); } : null}
+            toolbarStore={toolbarStore}
+            onSaveReport={activeReport ? (updated) => savedReports.save({ ...updated, id: activeReport.id }) : null}
+            onFollowUp={(followText) => {
+              const base = activeReport?.prompt || prompt;
+              setPrompt(`【追问】在下面的报告基础上：${base}\n\n【新要求】${followText}`);
+              goRun();
+            }}/>
+        )}
+        {route === 'library' && (
+          <Library t={t}
+            savedReports={savedReports.reports}
+            onToggleFavorite={savedReports.toggleFav}
+            onOpen={(entry) => {
+              if (entry._id) setActiveReportId(entry._id);
+              else setActiveReportId(null);
+              setRoute('report');
+            }}/>
+        )}
+        {route === 'sources' && <Sources t={t}/>}
+        {showExport && (
+          <ExportModal t={t} onClose={() => setShowExport(false)}
+            exportData={activeReport ? {
+              id: activeReport.id,
+              title: activeReport.meta?.titleEn || activeReport.meta?.title?.en || activeReport.prompt?.slice(0,40),
+              subtitle: activeReport.meta?.subtitle || activeReport.prompt?.slice(0,80),
+              sections: activeReport.sections,
+              refs: activeReport.refs || [],
+              meta: activeReport.meta,
+            } : {
+              id: 'static-241',
+              title: 'Cold brew, hotter capital.',
+              subtitle: '2025 Q1 国内咖啡赛道融资速记',
+              sections: REPORT_SECTIONS,
+              refs: REPORT_REFS,
+              meta: REPORT_META,
+            }}/>
+        )}
+      </main>
+      <IssueFooter t={t} page={footer.page} section={footer.section}/>
+      <PetWidget t={t}/>
+
+      <TweaksPanel title="Tweaks · 微调">
+        <TweakSection label="Color · 颜色">
+          <div style={{ padding: '4px 0' }}>
+            <SwatchPicker t={t} label="Accent · 主色"
+              value={tweaks.accent}
+              options={accentSwatches}
+              onChange={v => setTweak('accent', v)}/>
+          </div>
+          <TweakRadio label="Theme · 主题" value={tweaks.theme}
+            options={[
+              { value: 'cream', label: 'Cream' },
+              { value: 'slate', label: 'Slate' },
+            ]}
+            onChange={v => setTweak('theme', v)}/>
+        </TweakSection>
+
+        <TweakSection label="Density · 密度">
+          <TweakRadio label="Type scale" value={tweaks.density}
+            options={[
+              { value: 'editorial', label: 'Editorial' },
+              { value: 'compact',   label: 'Compact' },
+            ]}
+            onChange={v => setTweak('density', v)}/>
+          <TweakToggle label="Marginalia · 边注列" value={tweaks.marginalia}
+            onChange={v => setTweak('marginalia', v)}/>
+        </TweakSection>
+
+        <TweakSection label="Demo · 跳转">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, padding: '4px 0' }}>
+            <DemoBtn onClick={() => setRoute('home')}>① Home 主页</DemoBtn>
+            <DemoBtn onClick={goRun}>② Running 运行</DemoBtn>
+            <DemoBtn onClick={() => setRoute('report')}>③ Report 报告</DemoBtn>
+            <DemoBtn onClick={() => setRoute('library')}>④ Library 库</DemoBtn>
+            <DemoBtn onClick={() => setRoute('sources')}>⑤ Sources 数据源</DemoBtn>
+            <DemoBtn onClick={() => setShowExport(true)}>⑥ Export 导出</DemoBtn>
+          </div>
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+// Custom swatch picker (TweakColor wants hex options but I'm keying by name)
+function SwatchPicker({ t, label, value, options, onChange }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
+      <div style={{
+        fontSize: 11, color: '#555', letterSpacing: 0.3, fontFamily: 'inherit',
+      }}>{label}</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {options.map(o => (
+          <button key={o.v} type="button" onClick={() => onChange(o.v)}
+            title={o.label}
+            style={{
+              width: 32, height: 32, border: value === o.v ? '2px solid #111' : '1px solid #ccc',
+              background: o.swatch, cursor: 'pointer', padding: 0,
+              boxShadow: value === o.v ? '0 0 0 2px #fff inset' : 'none',
+            }}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DemoBtn({ children, onClick }) {
+  return (
+    <button type="button" onClick={onClick}
+      style={{
+        padding: '7px 8px', fontSize: 11, fontFamily: 'inherit',
+        border: '1px solid #d4d4d4', background: '#fff', color: '#111',
+        cursor: 'pointer', textAlign: 'left',
+      }}
+      onMouseEnter={e => e.currentTarget.style.background = '#f5f5f5'}
+      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>{children}</button>
+  );
+}
+
+
+
+export default App;
