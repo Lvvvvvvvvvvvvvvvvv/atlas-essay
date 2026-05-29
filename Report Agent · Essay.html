@@ -980,6 +980,7 @@ function SettingsModal({ t, modelStore, onClose }) {
   const saveRole = (r) => { setRoleState(r); try { localStorage.setItem('atlas_role', r); } catch {} };
 
   const [exportFmt, setExportFmt] = React.useState('json');
+  const [exportMode, setExportMode] = React.useState('combined'); // 'combined' | 'separate'
   const [exportStatus, setExportStatus] = React.useState('idle');
   const [exportStatusMsg, setExportStatusMsg] = React.useState('');
 
@@ -1033,12 +1034,18 @@ function SettingsModal({ t, modelStore, onClose }) {
   const doExport = async () => {
     const data = modalReports.filter(r => exportSel.has(r.id));
     if (!data.length) return;
+    const separate = exportMode === 'separate' && data.length > 1;
     setExportStatus('loading'); setExportStatusMsg('');
     try {
       if (exportFmt === 'json') {
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        _dlBlob(blob, `atlas-reports-${new Date().toISOString().slice(0,10)}.json`);
-        setExportStatus('done'); setExportStatusMsg(`✓ JSON 已下载（${data.length} 份）`);
+        if (separate) {
+          for (const r of data) {
+            _dlBlob(new Blob([JSON.stringify(r, null, 2)], { type: 'application/json' }), _slug(r.title || r.meta?.titleEn || 'report') + '.json');
+          }
+        } else {
+          _dlBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `atlas-reports-${new Date().toISOString().slice(0,10)}.json`);
+        }
+        setExportStatus('done'); setExportStatusMsg(`✓ JSON 已下载（${data.length} 份${separate ? '，分别保存' : '，合并为一份'}）`);
       } else if (exportFmt === 'pdf') {
         for (const r of data) { await _exportPDFDownload(_norm(r)); }
         setExportStatus('done'); setExportStatusMsg(`✓ PDF 已下载（${data.length} 份）`);
@@ -1049,9 +1056,15 @@ function SettingsModal({ t, modelStore, onClose }) {
         }
         setExportStatus('done'); setExportStatusMsg(`✓ DOCX 已下载（${data.length} 份）`);
       } else if (exportFmt === 'md') {
-        const combined = data.map(r => _buildMarkdown(_norm(r))).join('\n\n---\n\n');
-        _dlBlob(new Blob([combined], { type: 'text/markdown;charset=utf-8' }), `atlas-reports-${new Date().toISOString().slice(0,10)}.md`);
-        setExportStatus('done'); setExportStatusMsg(`✓ Markdown 已下载（${data.length} 份）`);
+        if (separate) {
+          for (const r of data) {
+            _dlBlob(new Blob([_buildMarkdown(_norm(r))], { type: 'text/markdown;charset=utf-8' }), _slug(r.title || r.meta?.titleEn || 'report') + '.md');
+          }
+        } else {
+          const combined = data.map(r => _buildMarkdown(_norm(r))).join('\n\n---\n\n');
+          _dlBlob(new Blob([combined], { type: 'text/markdown;charset=utf-8' }), `atlas-reports-${new Date().toISOString().slice(0,10)}.md`);
+        }
+        setExportStatus('done'); setExportStatusMsg(`✓ Markdown 已下载（${data.length} 份${separate ? '，分别保存' : '，合并为一份'}）`);
       } else if (exportFmt === 'notion') {
         const combined = data.map(r => _buildMarkdown(_norm(r))).join('\n\n---\n\n');
         await navigator.clipboard.writeText(combined);
@@ -1261,6 +1274,16 @@ function SettingsModal({ t, modelStore, onClose }) {
                 <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute }}>
                   {EXPORT_FORMATS_SETTINGS.find(f => f.k === exportFmt)?.cn || ''}
                 </div>
+                {exportSel.size > 1 && ['json','md'].includes(exportFmt) && (
+                  <div style={{ display: 'flex', gap: 0, border: `1px solid ${t.rule}`, alignSelf: 'flex-start' }}>
+                    {[{k:'combined',l:'合并为一份'},{k:'separate',l:'分别导出'}].map(m => (
+                      <button key={m.k} type="button" onClick={() => setExportMode(m.k)}
+                        style={{ padding: '5px 12px', border: 'none', borderRight: m.k==='combined' ? `1px solid ${t.rule}` : 'none', background: exportMode === m.k ? t.ink : 'transparent', color: exportMode === m.k ? t.paper : t.mute, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.5, cursor: 'pointer' }}>
+                        {m.l}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <ReportList sel={exportSel} setSel={setExportSel}/>
                 {exportStatus !== 'idle' && (
                   <div style={{ padding: '8px 12px', background: exportStatus === 'error' ? '#fef2f2' : t.faint, border: `1px solid ${exportStatus === 'error' ? '#dc2626' : t.rule}`, fontFamily: t.fontMono, fontSize: 10, color: exportStatus === 'error' ? '#dc2626' : '#2a8c5c' }}>
