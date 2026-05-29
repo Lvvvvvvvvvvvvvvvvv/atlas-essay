@@ -44,7 +44,7 @@ Configure your own API key, pick a model, enter a topic, and receive a streaming
 
 ## 简介
 
-Atlas Report Agent 是一款纯客户端 Web 应用，支持调用主流大语言模型，针对任意主题生成结构化长篇报告。支持多 AI 提供商、多格式导出，所有数据本地存储于浏览器，无需服务器或账号。
+Atlas Report Agent 是一款垂类数据分析和报告的纯客户端 Web 应用，支持调用所有主流大语言模型，针对任意主题、行业专家撰写Prompt生成结构化长篇报告。支持多 AI 提供商、多格式导出，所有数据本地存储于浏览器，无需服务器或账号。
 
 配置 API Key、选择模型、输入主题，即可获得流式输出的 Markdown 报告。已保存报告、设置项、权限配置均存储在 `localStorage` 中。
 
