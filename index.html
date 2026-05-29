@@ -2632,6 +2632,13 @@ function SourcesPopover({ t, store, onNavigateSources }) {
                 </div>
                 <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 1 }}>{s.kind}</div>
               </div>
+              {s.quality && (
+                <span style={{ fontFamily: t.fontMono, fontSize: 8, letterSpacing: 0.5, padding: '1px 4px', flexShrink: 0,
+                  color: s.quality === 'A' ? '#2a8c5c' : s.quality === 'B' ? '#7a6a3a' : '#9b1c14',
+                  border: `1px solid ${s.quality === 'A' ? '#2a8c5c' : s.quality === 'B' ? '#c2a04a' : '#9b1c14'}` }}>
+                  {s.quality}
+                </span>
+              )}
               <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: s.status === 'ok' ? '#5B8A6A' : '#C4844A' }}/>
             </div>
           );
@@ -2965,9 +2972,22 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
   const targetLength = length || 2500;
 
   // Dynamic system prompt: enforces tone + length strictly
-  const sourceNote = selectedSources?.size > 0
-    ? `\n5. 参考数据源：${[...selectedSources].join('、')}`
-    : '';
+  const sourceNote = (() => {
+    if (!selectedSources?.size) return '';
+    const allS = typeof SOURCES !== 'undefined' ? SOURCES : [];
+    const enriched = [...selectedSources].map(name => {
+      const found = allS.find(s => s.name === name);
+      return { name, quality: found?.quality || 'A' };
+    });
+    enriched.sort((a, b) => ({ A: 0, B: 1, C: 2 }[a.quality] - ({ A: 0, B: 1, C: 2 }[b.quality] || 0)));
+    const tiers = { A: [], B: [], C: [] };
+    enriched.forEach(s => (tiers[s.quality] || tiers.A).push(s.name));
+    let note = '\n5. 参考数据源（按数据质量优先级排序）：';
+    if (tiers.A.length) note += `\n   - A级（核心来源，优先引用，高可信度）：${tiers.A.join('、')}`;
+    if (tiers.B.length) note += `\n   - B级（可参考，适度引用）：${tiers.B.join('、')}`;
+    if (tiers.C.length) note += `\n   - C级（低优先级，谨慎引用，需注明局限性）：${tiers.C.join('、')}`;
+    return note;
+  })();
   // For very short targets, give a sensible floor so the model doesn't produce empty output
   const displayLength = targetLength;
   const minLen = Math.max(targetLength, 50);
