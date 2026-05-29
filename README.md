@@ -17,7 +17,7 @@
 
 ---
 
-![Atlas Report Agent preview](project/screenshots/essay-home.png)
+![Atlas Report Agent preview](docs/preview.png)
 
 ---
 
