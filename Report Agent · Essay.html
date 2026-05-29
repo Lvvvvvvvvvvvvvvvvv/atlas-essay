@@ -2162,17 +2162,25 @@ function useAINews() {
   });
   const [loading, setLoading] = React.useState(false);
   const getHost = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'hn'; } };
+  const translate = async (text) => {
+    try {
+      const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${encodeURIComponent(text)}`);
+      const d = await res.json();
+      return (d[0] || []).map(s => s?.[0] || '').join('').trim() || text;
+    } catch { return text; }
+  };
 
   React.useEffect(() => {
     if (items.length) return;
     setLoading(true);
     fetch('https://hn.algolia.com/api/v1/search_by_date?query=AI+LLM+OpenAI+Claude+Gemini+GPT&tags=story&hitsPerPage=30')
       .then(r => r.json())
-      .then(data => {
-        const news = (data.hits || [])
+      .then(async data => {
+        const raw = (data.hits || [])
           .filter(h => h.title && (h.points || 0) >= 3 && h.url)
           .slice(0, 20)
           .map(h => ({ title: h.title, url: h.url, points: h.points, source: getHost(h.url) }));
+        const news = await Promise.all(raw.map(async h => ({ ...h, titleCN: await translate(h.title) })));
         setItems(news);
         try { localStorage.setItem(cacheKey, JSON.stringify(news)); } catch {}
       })
@@ -2267,7 +2275,7 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
             <React.Fragment>
               <a key={newsIdx} href={aiNews.items[newsIdx].url} target="_blank" rel="noreferrer"
                 style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', cursor: 'pointer' }}>
-                {aiNews.items[newsIdx].title}
+                {aiNews.items[newsIdx].titleCN || aiNews.items[newsIdx].title}
               </a>
               <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0, letterSpacing: 0.3 }}>{aiNews.items[newsIdx].source}</span>
               <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>{newsIdx + 1}/{aiNews.items.length}</span>
