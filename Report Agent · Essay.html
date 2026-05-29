@@ -938,9 +938,299 @@ function UMenuReportModal({ visible, title, reports, selected, setSelected, onCo
   );
 }
 
+// ── Permission system ─────────────────────────────────────────────────────
+function usePermission() {
+  const role = (() => { try { return localStorage.getItem('atlas_role') || 'admin'; } catch { return 'admin'; } })();
+  const can = (feature) => {
+    const rules = {
+      admin:  ['generate','save','export','template','library','sources','source_manage','sync','model_config','appearance'],
+      editor: ['generate','save','export','template','library','sources','appearance'],
+      viewer: ['library'],
+    };
+    return (rules[role] || rules.admin).includes(feature);
+  };
+  return { role, can };
+}
+
+// ── Settings Modal ────────────────────────────────────────────────────────
+function SettingsModal({ t, modelStore, onClose }) {
+  const [tab, setTab] = React.useState('model');
+  const [modalReports] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; }
+  });
+  const [exportSel, setExportSel] = React.useState(() => new Set());
+  const [clearSel, setClearSel] = React.useState(() => new Set());
+  React.useEffect(() => {
+    const ids = (JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]')).map(r => r.id);
+    setExportSel(new Set(ids));
+    setClearSel(new Set(ids));
+  }, []);
+
+  const [showAddForm, setShowAddForm] = React.useState(false);
+  const emptyForm = { name: '', modelId: '', apiUrl: '', apiKey: '', provider: '' };
+  const [form, setForm] = React.useState(emptyForm);
+  const [showKey, setShowKey] = React.useState(false);
+  const [role, setRoleState] = React.useState(() => {
+    try { return localStorage.getItem('atlas_role') || 'admin'; } catch { return 'admin'; }
+  });
+  const saveRole = (r) => { setRoleState(r); try { localStorage.setItem('atlas_role', r); } catch {} };
+
+  const doExport = () => {
+    const data = modalReports.filter(r => exportSel.has(r.id));
+    if (!data.length) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `atlas-reports-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+  };
+  const doClear = () => {
+    if (!clearSel.size) return;
+    if (!window.confirm(`确认删除 ${clearSel.size} 份报告？此操作不可撤销。`)) return;
+    const keep = modalReports.filter(r => !clearSel.has(r.id));
+    try { localStorage.setItem('atlas_saved_reports', JSON.stringify(keep)); } catch {}
+    window.location.reload();
+  };
+  const handleAddModel = () => {
+    if (!form.name || !form.modelId || !form.apiUrl || !form.apiKey) return;
+    modelStore.addModel({ id: form.modelId, name: form.name, apiUrl: form.apiUrl, apiKey: form.apiKey, provider: form.provider || 'Custom', builtin: false });
+    setForm(emptyForm); setShowAddForm(false); setShowKey(false);
+  };
+
+  const TABS = [
+    { k: 'model',      label: '模型',  sub: '参数 & 管理' },
+    { k: 'export',     label: '导出',  sub: 'JSON 备份'   },
+    { k: 'clear',      label: '清除',  sub: '本地数据'    },
+    { k: 'permission', label: '权限',  sub: '角色管理'    },
+  ];
+  const ROLES = [
+    { k: 'admin',  label: '管理员', desc: '全部功能权限',          color: '#1d4ed8' },
+    { k: 'editor', label: '编辑',   desc: '生成报告，不能改数据源', color: '#2a8c5c' },
+    { k: 'viewer', label: '查看者', desc: '只读，仅查看报告库',    color: '#767368' },
+  ];
+  const PERM_TABLE = [
+    { feature: '生成报告',         admin: true,  editor: true,  viewer: false },
+    { feature: '保存 / 导出报告',  admin: true,  editor: true,  viewer: false },
+    { feature: '自定义模板管理',    admin: true,  editor: true,  viewer: false },
+    { feature: '查看报告库',        admin: true,  editor: true,  viewer: true  },
+    { feature: '查看 Sources 页',  admin: true,  editor: true,  viewer: false },
+    { feature: '添加 / 断开数据源',admin: true,  editor: false, viewer: false },
+    { feature: '手动同步数据源',    admin: true,  editor: false, viewer: false },
+    { feature: '修改模型 / 参数',  admin: true,  editor: false, viewer: false },
+    { feature: '修改主题 / 外观',  admin: true,  editor: true,  viewer: false },
+  ];
+
+  const lbl = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 5, display: 'block' };
+  const inp = { width: '100%', padding: '6px 8px', boxSizing: 'border-box', border: `1px solid ${t.rule}`, background: t.paper, color: t.ink, fontFamily: t.fontBody, fontSize: 12, outline: 'none' };
+  const secHdr = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 12, paddingBottom: 7, borderBottom: `1px solid ${t.rule}` };
+
+  const ReportList = ({ sel, setSel }) => {
+    const all = modalReports.length > 0 && sel.size === modalReports.length;
+    const toggleAll = (e) => setSel(e.target.checked ? new Set(modalReports.map(r => r.id)) : new Set());
+    const toggleOne = (id, chk) => setSel(prev => { const n = new Set(prev); chk ? n.add(id) : n.delete(id); return n; });
+    return (
+      <div style={{ border: `1px solid ${t.rule}` }}>
+        <div style={{ padding: '6px 12px', borderBottom: `1px solid ${t.rule}`, background: t.faint }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={all} onChange={toggleAll} style={{ cursor: 'pointer', width: 13, height: 13 }}/>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>全选（共 {modalReports.length} 份）</span>
+          </label>
+        </div>
+        <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+          {modalReports.length === 0
+            ? <div style={{ padding: '24px', fontFamily: t.fontCN, fontSize: 13, color: t.mute, textAlign: 'center' }}>报告库为空</div>
+            : modalReports.map(r => (
+              <label key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', cursor: 'pointer', borderBottom: `1px solid ${t.rule}`, userSelect: 'none' }}>
+                <input type="checkbox" checked={sel.has(r.id)} onChange={e => toggleOne(r.id, e.target.checked)} style={{ marginTop: 2, cursor: 'pointer', flexShrink: 0, width: 13, height: 13 }}/>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: t.fontCN, fontSize: 12, fontWeight: 600, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title || r.meta?.titleEn || r.prompt?.slice(0,44) || '无标题'}</div>
+                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 1 }}>{r.meta?.date || ''}{r.meta?.words ? ` · ${r.meta.words} 字` : ''}</div>
+                </div>
+              </label>
+            ))
+          }
+        </div>
+        <div style={{ padding: '5px 12px', borderTop: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>已选 {sel.size} / {modalReports.length}</div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: t.paper, border: `1.5px solid ${t.ink}`, width: '100%', maxWidth: 700, maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: `4px 4px 0 rgba(0,0,0,0.15)` }}>
+        <div style={{ padding: '14px 20px', borderBottom: `1.5px solid ${t.ink}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <Tag t={t} accent>◆ SETTINGS · 设置</Tag>
+          <span style={{ flex: 1 }}/>
+          <button type="button" onClick={onClose} style={{ border: `1px solid ${t.ink}`, background: t.paper, padding: '3px 8px', fontFamily: t.fontMono, fontSize: 11, cursor: 'pointer', color: t.ink }}>ESC</button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          <div style={{ width: 110, borderRight: `1px solid ${t.rule}`, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            {TABS.map(tb => (
+              <div key={tb.k} onClick={() => setTab(tb.k)} style={{ padding: '13px 14px', cursor: 'pointer', background: tab === tb.k ? t.faint : 'transparent', borderBottom: `1px solid ${t.rule}`, borderLeft: `2.5px solid ${tab === tb.k ? t.accent : 'transparent'}` }}>
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 12, letterSpacing: 0.5, color: tab === tb.k ? t.ink : t.mute }}>{tb.label}</div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 3, lineHeight: 1.3 }}>{tb.sub}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+            {tab === 'model' && modelStore && (
+              <React.Fragment>
+                <div>
+                  <div style={secHdr}>模型参数</div>
+                  <UMenuSliderRow t={t} label="TEMPERATURE" value={Number(modelStore.temperature||0.7)} min={0} max={2} step={0.1} onChange={v => modelStore.setTemperature(v)} formatVal={v => v.toFixed(1)} hints={['精确 0.0','均衡 0.7','创意 2.0']}/>
+                  <UMenuSliderRow t={t} label="TOP-P" value={Number(modelStore.topP ?? 1.0)} min={0} max={1} step={0.05} onChange={v => modelStore.setTopP(v)} formatVal={v => v.toFixed(2)} hints={['集中 0.0','均衡 0.5','多样 1.0']}/>
+                  <UMenuSliderRow t={t} label="FREQUENCY PENALTY" value={Number(modelStore.frequencyPenalty ?? 0)} min={-2} max={2} step={0.1} onChange={v => modelStore.setFrequencyPenalty(v)} formatVal={v => (v>=0?'+':'')+v.toFixed(1)} hints={['-2.0','0.0','+2.0']}/>
+                  <UMenuSliderRow t={t} label="PRESENCE PENALTY" value={Number(modelStore.presencePenalty ?? 0)} min={-2} max={2} step={0.1} onChange={v => modelStore.setPresencePenalty(v)} formatVal={v => (v>=0?'+':'')+v.toFixed(1)} hints={['-2.0','0.0','+2.0']}/>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1 }}>MAX TOKENS</div>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>留空则自动</div>
+                    </div>
+                    <input type="number" min={1} max={32000} value={modelStore.maxTokensOverride || ''} placeholder="Auto"
+                      onChange={e => modelStore.setMaxTokensOverride(e.target.value ? parseInt(e.target.value, 10) : null)}
+                      style={inp}/>
+                  </div>
+                  <div>
+                    <label style={lbl}>SYSTEM PROMPT 附加指令</label>
+                    <textarea value={modelStore.systemPromptExtra||''} onChange={e => modelStore.setSystemPromptExtra(e.target.value)}
+                      placeholder="在基础指令后追加的自定义指令（可选）"
+                      style={{ ...inp, minHeight: 60, resize: 'vertical', lineHeight: 1.55 }}/>
+                    <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 3 }}>当前模型：{modelStore.selected?.name || '—'}</div>
+                  </div>
+                </div>
+                <div>
+                  <div style={secHdr}>模型管理</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 10 }}>
+                    {modelStore.allModels.map(m => (
+                      <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: `1px solid ${modelStore.selected?.id === m.id ? t.ink : t.rule}`, background: modelStore.selected?.id === m.id ? t.faint : 'transparent' }}>
+                        <div onClick={() => modelStore.selectModel(m.id)} style={{ flex: 1, cursor: 'pointer', minWidth: 0 }}>
+                          <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 600, color: t.ink }}>{m.name}</div>
+                          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>{m.provider} · {m.id}</div>
+                        </div>
+                        {modelStore.selected?.id === m.id && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, letterSpacing: 0.5, flexShrink: 0 }}>使用中</span>}
+                        {m.builtin && m.needsKey && (
+                          <span style={{ fontFamily: t.fontMono, fontSize: 8, color: modelStore.builtinKeys?.[m.id] ? '#2a8c5c' : t.mute, flexShrink: 0 }}>
+                            {modelStore.builtinKeys?.[m.id] ? '已配置 Key' : '需配置 Key'}
+                          </span>
+                        )}
+                        {!m.builtin && (
+                          <button type="button" onClick={() => modelStore.removeModel(m.id)}
+                            style={{ border: `1px solid #dc2626`, background: 'transparent', cursor: 'pointer', color: '#dc2626', fontFamily: t.fontMono, fontSize: 9, padding: '3px 8px', letterSpacing: 0.5, flexShrink: 0 }}>删除</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {!showAddForm ? (
+                    <button type="button" onClick={() => setShowAddForm(true)}
+                      style={{ width: '100%', padding: '9px 0', border: `1px dashed ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, color: t.mute, cursor: 'pointer', textTransform: 'uppercase' }}>
+                      ＋ 新增模型
+                    </button>
+                  ) : (
+                    <div style={{ border: `1px solid ${t.rule}`, padding: '14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.ink, textTransform: 'uppercase' }}>新增自定义模型</div>
+                      {[{k:'name',l:'显示名称 *',ph:'GPT-4o Mini'},{k:'modelId',l:'Model ID *',ph:'gpt-4o-mini'},{k:'apiUrl',l:'API Base URL *',ph:'https://api.openai.com/v1'},{k:'provider',l:'Provider（选填）',ph:'Custom'}].map(({k,l,ph}) => (
+                        <div key={k}>
+                          <label style={lbl}>{l}</label>
+                          <input value={form[k]} onChange={e => setForm(f => ({...f,[k]:e.target.value}))} placeholder={ph} style={inp}/>
+                        </div>
+                      ))}
+                      <div>
+                        <label style={lbl}>API Key *</label>
+                        <div style={{ position: 'relative' }}>
+                          <input type={showKey ? 'text' : 'password'} value={form.apiKey}
+                            onChange={e => setForm(f => ({...f, apiKey: e.target.value}))}
+                            placeholder="sk-••••••••••••••••"
+                            style={{ ...inp, paddingRight: 48 }}/>
+                          <button type="button" onClick={() => setShowKey(s => !s)}
+                            style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: t.fontMono, fontSize: 8, color: t.mute }}>
+                            {showKey ? 'HIDE' : 'SHOW'}
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button type="button" onClick={() => { setShowAddForm(false); setForm(emptyForm); }}
+                          style={{ flex: 1, padding: '7px 0', border: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 9, color: t.mute, cursor: 'pointer', textTransform: 'uppercase' }}>取消</button>
+                        <button type="button" onClick={handleAddModel}
+                          disabled={!form.name || !form.modelId || !form.apiUrl || !form.apiKey}
+                          style={{ flex: 2, padding: '7px 0', border: `1px solid ${t.ink}`, background: t.ink, color: t.paper, fontFamily: t.fontMono, fontSize: 9, cursor: 'pointer', textTransform: 'uppercase', opacity: (!form.name||!form.modelId||!form.apiUrl||!form.apiKey) ? 0.4 : 1 }}>确认添加</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </React.Fragment>
+            )}
+
+            {tab === 'export' && (
+              <React.Fragment>
+                <div style={secHdr}>导出报告 · JSON 格式</div>
+                <ReportList sel={exportSel} setSel={setExportSel}/>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                  <Btn t={t} size="md" primary onClick={doExport} disabled={exportSel.size === 0}>
+                    ↓ 下载 JSON（{exportSel.size} 份）
+                  </Btn>
+                </div>
+              </React.Fragment>
+            )}
+
+            {tab === 'clear' && (
+              <React.Fragment>
+                <div style={secHdr}>清除本地数据</div>
+                <ReportList sel={clearSel} setSel={setClearSel}/>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                  <button type="button" onClick={doClear} disabled={clearSel.size === 0}
+                    style={{ padding: '10px 16px', border: `1.5px solid ${clearSel.size ? '#dc2626' : t.rule}`, background: clearSel.size ? '#dc2626' : 'transparent', color: clearSel.size ? '#fff' : t.mute, fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 1.3, cursor: clearSel.size ? 'pointer' : 'not-allowed', textTransform: 'uppercase', opacity: clearSel.size ? 1 : 0.5 }}>
+                    删除所选 {clearSel.size} 份报告
+                  </button>
+                </div>
+              </React.Fragment>
+            )}
+
+            {tab === 'permission' && (
+              <React.Fragment>
+                <div>
+                  <div style={secHdr}>当前角色</div>
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 22 }}>
+                    {ROLES.map(r => (
+                      <div key={r.k} onClick={() => saveRole(r.k)} style={{ flex: 1, padding: '12px 14px', cursor: 'pointer', border: `1.5px solid ${role === r.k ? r.color : t.rule}`, background: role === r.k ? r.color + '12' : 'transparent', transition: 'all 0.12s' }}>
+                        <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 12, color: role === r.k ? r.color : t.ink }}>{r.label}</div>
+                        <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, marginTop: 5, lineHeight: 1.5 }}>{r.desc}</div>
+                        {role === r.k && <div style={{ fontFamily: t.fontMono, fontSize: 8, color: r.color, marginTop: 6, letterSpacing: 0.5 }}>▶ 当前角色</div>}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={secHdr}>权限对照表</div>
+                  <div style={{ border: `1px solid ${t.rule}` }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 64px 64px 64px', padding: '7px 12px', background: t.faint, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute, textTransform: 'uppercase', borderBottom: `1px solid ${t.rule}` }}>
+                      <span>功能</span><span style={{ textAlign: 'center' }}>管理员</span><span style={{ textAlign: 'center' }}>编辑</span><span style={{ textAlign: 'center' }}>查看</span>
+                    </div>
+                    {PERM_TABLE.map((row, i) => {
+                      const active = (role==='admin'&&row.admin)||(role==='editor'&&row.editor)||(role==='viewer'&&row.viewer);
+                      return (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 64px 64px 64px', padding: '9px 12px', borderBottom: i < PERM_TABLE.length-1 ? `1px solid ${t.rule}` : 'none', background: active ? 'transparent' : 'rgba(220,38,38,0.03)' }}>
+                          <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink }}>{row.feature}</span>
+                          <span style={{ textAlign: 'center', fontSize: 13, color: row.admin ? '#2a8c5c' : t.mute }}>{row.admin ? '✓' : '—'}</span>
+                          <span style={{ textAlign: 'center', fontSize: 13, color: row.editor ? '#2a8c5c' : t.mute }}>{row.editor ? '✓' : '—'}</span>
+                          <span style={{ textAlign: 'center', fontSize: 13, color: row.viewer ? '#2a8c5c' : t.mute }}>{row.viewer ? '✓' : '—'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </React.Fragment>
+            )}
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UserMenu({ t, tweaks, setTweak, modelStore }) {
   const [open, setOpen] = React.useState(false);
   const [section, setSection] = React.useState(null);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const ref = React.useRef(null);
   const tw = tweaks || {};
   const [profile, setProfile] = React.useState(() => {
@@ -948,15 +1238,8 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
   });
   const saveProfile = (p) => { setProfile(p); try { localStorage.setItem('atlas_user_profile', JSON.stringify(p)); } catch {} };
   const initials = profile.displayName ? profile.displayName.slice(0,2).toUpperCase() : 'JL';
-
   const [draftProfile, setDraftProfile] = React.useState({});
   const [profileSaved, setProfileSaved] = React.useState(false);
-
-  const [exportModal, setExportModal] = React.useState(false);
-  const [clearModal, setClearModal] = React.useState(false);
-  const [modalReports, setModalReports] = React.useState([]);
-  const [exportSelected, setExportSelected] = React.useState(new Set());
-  const [clearSelected, setClearSelected] = React.useState(new Set());
 
   React.useEffect(() => {
     if (!open) return;
@@ -964,7 +1247,6 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
-
   React.useEffect(() => {
     if (section === 'profile') { setDraftProfile({ ...profile }); setProfileSaved(false); }
   }, [section]);
@@ -984,59 +1266,24 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
     { v:'grad_aurora', gradient:'linear-gradient(135deg, #0d9488, #7c3aed)' },
     { v:'grad_ocean',  gradient:'linear-gradient(135deg, #0ea5e9, #4338ca)' },
   ];
+  const curAccent = tw.accent || 'red';
+  const curAccentOpt = ACCENT_OPTS.find(a => a.v === curAccent);
+  const accentLabel = curAccent.replace('grad_','').toUpperCase();
+  const accentKind = curAccentOpt?.gradient ? 'GRADIENT' : 'SOLID';
 
-  const loadReports = () => { try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; } };
-
-  const openExport = () => {
-    const r = loadReports();
-    setModalReports(r);
-    setExportSelected(new Set(r.map(x => x.id)));
-    setExportModal(true);
-    setOpen(false);
-  };
-  const openClear = () => {
-    const r = loadReports();
-    setModalReports(r);
-    setClearSelected(new Set(r.map(x => x.id)));
-    setClearModal(true);
-    setOpen(false);
-  };
-  const doExport = () => {
-    if (!window.confirm(`确认导出 ${exportSelected.size} 份报告？`)) return;
-    const data = modalReports.filter(r => exportSelected.has(r.id));
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `atlas-reports-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    setExportModal(false);
-  };
-  const doClear = () => {
-    if (!window.confirm(`确认删除 ${clearSelected.size} 份报告？此操作不可撤销。`)) return;
-    const keep = modalReports.filter(r => !clearSelected.has(r.id));
-    try { localStorage.setItem('atlas_saved_reports', JSON.stringify(keep)); } catch {}
-    setClearModal(false);
-    window.location.reload();
-  };
-
-  const MRow = ({ label, sub, isOpen, onClick, danger }) => (
+  const MRow = ({ label, sub, isOpen, onClick, arrow }) => (
     <div onClick={onClick} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 16px', cursor:'pointer', background: isOpen ? t.faint : 'transparent', userSelect:'none' }}>
       <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontFamily:'Noto Sans SC', fontSize:12, fontWeight:600, color: danger ? '#dc2626' : t.ink }}>{label}</div>
-        {sub && <div style={{ fontFamily:t.fontMono, fontSize:9, color: danger ? '#dc262688' : t.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
+        <div style={{ fontFamily:'Noto Sans SC', fontSize:12, fontWeight:600, color:t.ink }}>{label}</div>
+        {sub && <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
       </div>
-      {isOpen !== undefined && <span style={{ fontFamily:t.fontMono, fontSize:8, color:t.mute, flexShrink:0 }}>{isOpen ? '▲' : '▼'}</span>}
+      {isOpen !== undefined && !arrow && <span style={{ fontFamily:t.fontMono, fontSize:8, color:t.mute, flexShrink:0 }}>{isOpen ? '▲' : '▼'}</span>}
+      {arrow && <span style={{ fontFamily:t.fontMono, fontSize:11, color:t.mute, flexShrink:0 }}>›</span>}
     </div>
   );
 
-  const curAccent = tw.accent || 'red';
-  const curAccentOpt = ACCENT_OPTS.find(a => a.v === curAccent);
-  const accentLabel = curAccent.replace('grad_', '').toUpperCase();
-  const accentKind = curAccentOpt?.gradient ? 'GRADIENT' : 'SOLID';
-
   return (
     <div ref={ref} style={{ position:'relative', userSelect:'none', flexShrink:0 }}>
-      {/* Circular avatar */}
       <div onClick={() => { setOpen(o => !o); if (open) setSection(null); }} style={{
         width:30, height:30, borderRadius:'50%',
         border:`1.5px solid ${open ? t.accent : t.ink}`,
@@ -1048,10 +1295,8 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
         {profile.avatarUrl ? <img src={profile.avatarUrl} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : initials}
       </div>
 
-      {/* Dropdown */}
       {open && (
         <div style={{ position:'absolute', top:38, right:0, width:264, background:t.paper, border:`1.5px solid ${t.ink}`, boxShadow:`3px 3px 0 rgba(0,0,0,0.12)`, zIndex:9999 }}>
-          {/* Header */}
           <div style={{ padding:'12px 16px 10px', borderBottom:`1px solid ${t.rule}` }}>
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
               <div style={{ width:34, height:34, borderRadius:'50%', background:t.accentGradient||t.accent, color:t.paper, fontFamily:t.fontDisplay, fontWeight:800, fontSize:12, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', flexShrink:0 }}>
@@ -1063,9 +1308,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
               </div>
             </div>
           </div>
-
           <div style={{ padding:'4px 0' }}>
-            {/* 外观偏好 */}
             <MRow label="外观偏好" sub={`${tw.theme === 'cream' ? '浅色' : '深色'} · ${accentLabel}`} isOpen={section==='appearance'} onClick={() => toggleSec('appearance')}/>
             {section === 'appearance' && (
               <div style={{ padding:'10px 16px 14px', background:t.faint, borderTop:`1px solid ${t.rule}` }}>
@@ -1081,61 +1324,14 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
                   <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:6 }}>ACCENT COLOR</div>
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:5 }}>
                     {ACCENT_OPTS.map(a => (
-                      <div key={a.v} title={a.v.replace('grad_','').toUpperCase()} onClick={() => setTweak && setTweak('accent', a.v)} style={{
-                        height:22, background: a.gradient || a.hex,
-                        cursor:'pointer', borderRadius:3,
-                        border: curAccent === a.v ? `2.5px solid ${t.ink}` : '2.5px solid transparent',
-                        transition:'border 0.1s', boxSizing:'border-box',
-                      }}/>
+                      <div key={a.v} onClick={() => setTweak && setTweak('accent', a.v)} style={{ height:22, background: a.gradient || a.hex, cursor:'pointer', borderRadius:3, border: curAccent === a.v ? `2.5px solid ${t.ink}` : '2.5px solid transparent', transition:'border 0.1s', boxSizing:'border-box' }}/>
                     ))}
                   </div>
-                  <div style={{ fontFamily:t.fontMono, fontSize:8, color:t.mute, marginTop:5, letterSpacing:0.8 }}>
-                    {accentLabel} · {accentKind}
-                  </div>
+                  <div style={{ fontFamily:t.fontMono, fontSize:8, color:t.mute, marginTop:5, letterSpacing:0.8 }}>{accentLabel} · {accentKind}</div>
                 </div>
               </div>
             )}
-
-            {/* 模型高级设置 */}
-            <MRow label="模型高级设置" sub={`Temp ${modelStore ? Number(modelStore.temperature||0.7).toFixed(1) : '0.7'}`} isOpen={section==='model'} onClick={() => toggleSec('model')}/>
-            {section === 'model' && modelStore && (
-              <div style={{ padding:'10px 16px 14px', background:t.faint, borderTop:`1px solid ${t.rule}` }}>
-                <UMenuSliderRow t={t} label="TEMPERATURE" value={Number(modelStore.temperature||0.7)} min={0} max={2} step={0.1}
-                  onChange={v => modelStore.setTemperature(v)} formatVal={v => v.toFixed(1)}
-                  hints={['精确 0.0', '均衡 0.7', '创意 2.0']}/>
-                <UMenuSliderRow t={t} label="TOP-P" value={Number(modelStore.topP ?? 1.0)} min={0} max={1} step={0.05}
-                  onChange={v => modelStore.setTopP(v)} formatVal={v => v.toFixed(2)}
-                  hints={['集中 0.0', '均衡 0.5', '多样 1.0']}/>
-                <UMenuSliderRow t={t} label="FREQUENCY PENALTY" value={Number(modelStore.frequencyPenalty ?? 0)} min={-2} max={2} step={0.1}
-                  onChange={v => modelStore.setFrequencyPenalty(v)} formatVal={v => (v >= 0 ? '+' : '') + v.toFixed(1)}
-                  hints={['-2.0', '0.0', '+2.0']}/>
-                <UMenuSliderRow t={t} label="PRESENCE PENALTY" value={Number(modelStore.presencePenalty ?? 0)} min={-2} max={2} step={0.1}
-                  onChange={v => modelStore.setPresencePenalty(v)} formatVal={v => (v >= 0 ? '+' : '') + v.toFixed(1)}
-                  hints={['-2.0', '0.0', '+2.0']}/>
-                <div style={{ marginBottom:12 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                    <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1 }}>MAX TOKENS</div>
-                    <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute }}>留空则自动</div>
-                  </div>
-                  <input type="number" min={1} max={32000} step={1}
-                    value={modelStore.maxTokensOverride || ''}
-                    placeholder="Auto"
-                    onChange={e => modelStore.setMaxTokensOverride(e.target.value ? parseInt(e.target.value, 10) : null)}
-                    style={{ width:'100%', padding:'4px 8px', fontFamily:t.fontMono, fontSize:11, border:`1px solid ${t.rule}`, background:t.paper, color:t.ink, outline:'none', boxSizing:'border-box' }}/>
-                </div>
-                <div>
-                  <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1.1, marginBottom:5 }}>SYSTEM PROMPT 附加指令</div>
-                  <textarea value={modelStore.systemPromptExtra||''} onChange={e => modelStore.setSystemPromptExtra(e.target.value)}
-                    placeholder="在基础指令后追加的自定义指令（可选）"
-                    style={{ width:'100%', minHeight:60, resize:'vertical', fontFamily:'Noto Sans SC', fontSize:11, padding:'6px 8px', border:`1px solid ${t.rule}`, background:t.paper, color:t.ink, outline:'none', boxSizing:'border-box', lineHeight:1.55 }}/>
-                  <div style={{ fontFamily:t.fontMono, fontSize:8, color:t.mute, marginTop:3 }}>模型：{modelStore.selected?.name || '—'}</div>
-                </div>
-              </div>
-            )}
-
             <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
-
-            {/* 编辑资料 */}
             <MRow label="编辑资料" sub={profile.displayName || 'Atlas User'} isOpen={section==='profile'} onClick={() => toggleSec('profile')}/>
             {section === 'profile' && (
               <div style={{ padding:'10px 16px 14px', background:t.faint, borderTop:`1px solid ${t.rule}` }}>
@@ -1148,36 +1344,24 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
                 ))}
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <button onClick={() => { saveProfile(draftProfile); setProfileSaved(true); setTimeout(() => setProfileSaved(false), 2000); }}
-                    style={{ padding:'5px 16px', background:t.ink, color:t.paper, border:'none', fontFamily:t.fontDisplay, fontWeight:700, fontSize:10, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>
-                    保存
-                  </button>
+                    style={{ padding:'5px 16px', background:t.ink, color:t.paper, border:'none', fontFamily:t.fontDisplay, fontWeight:700, fontSize:10, letterSpacing:1, textTransform:'uppercase', cursor:'pointer' }}>保存</button>
                   {profileSaved && <span style={{ fontFamily:t.fontMono, fontSize:9, color:'#16a34a', letterSpacing:0.5 }}>已保存 ✓</span>}
                 </div>
               </div>
             )}
-
             <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
-
-            {/* 导出全部报告 */}
-            <MRow label="导出全部报告" sub="选择报告 · JSON 格式" onClick={openExport}/>
-
-            {/* 清除本地数据 */}
-            <MRow label="清除本地数据" sub="选择要删除的报告" danger onClick={openClear}/>
+            <MRow label="设置" sub="模型 · 导出 · 权限" arrow onClick={() => { setOpen(false); setSection(null); setSettingsOpen(true); }}/>
           </div>
           <div style={{ borderTop:`1px solid ${t.rule}`, padding:'6px 16px', fontFamily:t.fontMono, fontSize:8, color:t.mute, letterSpacing:0.8 }}>ATLAS ESSAYS · VOL.04 · © 2026</div>
         </div>
       )}
 
-      <UMenuReportModal t={t} visible={exportModal} title="导出报告" reports={modalReports}
-        selected={exportSelected} setSelected={setExportSelected}
-        onConfirm={doExport} onClose={() => setExportModal(false)} confirmLabel="确认导出"/>
-
-      <UMenuReportModal t={t} visible={clearModal} title="删除报告" reports={modalReports}
-        selected={clearSelected} setSelected={setClearSelected}
-        onConfirm={doClear} onClose={() => setClearModal(false)} confirmLabel="确认删除" confirmDanger/>
+      {settingsOpen && <SettingsModal t={t} modelStore={modelStore} onClose={() => setSettingsOpen(false)}/>}
     </div>
   );
 }
+
+
 
 // ── Page footer: thin issue bar -----------------------------------------
 function IssueFooter({ t, page = '01', section = 'COVER', issue = 241 }) {
