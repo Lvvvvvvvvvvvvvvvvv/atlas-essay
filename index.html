@@ -28,92 +28,129 @@
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  @keyframes pet-bob {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+  /* ── Rubber-Hose Pet ────────────────────────────────────── */
+  @keyframes rh-breathe {
+    0%,100% { transform: scaleY(1) scaleX(1); }
+    50%     { transform: scaleY(1.022) scaleX(0.988); }
   }
-  @keyframes pet-walk {
-    0%, 100% { transform: translateY(0) rotate(-2.5deg); }
-    50% { transform: translateY(-5px) rotate(2.5deg); }
+  @keyframes rh-drift {
+    0%,100% { transform: translateY(0px); }
+    50%     { transform: translateY(-9px); }
   }
-  @keyframes pet-happy {
-    0%,100% { transform: scale(1) translateY(0) rotate(0deg); }
-    25% { transform: scale(1.12) translateY(-9px) rotate(-7deg); }
-    75% { transform: scale(1.07) translateY(-4px) rotate(6deg); }
+  @keyframes rh-sway {
+    0%,25%,100% { transform: rotate(0deg); }
+    40%         { transform: rotate(-1.4deg); }
+    70%         { transform: rotate(1deg); }
   }
-  @keyframes pet-jump {
-    0%   { transform: translateY(0) scaleX(1) scaleY(1); }
-    25%  { transform: translateY(-26px) scaleX(0.9) scaleY(0.92); }
-    50%  { transform: translateY(-30px) scaleX(0.86) scaleY(0.88); }
-    68%  { transform: translateY(0) scaleX(1.16) scaleY(1.1); }
-    84%  { transform: translateY(-9px) scaleX(1) scaleY(1); }
-    100% { transform: translateY(0) scaleX(1) scaleY(1); }
+  @keyframes rh-head {
+    0%,100% { transform: translate(0,0) rotate(0deg); }
+    28%     { transform: translate(0,-2px) rotate(-0.8deg); }
+    70%     { transform: translate(0,-1px) rotate(0.5deg); }
   }
-  @keyframes pet-dance {
-    0%   { transform: rotate(-13deg) translateY(0); }
-    25%  { transform: rotate(13deg) translateY(-11px); }
-    50%  { transform: rotate(-9deg) translateY(-15px); }
-    75%  { transform: rotate(10deg) translateY(-8px); }
-    100% { transform: rotate(-13deg) translateY(0); }
+  @keyframes rh-arm-l-idle {
+    0%,100% { transform: rotate(-7deg); }
+    50%     { transform: rotate(5deg); }
   }
-  @keyframes pet-spin {
-    from { transform: rotateY(0deg); }
-    to   { transform: rotateY(360deg); }
+  @keyframes rh-arm-r-idle {
+    0%,100% { transform: rotate(7deg); }
+    50%     { transform: rotate(-5deg); }
   }
-  @keyframes pet-strum {
-    0%,100% { transform: rotate(-4deg); }
-    50%     { transform: rotate(5deg) translateX(2px); }
+  @keyframes rh-leg-idle {
+    0%,100% { transform: rotate(0deg); }
+    50%     { transform: rotate(1.8deg); }
   }
-  @keyframes pet-work {
-    0%,80%,100% { transform: translateY(0) rotate(0deg); }
-    30% { transform: translateY(-4px) rotate(-4deg); }
-    60% { transform: translateY(-1px) rotate(2deg); }
+  @keyframes rh-walk-bounce {
+    0%,100% { transform: translateY(0) rotate(0); }
+    25%     { transform: translateY(-5px) rotate(-2deg); }
+    75%     { transform: translateY(-3px) rotate(2deg); }
   }
-  @keyframes pet-arm-l-walk {
-    0%,100% { transform: rotate(-34deg); }
-    50%     { transform: rotate(18deg); }
+  @keyframes rh-arm-l-walk {
+    0%,100% { transform: rotate(-28deg); }
+    50%     { transform: rotate(22deg); }
   }
-  @keyframes pet-arm-r-walk {
-    0%,100% { transform: rotate(18deg); }
-    50%     { transform: rotate(-34deg); }
+  @keyframes rh-arm-r-walk {
+    0%,100% { transform: rotate(22deg); }
+    50%     { transform: rotate(-28deg); }
   }
-  @keyframes pet-leg-l {
-    0%,100% { transform: translateX(-4px) rotate(-12deg); }
-    50%     { transform: translateX(4px) rotate(12deg); }
+  @keyframes rh-leg-l-walk {
+    0%,100% { transform: rotate(-20deg); }
+    50%     { transform: rotate(16deg); }
   }
-  @keyframes pet-leg-r {
-    0%,100% { transform: translateX(4px) rotate(12deg); }
-    50%     { transform: translateX(-4px) rotate(-12deg); }
+  @keyframes rh-leg-r-walk {
+    0%,100% { transform: rotate(16deg); }
+    50%     { transform: rotate(-20deg); }
   }
-  @keyframes pet-float-note {
-    0%   { transform: translateY(0) scale(1); opacity: 0.8; }
-    100% { transform: translateY(-22px) scale(0.7); opacity: 0; }
+  @keyframes rh-run-bounce {
+    0%,100% { transform: translateY(0) rotate(-3deg); }
+    50%     { transform: translateY(-14px) rotate(-3deg); }
   }
-  @keyframes pet-arm-l-svg {
-    0%,100% { transform: rotate(-40deg); }
-    50%     { transform: rotate(25deg); }
+  @keyframes rh-arm-l-run {
+    0%,100% { transform: rotate(-50deg); }
+    50%     { transform: rotate(30deg); }
   }
-  @keyframes pet-arm-r-svg {
-    0%,100% { transform: rotate(40deg); }
-    50%     { transform: rotate(-25deg); }
+  @keyframes rh-arm-r-run {
+    0%,100% { transform: rotate(30deg); }
+    50%     { transform: rotate(-50deg); }
   }
-  @keyframes pet-leg-l-svg {
-    0%,100% { transform: translateX(-5px) rotate(-14deg); }
-    50%     { transform: translateX(5px) rotate(14deg); }
+  @keyframes rh-dance-body {
+    0%,100% { transform: rotate(-5deg) translateY(0); }
+    50%     { transform: rotate(5deg) translateY(-11px); }
   }
-  @keyframes pet-leg-r-svg {
-    0%,100% { transform: translateX(5px) rotate(14deg); }
-    50%     { transform: translateX(-5px) rotate(-14deg); }
+  @keyframes rh-arm-l-dance {
+    0%,100% { transform: rotate(-72deg); }
+    50%     { transform: rotate(-45deg); }
   }
-  @keyframes pet-wave-svg {
-    0%,100% { transform: rotate(-85deg); }
+  @keyframes rh-arm-r-dance {
+    0%,100% { transform: rotate(72deg); }
+    50%     { transform: rotate(45deg); }
+  }
+  @keyframes rh-leg-l-dance {
+    0%,100% { transform: rotate(-5deg); }
+    50%     { transform: rotate(20deg); }
+  }
+  @keyframes rh-leg-r-dance {
+    0%,100% { transform: rotate(5deg); }
+    50%     { transform: rotate(-20deg); }
+  }
+  @keyframes rh-arm-scratch {
+    0%,100% { transform: rotate(-62deg); }
+    50%     { transform: rotate(-74deg); }
+  }
+  @keyframes rh-arm-wave {
+    0%,100% { transform: rotate(-80deg); }
     50%     { transform: rotate(-48deg); }
   }
-  @keyframes pet-scratch-svg {
-    0%,100% { transform: rotate(-72deg) translateY(-2px); }
-    50%     { transform: rotate(-52deg) translateY(2px); }
+  @keyframes rh-arm-l-stretch {
+    0%    { transform: rotate(0deg); }
+    40%   { transform: rotate(-80deg); }
+    60%   { transform: rotate(-80deg); }
+    100%  { transform: rotate(0deg); }
   }
-  @keyframes pet-note-fly {
+  @keyframes rh-arm-r-stretch {
+    0%    { transform: rotate(0deg); }
+    40%   { transform: rotate(80deg); }
+    60%   { transform: rotate(80deg); }
+    100%  { transform: rotate(0deg); }
+  }
+  @keyframes rh-arm-strum {
+    0%,100% { transform: rotate(10deg); }
+    50%     { transform: rotate(-8deg); }
+  }
+  @keyframes rh-sleep-drift {
+    0%,100% { transform: translateY(0) rotate(-3deg); }
+    50%     { transform: translateY(-4px) rotate(-5deg); }
+  }
+  @keyframes rh-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes rh-jump {
+    0%   { transform: translateY(0) scaleY(1) scaleX(1); }
+    30%  { transform: translateY(-22px) scaleY(1.06) scaleX(0.95); }
+    90%  { transform: translateY(0) scaleY(0.92) scaleX(1.06); }
+    100% { transform: translateY(0) scaleY(1) scaleX(1); }
+  }
+  @keyframes rh-note-fly {
     0%   { transform: translate(0,0) scale(1); opacity: 0.85; }
     100% { transform: translate(8px,-28px) scale(0.55); opacity: 0; }
   }
@@ -5356,17 +5393,17 @@ const FOOTER_CONTEXT = {
 
 const SAMPLE_FIRST_PROMPT = '梳理 2025 年 Q1 国内咖啡赛道的融资动态，重点说说 Manner、库迪和挪瓦的新动向，给一份 2000 字的内部分析。';
 
-// ── Pet Widget (SVG high-fidelity) ────────────────────────────────────────────
-const PET_W = 96;
+// ── Pet Widget (Rubber Hose Retro) ───────────────────────────────────────────
+const PET_W = 100;
 function PetWidget({ t }) {
   const [mood, setMood] = React.useState('idle');
   const [blink, setBlink] = React.useState(false);
-  const [eyeDir, setEyeDir] = React.useState(0);   // -1 left · 0 center · 1 right
+  const [eyeDir, setEyeDir] = React.useState(0);
   const [bubble, setBubble] = React.useState(null);
   const [inputOpen, setInputOpen] = React.useState(false);
   const [inputVal, setInputVal] = React.useState('');
   const [minimized, setMinimized] = React.useState(false);
-  const [petLeft, setPetLeft] = React.useState(null); // null → right:22 corner
+  const [petLeft, setPetLeft] = React.useState(null);
   const [facingRight, setFacingRight] = React.useState(false);
   const animRef = React.useRef(null);
   const petPosRef = React.useRef({ x: 0, ready: false });
@@ -5405,7 +5442,7 @@ function PetWidget({ t }) {
     const sl = mood === 'sleep';
     const pool = sl
       ? [['sleep',4],['idle',1]]
-      : [['idle',4],['walk',2],['run',0.4],['bounce',1.2],['think',1],['wave',0.6],['scratch',0.5],['sleep',0.3]];
+      : [['idle',4],['walk',2],['run',0.4],['jump',1.2],['think',1],['wave',0.6],['scratch',0.5],['stretch',0.4],['sleep',0.3]];
     const tot = pool.reduce((s,[,w])=>s+w,0);
     let rnd = Math.random()*tot, pick = pool[0][0];
     for (const [b,w] of pool) { rnd-=w; if(rnd<=0){pick=b;break;} }
@@ -5474,11 +5511,12 @@ function PetWidget({ t }) {
     if(b==='walk'){startWalk(false);return;}
     if(b==='run'){startWalk(true);return;}
     const cfg = {
-      bounce: { msg:['嘿！','跳！','耶！'], dur:2000, msgMs:1800 },
-      think:  { msg:['该写什么报告？🤔','数据有意思...','嗯嗯~'], dur:3600, msgMs:3200 },
-      wave:   { msg:['👋 你好！','嗨！'], dur:2600, msgMs:2400 },
-      scratch:{ msg:['', ''], dur:2600, msgMs:0 },
-      sleep:  { msg:['呼呼... 💤'], dur:0, msgMs:8000 },
+      jump:    { msg:['嘿！','跳！','耶！'], dur:2000, msgMs:1800 },
+      stretch: { msg:[], dur:2800, msgMs:0 },
+      think:   { msg:['该写什么报告？🤔','数据有意思...','嗯嗯~'], dur:3600, msgMs:3200 },
+      wave:    { msg:['👋 你好！','嗨！'], dur:2600, msgMs:2400 },
+      scratch: { msg:['', ''], dur:2600, msgMs:0 },
+      sleep:   { msg:['呼呼... 💤'], dur:0, msgMs:8000 },
     };
     const c = cfg[b] || {}; const m = c.msg?.[Math.floor(Math.random()*(c.msg.length))];
     if(m) showBubble(m, c.msgMs||2600);
@@ -5501,40 +5539,94 @@ function PetWidget({ t }) {
     else if(/分析|报告|工作|帮我/.test(cmd)){setMood('work');showBubble('📊 正在分析...',3800);setTimeout(()=>{setMood('idle');showBubble('✨ 完成！');},4400);}
     else if(/挥手|摆手|打招呼/.test(cmd)){exec('wave');showBubble('👋 你好！',2200);}
     else if(/挠头|scratch|抓头/.test(cmd)){exec('scratch');}
+    else if(/伸懒腰|懒腰/.test(cmd)){exec('stretch');}
     else if(/回来|回家|过来/.test(cmd)){showBubble('回来啦！');toCorner();}
-    else if(/跳|蹦/.test(cmd)){exec('bounce');}
+    else if(/跳|蹦/.test(cmd)){exec('jump');}
     else{showBubble(['好的！🐾','嗯！','收到！','啊？😅','知道啦~'][Math.floor(Math.random()*5)]);}
   };
 
-  // ── derived render values ────────────────────────────────────────────────
-  const isWalk = mood==='walk'||mood==='run';
-  const isSleep= mood==='sleep';
-  const ws     = mood==='run'?'0.28s':'0.52s';
-  // SVG eye height (ry)
-  const eyeRy  = isSleep ? 0 : blink ? 1.5 : 13;
-  const eyeShX = eyeDir * 1.8;
-  const blushOp= ['happy','bounce','dance','guitar','wave'].includes(mood)?0.68:0.38;
-  // arm angles for non-walk moods (SVG transform)
-  const lAng = isWalk?null: mood==='guitar'?-58: mood==='dance'?-68: mood==='scratch'?-80: mood==='wave'?-12: -14;
-  const rAng = isWalk?null: mood==='guitar'?28: mood==='dance'?68: mood==='wave'?-82: mood==='scratch'?14: 14;
-  const bodyAnim={
-    idle:'pet-bob 2.3s ease-in-out infinite', walk:'pet-walk 0.52s ease-in-out infinite',
-    run:'pet-walk 0.28s ease-in-out infinite', sleep:'pet-bob 5.5s ease-in-out infinite',
-    bounce:'pet-jump 0.65s ease forwards', dance:'pet-dance 0.55s ease-in-out infinite',
-    spin:'pet-spin 0.65s linear 3', guitar:'pet-strum 0.38s ease-in-out infinite',
-    think:'pet-work 2s ease-in-out infinite', work:'pet-work 1.1s ease-in-out infinite',
-    wave:'pet-bob 0.8s ease-in-out infinite', scratch:'pet-work 1.4s ease-in-out infinite',
-    happy:'pet-happy 0.6s ease-in-out infinite',
-  }[mood]||'pet-bob 2.3s ease-in-out infinite';
+  // ── derived animation values ──────────────────────────────────────────────
+  const isWalk = mood==='walk' || mood==='run';
+  const isSleep = mood==='sleep';
+  const ws = mood==='run' ? '0.32s' : '0.6s';
+  const halfDelay = mood==='run' ? '-0.16s' : '-0.3s';
+
+  const driftAnim = ({
+    walk:  `rh-walk-bounce ${ws} ease-in-out infinite`,
+    run:   `rh-run-bounce ${ws} ease-in-out infinite`,
+    dance: 'rh-dance-body 0.56s ease-in-out infinite',
+    sleep: 'rh-sleep-drift 5s ease-in-out infinite',
+    jump:  'rh-jump 0.65s ease forwards',
+  })[mood] || 'rh-drift 2.6s ease-in-out infinite';
+
+  const swayStyle = mood==='run'
+    ? { animation:'none', transform:'rotate(-5deg)', transformOrigin:'55px 110px' }
+    : mood==='sleep'
+    ? { animation:'none', transform:'rotate(-4deg)', transformOrigin:'55px 110px' }
+    : mood==='spin'
+    ? { animation:'rh-spin 0.7s linear 3 forwards', transformOrigin:'55px 110px' }
+    : isWalk
+    ? { animation:'none', transformOrigin:'55px 110px' }
+    : { animation:'rh-sway 7s ease-in-out infinite', transformOrigin:'55px 110px' };
+
+  const armLAnim = isSleep           ? { animation:'none', transform:'rotate(12deg)' }
+    : mood==='stretch'               ? { animation:'rh-arm-l-stretch 2.5s ease-in-out 1 forwards' }
+    : mood==='dance'                 ? { animation:'rh-arm-l-dance 0.56s ease-in-out infinite' }
+    : mood==='run'                   ? { animation:`rh-arm-l-run ${ws} ease-in-out ${halfDelay} infinite` }
+    : isWalk                         ? { animation:`rh-arm-l-walk ${ws} ease-in-out ${halfDelay} infinite` }
+    :                                  { animation:'rh-arm-l-idle 2.8s ease-in-out -0.9s infinite' };
+
+  const armRAnim = isSleep           ? { animation:'none', transform:'rotate(-12deg)' }
+    : mood==='stretch'               ? { animation:'rh-arm-r-stretch 2.5s ease-in-out 1 forwards' }
+    : mood==='dance'                 ? { animation:'rh-arm-r-dance 0.56s ease-in-out infinite' }
+    : mood==='wave'                  ? { animation:'rh-arm-wave 0.5s ease-in-out infinite' }
+    : mood==='scratch'               ? { animation:'rh-arm-scratch 0.28s ease-in-out infinite' }
+    : mood==='guitar'                ? { animation:'rh-arm-strum 0.38s ease-in-out infinite' }
+    : mood==='run'                   ? { animation:`rh-arm-r-run ${ws} ease-in-out 0s infinite` }
+    : isWalk                         ? { animation:`rh-arm-r-walk ${ws} ease-in-out 0s infinite` }
+    :                                  { animation:'rh-arm-r-idle 2.8s ease-in-out 0s infinite' };
+
+  const legLAnim = mood==='dance'    ? { animation:'rh-leg-l-dance 0.56s ease-in-out -0.28s infinite' }
+    : isWalk                         ? { animation:`rh-leg-l-walk ${ws} ease-in-out ${halfDelay} infinite` }
+    :                                  { animation:'rh-leg-idle 3.2s ease-in-out -1.1s infinite' };
+
+  const legRAnim = mood==='dance'    ? { animation:'rh-leg-r-dance 0.56s ease-in-out 0s infinite' }
+    : isWalk                         ? { animation:`rh-leg-r-walk ${ws} ease-in-out 0s infinite` }
+    :                                  { animation:'rh-leg-idle 3.2s ease-in-out 0s infinite' };
+
+  const eyeShX = mood==='think' ? 2 : eyeDir * 2;
+  const eyeShY = mood==='think' ? -4 : 0;
+  const blushOp = ['dance','run','jump','wave','guitar'].includes(mood) ? 0.65 : isSleep ? 0.18 : 0.3;
+
+  const mouthD = ({
+    idle:'M42 55 Q55 62 68 55',    walk:'M42 55 Q55 62 68 55',
+    run:'M38 54 Q55 67 72 54',     dance:'M38 54 Q55 68 72 54',
+    wave:'M40 55 Q55 64 70 55',    scratch:'M44 57 Q55 60 66 57',
+    guitar:'M46 56 Q62 60 68 53',  work:'M44 56 Q55 59 66 56',
+    think:'M46 57 Q56 54 66 56',   jump:'M40 54 Q55 65 70 54',
+    spin:'M44 55 Q55 62 66 55',    stretch:'M42 54 Q55 61 68 54',
+  })[mood] || 'M42 55 Q55 62 68 55';
+
+  const browLd = ({
+    run:'M30 18 Q41 12 52 17',     dance:'M30 19 Q41 13 52 18',
+    scratch:'M30 22 Q41 20 52 24', work:'M30 24 Q41 28 52 24',
+    think:'M30 21 Q41 15 52 20',   jump:'M30 19 Q41 13 52 18',
+  })[mood] || 'M30 22 Q41 16 52 21';
+
+  const browRd = ({
+    run:'M58 17 Q69 12 80 18',     dance:'M58 18 Q69 13 80 19',
+    scratch:'M58 24 Q69 20 80 22', work:'M58 24 Q69 28 80 24',
+    think:'M58 20 Q69 15 80 21',   jump:'M58 18 Q69 13 80 19',
+  })[mood] || 'M58 21 Q69 16 80 22';
 
   // ── minimized pill ────────────────────────────────────────────────────────
   if (minimized) return (
     <div onClick={()=>setMinimized(false)} title="唤醒宠物" style={{
       position:'fixed',bottom:24,right:24,zIndex:9990,width:46,height:46,borderRadius:'50%',
-      background:'#f5c542',border:'2.5px solid #c8940a',cursor:'pointer',
-      display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,
-      boxShadow:'0 3px 14px rgba(0,0,0,0.22)',animation:'pet-bob 2.3s ease-in-out infinite',
-    }}>🦕</div>
+      background:'#f8f4ec',border:'2.5px solid #1c1c1c',cursor:'pointer',
+      display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,
+      boxShadow:'0 3px 14px rgba(0,0,0,0.22)',animation:'rh-breathe 3.8s ease-in-out infinite',
+    }}>🐾</div>
   );
 
   const posStyle = petLeft!==null
@@ -5592,181 +5684,174 @@ function PetWidget({ t }) {
         </div>
       )}
 
-      {/* Direction flip → animation wrapper → SVG pet */}
+      {/* Direction flip + SVG pet */}
       <div style={{transform:`scaleX(${facingRight?-1:1})`,display:'inline-block',transformOrigin:'50% 100%'}}>
-        <div style={{animation:bodyAnim,transformOrigin:'50% 100%',display:'inline-block'}}
+        <svg viewBox="0 0 110 152" width={PET_W} height="138" style={{display:'block',overflow:'visible',cursor:'pointer'}}
           onClick={()=>setInputOpen(o=>!o)} title="点击发指令 💬">
 
-          {/* ════ SVG PET BODY ════════════════════════════════════════════════ */}
-          <svg viewBox="0 0 100 124" width={PET_W} height="118" style={{display:'block',overflow:'visible',cursor:'pointer'}}>
+          {/* shadow */}
+          <ellipse cx="55" cy="150" rx="28" ry="4.5" fill="rgba(0,0,0,0.09)" style={{filter:'blur(3px)'}}/>
 
-            {/* shadow */}
-            <ellipse cx="50" cy="122" rx="30" ry="4.5" fill="rgba(0,0,0,0.09)" style={{filter:'blur(3px)'}}/>
+          {/* LAYER: breathe */}
+          <g style={{animation:'rh-breathe 3.8s cubic-bezier(0.45,0,0.55,1) infinite',transformOrigin:'55px 110px'}}>
+          {/* LAYER: drift / vertical motion */}
+          <g style={{animation:driftAnim}}>
+          {/* LAYER: sway / tilt */}
+          <g style={swayStyle}>
 
-            {/* ── BODY ──────────────────────────────────────────────────────── */}
-            <ellipse cx="50" cy="96" rx="24" ry="23" fill="#f5c542"/>
-            {/* belly */}
-            <ellipse cx="50" cy="100" rx="15" ry="17" fill="#f7e8c0"/>
-            {/* body-top shadow where head overlaps */}
-            <ellipse cx="50" cy="77" rx="21" ry="6" fill="rgba(180,130,0,0.1)"/>
-
-            {/* ── LEFT FOOT ─────────────────────────────────────────────────── */}
-            {/* pivot group at top of ankle, translated back to world coords */}
-            <g style={{transform:'translate(37px,110px)',transformBox:'fill-box'}}>
-              <g style={{animation:isWalk?`pet-leg-l-svg ${ws} ease-in-out infinite`:'none'}}>
-                <ellipse cx="0" cy="7" rx="14" ry="8" fill="#e8a700"/>
-                {/* toes */}
-                <ellipse cx="-8" cy="13" rx="5.5" ry="4.5" fill="#d49800"/>
-                <ellipse cx="0" cy="15" rx="5.5" ry="4.5" fill="#d49800"/>
-                <ellipse cx="8" cy="13" rx="5" ry="4" fill="#d49800"/>
+            {/* Left leg – pivot (44,108) */}
+            <g transform="translate(44,108)">
+              <g style={{transformOrigin:'0px 0px',...legLAnim}}>
+                <path d="M0 0 Q-5 10 -7 20" stroke="#f8f4ec" strokeWidth="12.5" fill="none" strokeLinecap="round"/>
+                <path d="M0 0 Q-5 10 -7 20" stroke="#1c1c1c" strokeWidth="14.5" fill="none" strokeLinecap="round" opacity="0.1"/>
+                <circle cx="-7" cy="20" r="9" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.5"/>
+              </g>
+            </g>
+            {/* Right leg – pivot (66,108) */}
+            <g transform="translate(66,108)">
+              <g style={{transformOrigin:'0px 0px',...legRAnim}}>
+                <path d="M0 0 Q5 10 7 20" stroke="#f8f4ec" strokeWidth="12.5" fill="none" strokeLinecap="round"/>
+                <path d="M0 0 Q5 10 7 20" stroke="#1c1c1c" strokeWidth="14.5" fill="none" strokeLinecap="round" opacity="0.1"/>
+                <circle cx="7" cy="20" r="9" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.5"/>
               </g>
             </g>
 
-            {/* ── RIGHT FOOT ────────────────────────────────────────────────── */}
-            <g style={{transform:'translate(63px,110px)',transformBox:'fill-box'}}>
-              <g style={{animation:isWalk?`pet-leg-r-svg ${ws} ease-in-out infinite`:'none'}}>
-                <ellipse cx="0" cy="7" rx="14" ry="8" fill="#e8a700"/>
-                <ellipse cx="-8" cy="13" rx="5.5" ry="4.5" fill="#d49800"/>
-                <ellipse cx="0" cy="15" rx="5.5" ry="4.5" fill="#d49800"/>
-                <ellipse cx="8" cy="13" rx="5" ry="4" fill="#d49800"/>
-              </g>
-            </g>
+            {/* Body */}
+            <ellipse cx="55" cy="85" rx="26" ry="27" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.8"/>
 
-            {/* ── GUITAR PROP ──────────────────────────────────────────────── */}
+            {/* Guitar prop – behind arms, in front of body */}
             {mood==='guitar'&&(
-              <g transform="translate(2,58) rotate(-6 20 32)">
-                <rect x="16" y="0" width="6" height="38" rx="3" fill="#6B3A2A"/>
-                <ellipse cx="19" cy="50" rx="15" ry="12" fill="#c0392b"/>
-                <ellipse cx="19" cy="50" rx="11" ry="9" fill="#e74c3c"/>
-                <circle cx="19" cy="50" r="4.5" fill="#8B0000"/>
-                {/* frets */}
-                {[10,18,26].map(y=><line key={y} x1="14" y1={y} x2="24" y2={y} stroke="rgba(255,255,255,0.35)" strokeWidth="1"/>)}
-                {/* strings */}
-                {[15,18,21,24].map(x=><line key={x} x1={x} y1="2" x2={x} y2="40" stroke="#ddd" strokeWidth="0.75"/>)}
-                {/* tuners */}
-                {[[9,3],[14,1],[21,1.5],[26,4]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r="2.5" fill="#f0a500"/>)}
+              <g transform="translate(2,52) rotate(-10,16,28)">
+                <rect x="14" y="0" width="5.5" height="36" rx="2.5" fill="#5c3320" stroke="#1c1c1c" strokeWidth="1.2"/>
+                <ellipse cx="16.5" cy="47" rx="14" ry="11.5" fill="#c0392b" stroke="#1c1c1c" strokeWidth="1.5"/>
+                <ellipse cx="16.5" cy="47" rx="10" ry="8" fill="#e74c3c"/>
+                <circle cx="16.5" cy="47" r="4.5" fill="#8B0000"/>
+                {[10,18,26].map(y=><line key={y} x1="12" y1={y} x2="21" y2={y} stroke="rgba(255,255,255,0.3)" strokeWidth="1"/>)}
+                {[13,16.5,20].map(x=><line key={x} x1={x} y1="1" x2={x} y2="37" stroke="rgba(220,220,220,0.6)" strokeWidth="0.7"/>)}
+                {[[9,2],[14,0],[19,0],[24,2]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r="2.2" fill="#f0a500"/>)}
               </g>
             )}
-
-            {/* ── LEFT ARM  pivot (32, 80) ─────────────────────────────────── */}
-            <g style={{transform:'translate(32px,80px)'}}>
-              <g style={{
-                transform: lAng!==null ? `rotate(${lAng}deg)` : undefined,
-                animation: isWalk ? `pet-arm-l-svg ${ws} ease-in-out infinite`
-                         : mood==='scratch' ? `pet-scratch-svg 0.35s ease-in-out infinite`
-                         : 'none',
-                transition: !isWalk ? 'transform 0.38s ease' : 'none',
-              }}>
-                <ellipse cx="0" cy="14" rx="9" ry="15" fill="#f5c542"/>
-                {/* fingers */}
-                <ellipse cx="-7" cy="28" rx="5" ry="6" fill="#e8a700"/>
-                <ellipse cx="0" cy="30" rx="5.5" ry="6.5" fill="#e8a700"/>
-                <ellipse cx="7" cy="28" rx="5" ry="6" fill="#e8a700"/>
-              </g>
-            </g>
-
-            {/* ── RIGHT ARM  pivot (68, 80) ────────────────────────────────── */}
-            <g style={{transform:'translate(68px,80px)'}}>
-              <g style={{
-                transform: rAng!==null ? `rotate(${rAng}deg)` : undefined,
-                animation: isWalk ? `pet-arm-r-svg ${ws} ease-in-out infinite`
-                         : mood==='wave' ? `pet-wave-svg 0.45s ease-in-out infinite`
-                         : 'none',
-                transition: !isWalk ? 'transform 0.38s ease' : 'none',
-              }}>
-                <ellipse cx="0" cy="14" rx="9" ry="15" fill="#f5c542"/>
-                <ellipse cx="-7" cy="28" rx="5" ry="6" fill="#e8a700"/>
-                <ellipse cx="0" cy="30" rx="5.5" ry="6.5" fill="#e8a700"/>
-                <ellipse cx="7" cy="28" rx="5" ry="6" fill="#e8a700"/>
-              </g>
-            </g>
-
-            {/* ── HEAD (drawn on top of arms/body) ────────────────────────── */}
-            <circle cx="50" cy="43" r="38" fill="#f5c542"/>
-            {/* head shine */}
-            <ellipse cx="34" cy="27" rx="13" ry="8" fill="rgba(255,255,255,0.22)" transform="rotate(-22 34 27)"/>
-            {/* subtle head-bottom darkening */}
-            <ellipse cx="50" cy="79" rx="25" ry="6" fill="rgba(170,120,0,0.09)"/>
-
-            {/* ── LEFT EYE ─────────────────────────────────────────────────── */}
-            {/* sclera */}
-            <ellipse cx="35" cy="44" rx="12" ry={eyeRy} fill="white"/>
-            {!isSleep&&!blink&&<>
-              <circle cx={35+eyeShX} cy="45" r="8" fill="#3ea040"/>
-              <circle cx={36+eyeShX} cy="46" r="4.3" fill="#1a3218"/>
-              <circle cx={33+eyeShX} cy="43" r="2.8" fill="rgba(255,255,255,0.85)"/>
-            </>}
-            {/* eyelid top cutoff for "cute look" */}
-            <ellipse cx="35" cy="33" rx="12.5" ry="4" fill="#f5c542"/>
-
-            {/* ── RIGHT EYE ────────────────────────────────────────────────── */}
-            <ellipse cx="65" cy="44" rx="12" ry={eyeRy} fill="white"/>
-            {!isSleep&&!blink&&<>
-              <circle cx={65+eyeShX} cy="45" r="8" fill="#3ea040"/>
-              <circle cx={64+eyeShX} cy="46" r="4.3" fill="#1a3218"/>
-              <circle cx={62+eyeShX} cy="43" r="2.8" fill="rgba(255,255,255,0.85)"/>
-            </>}
-            <ellipse cx="65" cy="33" rx="12.5" ry="4" fill="#f5c542"/>
-
-            {/* sleeping closed-eye arcs */}
-            {isSleep&&<>
-              <path d="M23 44 Q35 54 47 44" stroke="rgba(60,60,60,0.35)" strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-              <path d="M53 44 Q65 54 77 44" stroke="rgba(60,60,60,0.35)" strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-            </>}
-
-            {/* BLUSH CHEEKS */}
-            <ellipse cx="21" cy="57" rx="10" ry="6.5" fill="#f07070" opacity={blushOp} style={{transition:'opacity 0.4s'}}/>
-            <ellipse cx="79" cy="57" rx="10" ry="6.5" fill="#f07070" opacity={blushOp} style={{transition:'opacity 0.4s'}}/>
-
-            {/* NOSTRILS */}
-            <circle cx="45" cy="63" r="2.5" fill="rgba(0,0,0,0.16)"/>
-            <circle cx="55" cy="63" r="2.5" fill="rgba(0,0,0,0.16)"/>
-
-            {/* subtle smile */}
-            <path d="M43 69 Q50 74 57 69" stroke="rgba(0,0,0,0.1)" strokeWidth="2" fill="none" strokeLinecap="round"/>
-
-            {/* ── OVERLAYS ─────────────────────────────────────────────────── */}
-
-            {/* Sleeping Zs */}
-            {isSleep&&<>
-              <text x="84" y="26" fontFamily="Georgia,serif" fontSize="12" fill="#c8c8c8" opacity="0.8">z</text>
-              <text x="90" y="15" fontFamily="Georgia,serif" fontSize="17" fill="#b8b8b8" opacity="0.75">Z</text>
-            </>}
-
-            {/* Think bubble */}
-            {mood==='think'&&<>
-              <circle cx="72" cy="30" r="2.5" fill="#d4d4d4"/>
-              <circle cx="78" cy="21" r="3.5" fill="#cccccc"/>
-              <circle cx="86" cy="12" r="6.5" fill="#f4f4f4" stroke="#cccccc" strokeWidth="1"/>
-              <text x="83" y="16" fontFamily="sans-serif" fontSize="7" fill="#888">?</text>
-            </>}
 
             {/* Work tablet */}
-            {mood==='work'&&<>
-              <rect x="68" y="14" width="28" height="21" rx="2.5" fill="#1e1e2e"/>
-              <rect x="70" y="17" width="13" height="2.5" rx="1" fill="#4ade80"/>
-              <rect x="70" y="21" width="20" height="2.5" rx="1" fill="#4ade80"/>
-              <rect x="70" y="25" width="16" height="2.5" rx="1" fill="#22d3ee"/>
-              <circle cx="92" cy="21" r="2.5" fill="#f59e0b"/>
-            </>}
-
-            {/* Guitar floating notes */}
-            {mood==='guitar'&&<>
-              <text x="76" y="18" fontFamily="Georgia,serif" fontSize="20" fill="#f59e0b" opacity="0.85"
-                style={{animation:'pet-note-fly 0.85s ease-out infinite'}}>♪</text>
-              <text x="83" y="10" fontFamily="Georgia,serif" fontSize="13" fill="#f0a500" opacity="0.65"
-                style={{animation:'pet-note-fly 0.85s ease-out 0.42s infinite'}}>♩</text>
-            </>}
-
-            {/* Wave emoji hand */}
-            {mood==='wave'&&(
-              <text x="70" y="18" fontSize="18" style={{animation:'pet-wave-svg 0.45s ease-in-out infinite',transformOrigin:'70px 18px',transformBox:'fill-box'}}>👋</text>
+            {mood==='work'&&(
+              <g>
+                <rect x="25" y="88" width="60" height="40" rx="4" fill="#1e1e2e" stroke="#1c1c1c" strokeWidth="1.8"/>
+                <rect x="41" y="84" width="28" height="8" rx="4" fill="#888" stroke="#1c1c1c" strokeWidth="1.5"/>
+                <rect x="29" y="95" width="32" height="3" rx="1.5" fill="#4ade80" opacity="0.85"/>
+                <rect x="29" y="101" width="44" height="3" rx="1.5" fill="#4ade80" opacity="0.7"/>
+                <rect x="29" y="107" width="26" height="3" rx="1.5" fill="#22d3ee" opacity="0.85"/>
+                <rect x="29" y="113" width="36" height="3" rx="1.5" fill="#4ade80" opacity="0.6"/>
+                <rect x="29" y="119" width="20" height="3" rx="1.5" fill="#f59e0b" opacity="0.8"/>
+                <circle cx="71" cy="98" r="5" fill="#f59e0b" opacity="0.9"/>
+              </g>
             )}
 
-          </svg>
-          {/* ══ end SVG ══ */}
+            {/* Left arm – pivot (30,80) */}
+            <g transform="translate(30,80)">
+              <g style={{transformOrigin:'0px 0px',...armLAnim}}>
+                <path d="M0 0 Q-2 12 0 23" stroke="#f8f4ec" strokeWidth="12.5" fill="none" strokeLinecap="round"/>
+                <path d="M0 0 Q-2 12 0 23" stroke="#1c1c1c" strokeWidth="14.5" fill="none" strokeLinecap="round" opacity="0.1"/>
+                <circle cx="0" cy="23" r="9" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.5"/>
+              </g>
+            </g>
+            {/* Right arm – pivot (80,80) */}
+            <g transform="translate(80,80)">
+              <g style={{transformOrigin:'0px 0px',...armRAnim}}>
+                <path d="M0 0 Q2 12 0 23" stroke="#f8f4ec" strokeWidth="12.5" fill="none" strokeLinecap="round"/>
+                <path d="M0 0 Q2 12 0 23" stroke="#1c1c1c" strokeWidth="14.5" fill="none" strokeLinecap="round" opacity="0.1"/>
+                <circle cx="0" cy="23" r="9" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.5"/>
+              </g>
+            </g>
 
-        </div>
+            {/* Think bubble */}
+            {mood==='think'&&(
+              <>
+                <circle cx="78" cy="30" r="3" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="1.5"/>
+                <circle cx="86" cy="20" r="5" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="1.8"/>
+                <circle cx="97" cy="8" r="10" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2"/>
+                <text x="93" y="13" fontSize="12" fill="#1c1c1c">?</text>
+              </>
+            )}
+
+            {/* HEAD layer */}
+            <g style={{animation:'rh-head 4s ease-in-out -0.7s infinite'}}>
+              <circle cx="55" cy="41" r="34" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.8"/>
+
+              {/* ZZZ */}
+              {isSleep&&<>
+                <text x="76" y="22" fontSize="11" fontFamily="Georgia,serif" fill="#b0b0b0">z</text>
+                <text x="84" y="13" fontSize="16" fontFamily="Georgia,serif" fill="#a0a0a0">Z</text>
+                <text x="93" y="4"  fontSize="20" fontFamily="Georgia,serif" fill="#909090">Z</text>
+              </>}
+
+              {/* Drool */}
+              {isSleep&&<path d="M55 62 Q56.5 70 56 75" stroke="rgba(150,200,255,0.5)" strokeWidth="4" fill="none" strokeLinecap="round"/>}
+
+              {/* Normal open eyes */}
+              {!isSleep&&mood!=='dance'&&<>
+                <g style={{transformOrigin:'41px 37px'}}>
+                  <circle cx="41" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
+                  <circle cx={41+eyeShX} cy={37+eyeShY} r="7" fill="#1c1c1c"/>
+                  <circle cx={38+eyeShX} cy={35+eyeShY} r="3" fill="white"/>
+                </g>
+                <ellipse cx="41" cy="26" rx="13" ry="10" fill="#f8f4ec"
+                  style={{transform:blink?'translateY(14px)':'translateY(0px)',transition:'transform 0.07s',transformOrigin:'41px 26px'}}/>
+                <g style={{transformOrigin:'69px 37px'}}>
+                  <circle cx="69" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
+                  <circle cx={69+eyeShX} cy={37+eyeShY} r="7" fill="#1c1c1c"/>
+                  <circle cx={66+eyeShX} cy={35+eyeShY} r="3" fill="white"/>
+                </g>
+                <ellipse cx="69" cy="26" rx="13" ry="10" fill="#f8f4ec"
+                  style={{transform:blink?'translateY(14px)':'translateY(0px)',transition:'transform 0.07s',transformOrigin:'69px 26px'}}/>
+              </>}
+
+              {/* Sleep closed eyes */}
+              {isSleep&&<>
+                <path d="M28 40 Q41 54 54 40" fill="none" stroke="#1c1c1c" strokeWidth="3" strokeLinecap="round"/>
+                <path d="M56 40 Q69 54 82 40" fill="none" stroke="#1c1c1c" strokeWidth="3" strokeLinecap="round"/>
+              </>}
+
+              {/* Dance star eyes */}
+              {mood==='dance'&&<>
+                <circle cx="41" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
+                <text x="33" y="43" fontSize="14" fill="#1c1c1c">★</text>
+                <circle cx="69" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
+                <text x="61" y="43" fontSize="14" fill="#1c1c1c">★</text>
+              </>}
+
+              {/* Guitar sunglasses */}
+              {mood==='guitar'&&<>
+                <rect x="27" y="28" width="28" height="16" rx="8" fill="rgba(10,10,10,0.88)"/>
+                <rect x="55" y="28" width="28" height="16" rx="8" fill="rgba(10,10,10,0.88)"/>
+                <line x1="27" y1="36" x2="55" y2="36" stroke="rgba(10,10,10,0.88)" strokeWidth="5"/>
+              </>}
+
+              {/* Brows */}
+              <path d={browLd} fill="none" stroke="#1c1c1c" strokeWidth="2.5" strokeLinecap="round"/>
+              <path d={browRd} fill="none" stroke="#1c1c1c" strokeWidth="2.5" strokeLinecap="round"/>
+
+              {/* Blush */}
+              <ellipse cx="24" cy="50" rx="7" ry="4.5" fill="#ff9090" opacity={blushOp} style={{transition:'opacity 0.4s'}}/>
+              <ellipse cx="86" cy="50" rx="7" ry="4.5" fill="#ff9090" opacity={blushOp} style={{transition:'opacity 0.4s'}}/>
+
+              {/* Mouth */}
+              {!isSleep&&<path d={mouthD} fill="none" stroke="#1c1c1c" strokeWidth="2.2" strokeLinecap="round"/>}
+
+              {/* Guitar floating notes */}
+              {mood==='guitar'&&<>
+                <text x="88" y="20" fontFamily="Georgia,serif" fontSize="18" fill="rgba(200,140,30,0.85)"
+                  style={{animation:'rh-drift 0.5s ease-in-out infinite'}}>♪</text>
+                <text x="96" y="11" fontFamily="Georgia,serif" fontSize="13" fill="rgba(200,140,30,0.7)"
+                  style={{animation:'rh-drift 0.5s ease-in-out -0.25s infinite'}}>♩</text>
+              </>}
+
+            </g>
+
+          </g>
+          </g>
+          </g>
+
+        </svg>
       </div>
     </div>
   );
