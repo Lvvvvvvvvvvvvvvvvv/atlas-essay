@@ -2155,26 +2155,32 @@ function useEditorNote() {
   return { note, save };
 }
 
-function useTodayTodos() {
-  const todayKey = `atlas_todos_${new Date().toISOString().slice(0,10)}`;
-  const [todos, setTodos] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem(todayKey) || '[]'); } catch { return []; }
+function useAINews() {
+  const cacheKey = `atlas_ai_news_${new Date().toISOString().slice(0,10)}`;
+  const [items, setItems] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(cacheKey) || '[]'); } catch { return []; }
   });
-  const save = (list) => {
-    setTodos(list);
-    try { localStorage.setItem(todayKey, JSON.stringify(list)); } catch {}
-  };
-  const add = (text) => { if (text.trim()) save([...todos, text.trim()]); };
-  const remove = (i) => save(todos.filter((_, idx) => idx !== i));
-  const toggle = (i) => {
-    const next = todos.map((td, idx) => idx === i
-      ? (typeof td === 'object' ? { ...td, done: !td.done } : { text: td, done: true })
-      : td);
-    save(next);
-  };
-  const getText = (td) => typeof td === 'object' ? td.text : td;
-  const getDone = (td) => typeof td === 'object' ? !!td.done : false;
-  return { todos, save, add, remove, toggle, getText, getDone, todayKey };
+  const [loading, setLoading] = React.useState(false);
+  const getHost = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'hn'; } };
+
+  React.useEffect(() => {
+    if (items.length) return;
+    setLoading(true);
+    fetch('https://hn.algolia.com/api/v1/search_by_date?query=AI+LLM+OpenAI+Claude+Gemini+GPT&tags=story&hitsPerPage=30')
+      .then(r => r.json())
+      .then(data => {
+        const news = (data.hits || [])
+          .filter(h => h.title && (h.points || 0) >= 3 && h.url)
+          .slice(0, 20)
+          .map(h => ({ title: h.title, url: h.url, points: h.points, source: getHost(h.url) }));
+        setItems(news);
+        try { localStorage.setItem(cacheKey, JSON.stringify(news)); } catch {}
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { items, loading };
 }
 
 function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
@@ -2189,20 +2195,13 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
   const [noteDraft, setNoteDraft] = React.useState('');
   const autoNote = getAutoNote();
   const displayNote = editorNote.note || autoNote || '这一期，我学会了更好地引用脚注。写完后告诉我"再细一些"，我会重写。';
-  const todosStore = useTodayTodos();
-  const hasTodos = todosStore.todos.length > 0;
-  const [todoIdx, setTodoIdx] = React.useState(0);
-  const [todoAddOpen, setTodoAddOpen] = React.useState(false);
-  const [todoInput, setTodoInput] = React.useState('');
-  const [todoMode, setTodoMode] = React.useState(() => {
-    try { return !!JSON.parse(localStorage.getItem(todosStore.todayKey)||'[]').length; } catch { return false; }
-  });
-  React.useEffect(() => { if (hasTodos) setTodoMode(true); }, [hasTodos]);
+  const aiNews = useAINews();
+  const [newsIdx, setNewsIdx] = React.useState(0);
   React.useEffect(() => {
-    if (!hasTodos) return;
-    const id = setInterval(() => setTodoIdx(i => (i + 1) % todosStore.todos.length), 3500);
+    if (!aiNews.items.length) return;
+    const id = setInterval(() => setNewsIdx(i => (i + 1) % aiNews.items.length), 5000);
     return () => clearInterval(id);
-  }, [hasTodos, todosStore.todos.length]);
+  }, [aiNews.items.length]);
   const [now] = React.useState(() => new Date());
   const DAY_CN = ['日','一','二','三','四','五','六'];
   const coverDate = `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`;
@@ -2259,113 +2258,22 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
         {/* Prompt input */}
         <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} modelStore={modelStore} toolbarStore={toolbarStore} onNavigateSources={onNavigateSources}/>
 
-        {/* Editor's note / Today's todos ticker */}
-        <div style={{ border: `1px solid ${t.ink}`, background: t.cardOn }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px' }}>
-            {todoMode && hasTodos ? (
-              <React.Fragment>
-                <Tag t={t} accent>TODAY · {todoIdx + 1}/{todosStore.todos.length}</Tag>
-                <span key={todoIdx} style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  textDecoration: todosStore.getDone(todosStore.todos[todoIdx]) ? 'line-through' : 'none',
-                  opacity: todosStore.getDone(todosStore.todos[todoIdx]) ? 0.45 : 1 }}>
-                  {todosStore.getText(todosStore.todos[todoIdx])}
-                </span>
-                <button onClick={() => todosStore.toggle(todoIdx)}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: todosStore.getDone(todosStore.todos[todoIdx]) ? '#2a8c5c' : t.mute, fontSize: 14, padding: '2px 4px', flexShrink: 0 }}>
-                  {todosStore.getDone(todosStore.todos[todoIdx]) ? '✓' : '○'}
-                </button>
-                <button onClick={() => setTodoAddOpen(o => !o)} title="添加待办"
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, padding: '2px 4px', flexShrink: 0 }}>＋</button>
-                <button onClick={() => { setTodoMode(false); }} title="切换到编者按"
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontSize: 10, fontFamily: t.fontMono, padding: '2px 4px', flexShrink: 0, letterSpacing: 0.5 }}>✎</button>
-                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, whiteSpace: 'nowrap', letterSpacing: 0.5 }}>今日待办</span>
-              </React.Fragment>
-            ) : noteEditing ? (
-              <React.Fragment>
-                <Tag t={t} accent>EDITOR'S NOTE · 编者按</Tag>
-                <textarea autoFocus value={noteDraft} onChange={e => setNoteDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); editorNote.save(noteDraft.trim()); setNoteEditing(false); }
-                    if (e.key === 'Escape') setNoteEditing(false);
-                  }}
-                  rows={2} style={{ flex: 1, fontFamily: t.fontCN, fontSize: 13, lineHeight: 1.55, color: t.ink, background: 'transparent', border: `1px solid ${t.rule}`, outline: 'none', resize: 'none', padding: '4px 8px' }}/>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-                  <button onClick={() => { editorNote.save(noteDraft.trim()); setNoteEditing(false); }}
-                    style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, padding: '4px 10px', border: `1px solid ${t.ink}`, background: t.ink, color: t.paper, cursor: 'pointer' }}>✓ 保存</button>
-                  <button onClick={() => setNoteEditing(false)}
-                    style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, padding: '4px 10px', border: `1px solid ${t.rule}`, background: 'transparent', color: t.mute, cursor: 'pointer' }}>取消</button>
-                </div>
-              </React.Fragment>
-            ) : (
-              <React.Fragment>
-                <Tag t={t} accent>EDITOR'S NOTE · 编者按</Tag>
-                <span onClick={() => { setNoteDraft(editorNote.note || ''); setNoteEditing(true); }}
-                  style={{ fontFamily: t.fontCN, fontSize: 13, lineHeight: 1.55, color: t.inkSoft, flex: 1, cursor: 'text' }}>
-                  {displayNote}
-                </span>
-                {editorNote.note && (
-                  <button onClick={() => editorNote.save('')}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontSize: 10, fontFamily: t.fontMono, padding: '2px 4px', flexShrink: 0, letterSpacing: 0.5 }}>↺</button>
-                )}
-                {hasTodos && (
-                  <button onClick={() => setTodoMode(true)} title="查看今日待办"
-                    style={{ border: `1px solid ${t.accent}`, background: 'transparent', cursor: 'pointer', color: t.accent, fontSize: 9, fontFamily: t.fontMono, padding: '2px 8px', flexShrink: 0, letterSpacing: 0.5 }}>
-                    今日 {todosStore.todos.length} 项
-                  </button>
-                )}
-                <button onClick={() => { setTodoAddOpen(o => !o); setTodoMode(true); }} title="添加今日待办"
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, padding: '2px 4px', flexShrink: 0 }}>＋</button>
-                <button onClick={() => { setNoteDraft(editorNote.note || ''); setNoteEditing(true); }}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontSize: 13, padding: '2px 4px', flexShrink: 0 }}>✎</button>
-                <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, whiteSpace: 'nowrap' }}>— ATLAS v0.41</span>
-              </React.Fragment>
-            )}
-          </div>
-          {/* Todo list panel */}
-          {todoMode && (
-            <div style={{ borderTop: `1px solid ${t.rule}`, padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {todosStore.todos.map((td, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                  <button onClick={() => todosStore.toggle(i)}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: todosStore.getDone(td) ? '#2a8c5c' : t.mute, fontSize: 14, padding: '0 4px', flexShrink: 0 }}>
-                    {todosStore.getDone(td) ? '✓' : '○'}
-                  </button>
-                  <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink, flex: 1,
-                    textDecoration: todosStore.getDone(td) ? 'line-through' : 'none', opacity: todosStore.getDone(td) ? 0.45 : 1 }}>
-                    {todosStore.getText(td)}
-                  </span>
-                  <button onClick={() => { todosStore.remove(i); if (todoIdx >= todosStore.todos.length - 1) setTodoIdx(0); }}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontSize: 11, padding: '0 4px', flexShrink: 0 }}>✕</button>
-                </div>
-              ))}
-              {todoAddOpen && (
-                <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                  <input autoFocus value={todoInput} onChange={e => setTodoInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { todosStore.add(todoInput); setTodoInput(''); setTodoAddOpen(false); } if (e.key === 'Escape') { setTodoAddOpen(false); setTodoInput(''); } }}
-                    placeholder="输入待办事项，回车确认"
-                    style={{ flex: 1, fontFamily: t.fontCN, fontSize: 12, padding: '4px 8px', border: `1px solid ${t.rule}`, background: t.paper, color: t.ink, outline: 'none' }}/>
-                  <button onClick={() => { todosStore.add(todoInput); setTodoInput(''); setTodoAddOpen(false); }}
-                    style={{ padding: '4px 10px', border: `1px solid ${t.ink}`, background: t.ink, color: t.paper, fontFamily: t.fontMono, fontSize: 9, cursor: 'pointer' }}>＋ 添加</button>
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, paddingTop: 6, borderTop: `1px solid ${t.rule}` }}>
-                <button onClick={() => setTodoAddOpen(o => !o)}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontFamily: t.fontMono, fontSize: 9, padding: 0, letterSpacing: 0.5 }}>＋ 手动添加</button>
-                <span style={{ flex: 1 }}/>
-                <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 0.5 }}>
-                  通过 Apple 快捷指令自动导入 →
-                </span>
-                <button onClick={() => {
-                  const url = 'https://lvvvvvvvvvvvvvvvvv.github.io/atlas-essay/';
-                  const shortcutHint = `快捷指令设置：\n1. 新建快捷指令\n2. 添加动作「查找提醒事项」→ 筛选「今天到期」\n3. 添加「重复」→ 将每项名称加入列表\n4. 将列表转为 JSON 文本\n5. 对文本执行 Base64 编码\n6. 打开 URL：${url}?todos=<编码结果>`;
-                  navigator.clipboard.writeText(shortcutHint).catch(() => {});
-                  alert(shortcutHint);
-                }}
-                  style={{ border: `1px solid ${t.rule}`, background: 'transparent', cursor: 'pointer', color: t.mute, fontFamily: t.fontMono, fontSize: 8, padding: '2px 8px', letterSpacing: 0.5 }}>
-                  查看配置方法
-                </button>
-              </div>
-            </div>
+        {/* AI news ticker */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', border: `1px solid ${t.ink}`, background: t.cardOn, minWidth: 0 }}>
+          <Tag t={t} accent>AI 动态</Tag>
+          {aiNews.loading ? (
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, flex: 1, letterSpacing: 0.5 }}>加载中…</span>
+          ) : aiNews.items.length > 0 ? (
+            <React.Fragment>
+              <a key={newsIdx} href={aiNews.items[newsIdx].url} target="_blank" rel="noreferrer"
+                style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none', cursor: 'pointer' }}>
+                {aiNews.items[newsIdx].title}
+              </a>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0, letterSpacing: 0.3 }}>{aiNews.items[newsIdx].source}</span>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>{newsIdx + 1}/{aiNews.items.length}</span>
+            </React.Fragment>
+          ) : (
+            <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.mute, flex: 1 }}>{displayNote}</span>
           )}
         </div>
 
@@ -6930,32 +6838,6 @@ function useSavedReports() {
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const t = essayTokens({ theme: tweaks.theme, accent: tweaks.accent });
-
-  // Import todos from URL param (set by Apple Shortcuts)
-  // Supports two formats: plain newline-separated text, or base64-encoded JSON array
-  React.useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const raw = params.get('todos');
-      if (!raw) return;
-      let list = [];
-      try {
-        // Try base64 JSON first
-        list = JSON.parse(atob(raw));
-        if (!Array.isArray(list)) list = [];
-      } catch {
-        // Fall back to plain newline/comma separated text
-        list = raw.split(/[\n,｜|]/).map(s => s.trim()).filter(Boolean);
-      }
-      if (list.length) {
-        const key = `atlas_todos_${new Date().toISOString().slice(0,10)}`;
-        localStorage.setItem(key, JSON.stringify(list.map(s => ({ text: String(s), done: false }))));
-        const url = new URL(window.location.href);
-        url.searchParams.delete('todos');
-        window.history.replaceState({}, '', url.toString());
-      }
-    } catch {}
-  }, []);
 
   const modelStore = useModelStore();
   const toolbarStore = useToolbarStore();
