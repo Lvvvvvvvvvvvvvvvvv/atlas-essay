@@ -1185,8 +1185,8 @@ function SettingsModal({ t, modelStore, onClose }) {
                       <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1 }}>MAX TOKENS</div>
                       <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>留空则自动</div>
                     </div>
-                    <input type="number" min={1} max={32000} value={modelStore.maxTokensOverride || ''} placeholder="Auto"
-                      onChange={e => modelStore.setMaxTokensOverride(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    <input type="number" min={1} max={131072} value={modelStore.maxTokensOverride || ''} placeholder="Auto"
+                      onChange={e => { const v = e.target.value ? Math.min(parseInt(e.target.value, 10), 131072) : null; modelStore.setMaxTokensOverride(v); }}
                       style={inp}/>
                   </div>
                   <div>
@@ -2433,7 +2433,7 @@ function useModelStore() {
   });
   const [maxTokensOverride, setMaxTokensOverrideState] = React.useState(() => {
     const v = parseInt(localStorage.getItem('atlas_max_tokens_override'), 10);
-    return isNaN(v) ? null : v;
+    return isNaN(v) ? null : Math.min(v, 131072);
   });
 
   const [hiddenBuiltins, setHiddenBuiltins] = React.useState(() => {
@@ -3401,7 +3401,7 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
           { role: 'user', content: userContent },
         ],
         stream: true,
-        max_tokens: (maxTokensOverride && maxTokensOverride > 0) ? maxTokensOverride : maxTokens,
+        max_tokens: (maxTokensOverride && maxTokensOverride > 0) ? Math.min(maxTokensOverride, 131072) : maxTokens,
         temperature: (temperature !== undefined && !isNaN(Number(temperature))) ? Number(temperature) : 0.7,
         ...(topP != null ? { top_p: Number(topP) } : {}),
         ...(frequencyPenalty != null ? { frequency_penalty: Number(frequencyPenalty) } : {}),
