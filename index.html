@@ -3136,6 +3136,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
         text: liveText,
         sections,
         refs: refsArr,
+        selectedSources: [...(toolbarConfig?.selectedSources || [])],
         attachments: (toolbarConfig?.attachments || []).map(a => ({ id: a.id, name: a.name, size: a.size, type: a.type, content: a.content })),
         meta: {
           titleEn,
@@ -5039,6 +5040,20 @@ function Sources({ t }) {
   const [syncAllDone, setSyncAllDone] = React.useState(false);
   const [showAdd, setShowAdd] = React.useState(false);
 
+  // Compute real citation counts from saved reports
+  const usageCounts = React.useMemo(() => {
+    try {
+      const reports = JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]');
+      const counts = {};
+      reports.forEach(r => {
+        (r.selectedSources || []).forEach(name => {
+          counts[name] = (counts[name] || 0) + 1;
+        });
+      });
+      return counts;
+    } catch { return {}; }
+  }, []);
+
   const filtered = sourceList.filter(s => cat === 'all' || s.type === cat);
   const total = sourceList.length;
   const warn = sourceList.filter(s => s.status === 'warn' || s.status === 'stale').length;
@@ -5116,10 +5131,10 @@ function Sources({ t }) {
         }}>
           <span>—</span><span>Source · 名称</span><span>Kind · 类型</span>
           <span>Last sync · 上次同步</span><span>Status · 状态</span>
-          <span>Quality</span><span>Docs</span><span/>
+          <span>Quality</span><span>被引用</span><span/>
         </div>
         {filtered.map((s, i) => (
-          <SourceRow key={s.name} src={s} t={t} index={i} onDisconnect={() => handleDisconnect(s.name)}/>
+          <SourceRow key={s.name} src={s} t={t} index={i} usageCount={usageCounts[s.name] || 0} onDisconnect={() => handleDisconnect(s.name)}/>
         ))}
         {filtered.length === 0 && (
           <div style={{ padding: '32px 0', textAlign: 'center', fontFamily: t.fontCN, fontSize: 13, color: t.mute }}>
@@ -5133,7 +5148,7 @@ function Sources({ t }) {
   );
 }
 
-function SourceRow({ src, t, index, onDisconnect }) {
+function SourceRow({ src, t, index, usageCount = 0, onDisconnect }) {
   const [open, setOpen] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
   const [syncDone, setSyncDone] = React.useState(false);
@@ -5181,7 +5196,9 @@ function SourceRow({ src, t, index, onDisconnect }) {
           </span>
         </span>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: quality.color, letterSpacing: 1, fontWeight: 700 }}>{quality.label}</span>
-        <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.ink }}>{srcData.docs}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 11, color: usageCount > 0 ? t.ink : t.mute }}>
+          {usageCount > 0 ? `${usageCount} 次` : '—'}
+        </span>
         <span style={{ fontFamily: t.fontMono, fontSize: 12, color: t.mute, transition: 'transform 0.15s', transform: `rotate(${open ? 90 : 0}deg)` }}>›</span>
       </div>
 
@@ -5199,7 +5216,7 @@ function SourceRow({ src, t, index, onDisconnect }) {
                 {syncing ? '⟳ 同步中…' : syncDone ? '✓ 同步完成' : '⟳ Sync now'}
               </Btn>
               <Btn t={t} size="sm" onClick={e => { e.stopPropagation(); setShowRefs(true); }}>
-                查看 {srcData.docs || 0} 条引用
+                {usageCount > 0 ? `已引用 ${usageCount} 篇报告` : '暂无引用记录'}
               </Btn>
               <Btn t={t} size="sm" onClick={e => { e.stopPropagation(); setShowAccess(true); }}>
                 Edit access
