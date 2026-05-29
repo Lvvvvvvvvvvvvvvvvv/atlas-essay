@@ -5618,11 +5618,15 @@ function PetWidget({ t }) {
     const sl = mood === 'sleep';
     const pool = sl
       ? [['sleep',4],['idle',1]]
-      : [['idle',3],['walk',2],['run',0.4],['jump',1.2],['think',1.2],['wave',0.8],['scratch',0.7],['stretch',0.6],['lookaround',1],['sleep',0.3]];
+      : [
+          ['lookaround',2],['nod',1.8],['wave',1.5],['scratch',1.4],
+          ['jump',1.4],['think',1.3],['fidget',1.2],['stretch',1],
+          ['walk',1.8],['run',0.3],['sleep',0.15],
+        ];
     const tot = pool.reduce((s,[,w])=>s+w,0);
     let rnd = Math.random()*tot, pick = pool[0][0];
     for (const [b,w] of pool) { rnd-=w; if(rnd<=0){pick=b;break;} }
-    const delay = sl ? 11000+Math.random()*9000 : 3500+Math.random()*7000;
+    const delay = sl ? 8000+Math.random()*8000 : 900+Math.random()*2200;
     autoTimerRef.current = setTimeout(()=>exec(pick), delay);
     return () => clearTimeout(autoTimerRef.current);
   }, [mood]);
@@ -5692,17 +5696,29 @@ function PetWidget({ t }) {
     if(b==='walk'){startWalk(false);return;}
     if(b==='run'){startWalk(true);return;}
     if(b==='lookaround'){
-      // quick eye wander sequence without changing mood
-      const seq = [1,0,-1,0,1,-1,0];
-      seq.forEach((d,i)=>setTimeout(()=>setEyeDir(d), i*300));
+      // rapid left-right-up eye sweep
+      const dirs = [1,0,-1,0,1,0,-1,0];
+      dirs.forEach((d,i)=>setTimeout(()=>setEyeDir(d), i*220));
+      return;
+    }
+    if(b==='nod'){
+      // brief think posture → idle (head-look-up effect)
+      setMood('think');
+      setTimeout(()=>setMood('idle'), 900+Math.random()*300);
+      return;
+    }
+    if(b==='fidget'){
+      // quick wave arm raise then drop
+      setMood('wave');
+      setTimeout(()=>setMood('idle'), 500);
       return;
     }
     const cfg = {
-      jump:    { msg:['嘿！','跳！','耶～'], dur:2000, msgMs:1800 },
+      jump:    { msg:['嘿！','跳！','耶～'], dur:1800, msgMs:1600 },
       stretch: { msg:[], dur:2800, msgMs:0 },
-      think:   { msg:['该写什么报告？🤔','数据有意思...','嗯嗯~'], dur:3600, msgMs:3200 },
-      wave:    { msg:['👋 你好！','嗨！'], dur:2600, msgMs:2400 },
-      scratch: { msg:[], dur:2600, msgMs:0 },
+      think:   { msg:['该写什么报告？🤔','数据有意思...','嗯嗯~'], dur:3200, msgMs:2800 },
+      wave:    { msg:['👋 你好！','嗨！'], dur:2200, msgMs:2000 },
+      scratch: { msg:[], dur:2200, msgMs:0 },
       sleep:   { msg:['呼呼... 💤'], dur:0, msgMs:8000 },
     };
     const c = cfg[b] || {}; const m = c.msg?.[Math.floor(Math.random()*(c.msg.length||1))];
