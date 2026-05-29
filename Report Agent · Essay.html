@@ -1691,9 +1691,113 @@ Notion AI 的核心竞争力（上下文感知、工作区文档集成的优势�
   },
 ];
 
+function useCustomTemplates() {
+  const [templates, setTemplates] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_custom_templates') || '[]'); } catch { return []; }
+  });
+  const save = (tpl) => setTemplates(prev => {
+    const next = tpl.id ? prev.map(t => t.id === tpl.id ? tpl : t) : [...prev, { ...tpl, id: Date.now().toString() }];
+    try { localStorage.setItem('atlas_custom_templates', JSON.stringify(next)); } catch {}
+    return next;
+  });
+  const remove = (id) => setTemplates(prev => {
+    const next = prev.filter(t => t.id !== id);
+    try { localStorage.setItem('atlas_custom_templates', JSON.stringify(next)); } catch {}
+    return next;
+  });
+  return { templates, save, remove };
+}
+
+function TemplateEditor({ t, onSave, onClose, initial = null }) {
+  const ICONS = ['📊','📈','🔍','💡','📝','🗂','🏢','💰','🌐','⚡','🎯','📋'];
+  const TAG_OPTS = ['RESEARCH','DATA','STRATEGY','ANALYSIS','REPORT','CUSTOM'];
+  const [icon, setIcon]         = React.useState(initial?.icon    || '📝');
+  const [enName, setEnName]     = React.useState(initial?.en      || '');
+  const [cnName, setCnName]     = React.useState(initial?.cn      || '');
+  const [sub, setSub]           = React.useState(initial?.sub     || '');
+  const [tag, setTag]           = React.useState(initial?.tag     || 'CUSTOM');
+  const [minutes, setMinutes]   = React.useState(initial?.minutes || '3-5 min');
+  const [promptVal, setPromptVal] = React.useState(initial?.prompt || '');
+  const valid = enName.trim().length > 0 && promptVal.trim().length > 0;
+  const handleSave = () => { if (!valid) return; onSave({ ...initial, icon, en: enName.trim(), cn: cnName.trim(), sub: sub.trim(), tag, minutes, prompt: promptVal.trim() }); };
+
+  const lbl = { fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute, textTransform: 'uppercase', marginBottom: 5, display: 'block' };
+  const inp = { width: '100%', border: `1.5px solid ${t.rule}`, padding: '7px 10px', fontFamily: t.fontBody, fontSize: 13, color: t.ink, background: t.faint, outline: 'none', boxSizing: 'border-box' };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.38)', zIndex:9995, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={onClose}>
+      <div style={{ background:t.paper, border:`2px solid ${t.ink}`, boxShadow:`6px 6px 0 ${t.ink}`, width:560, maxWidth:'92vw', maxHeight:'90vh', overflow:'auto', padding:'32px 36px' }} onClick={e=>e.stopPropagation()}>
+
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24, borderBottom:`1px solid ${t.rule}`, paddingBottom:16 }}>
+          <div>
+            <div style={{ fontFamily:t.fontDisplay, fontWeight:800, fontSize:13, letterSpacing:1.6, textTransform:'uppercase' }}>{initial?.id ? 'Edit Template' : 'New Template'}</div>
+            <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, marginTop:3 }}>{initial?.id ? '编辑自定义模板' : '新建自定义模板'}</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:t.mute, lineHeight:1, padding:'0 4px' }}>×</button>
+        </div>
+
+        <div style={{ marginBottom:16 }}>
+          <span style={lbl}>Icon · 图标</span>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {ICONS.map(ic => (
+              <button key={ic} onClick={()=>setIcon(ic)} style={{ width:34, height:34, fontSize:17, cursor:'pointer', border: icon===ic ? `2px solid ${t.ink}` : `1.5px solid ${t.rule}`, background: icon===ic ? t.faint : t.paper, boxShadow: icon===ic ? `2px 2px 0 ${t.ink}` : 'none' }}>{ic}</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
+          <div>
+            <span style={lbl}>Template Name *</span>
+            <input value={enName} onChange={e=>setEnName(e.target.value)} placeholder="e.g. Competitor Scan" style={{...inp, borderColor: enName.trim() ? t.ink : t.rule}} maxLength={30}/>
+          </div>
+          <div>
+            <span style={lbl}>中文标题（可选）</span>
+            <input value={cnName} onChange={e=>setCnName(e.target.value)} placeholder="e.g. 竞品调研" style={inp} maxLength={20}/>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:16 }}>
+          <span style={lbl}>Subtitle · 副标题</span>
+          <input value={sub} onChange={e=>setSub(e.target.value)} placeholder="一句话描述这个模板的用途" style={inp} maxLength={50}/>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
+          <div>
+            <span style={lbl}>Tag · 标签</span>
+            <div style={{ display:'flex', border:`1.5px solid ${t.ink}` }}>
+              {TAG_OPTS.map((tg, i) => (
+                <button key={tg} onClick={()=>setTag(tg)} style={{ flex:1, padding:'5px 0', fontSize:7.5, fontFamily:t.fontMono, letterSpacing:0.5, border:'none', borderLeft: i===0?'none':`1px solid ${t.ink}`, background: tag===tg ? t.ink : t.paper, color: tag===tg ? t.paper : t.ink, cursor:'pointer' }}>{tg}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span style={lbl}>Est. Time · 预计用时</span>
+            <input value={minutes} onChange={e=>setMinutes(e.target.value)} placeholder="e.g. 5-8 min" style={inp} maxLength={15}/>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <span style={lbl}>Prompt · 提示词内容 *</span>
+          <textarea value={promptVal} onChange={e=>setPromptVal(e.target.value)}
+            placeholder="输入完整的提示词，点击模板卡片后会直接填入输入框…"
+            style={{...inp, height:150, resize:'vertical', lineHeight:1.6, borderColor: promptVal.trim() ? t.ink : t.rule}}/>
+        </div>
+
+        <div style={{ display:'flex', gap:10, justifyContent:'flex-end', paddingTop:16, borderTop:`1px solid ${t.rule}` }}>
+          <button onClick={onClose} style={{ padding:'8px 20px', fontFamily:t.fontMono, fontSize:10, letterSpacing:1.2, border:`1.5px solid ${t.rule}`, background:'transparent', color:t.mute, cursor:'pointer' }}>CANCEL</button>
+          <button onClick={handleSave} disabled={!valid} style={{ padding:'8px 22px', fontFamily:t.fontMono, fontSize:10, letterSpacing:1.2, border:`1.5px solid ${valid?t.ink:t.rule}`, background: valid?t.ink:'transparent', color: valid?t.paper:t.mute, cursor: valid?'pointer':'default', boxShadow: valid?`2px 2px 0 ${t.accent}`:'none' }}>SAVE TEMPLATE</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
   const editorial = density === 'editorial';
   const headSize = editorial ? 'xxl' : 'xl';
+  const customTpls = useCustomTemplates();
+  const [editorOpen, setEditorOpen] = React.useState(false);
+  const [editingTemplate, setEditingTemplate] = React.useState(null);
   const [now] = React.useState(() => new Date());
   const DAY_CN = ['日','一','二','三','四','五','六'];
   const coverDate = `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`;
@@ -1773,46 +1877,87 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
             </span>
             <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute }}>从模板开始</span>
             <span style={{ flex: 1, height: 1, background: t.rule }}/>
-            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>0{STARTERS.length} entries</span>
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
+              {String(STARTERS.length + customTpls.templates.length).padStart(2,'0')} entries
+            </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0,
             borderTop: `1px solid ${t.rule}`, borderLeft: `1px solid ${t.rule}`,
           }}>
-            {STARTERS.map((s, i) => (
-              <button key={s.num}
-                type="button"
-                onClick={() => setPrompt(s.prompt)}
-                style={{
-                  borderRight: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
-                  background: t.paper, padding: '18px 22px', textAlign: 'left',
-                  display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer',
-                  fontFamily: t.fontBody, color: t.ink,
-                  transition: 'background 0.12s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = t.faint}
-                onMouseLeave={e => e.currentTarget.style.background = t.paper}
+            {/* ── built-in starters ── */}
+            {STARTERS.map((s) => (
+              <button key={s.num} type="button" onClick={() => setPrompt(s.prompt)}
+                style={{ borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}`, background:t.paper, padding:'18px 22px', textAlign:'left', display:'flex', flexDirection:'column', gap:6, cursor:'pointer', fontFamily:t.fontBody, color:t.ink, transition:'background 0.12s' }}
+                onMouseEnter={e=>e.currentTarget.style.background=t.faint}
+                onMouseLeave={e=>e.currentTarget.style.background=t.paper}
               >
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{
-                    fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 600,
-                    fontSize: 22, color: t.accent, letterSpacing: -0.5, lineHeight: 1,
-                  }}>{s.num}</span>
+                <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:4 }}>
+                  <span style={{ fontFamily:t.fontSerif, fontStyle:'italic', fontWeight:600, fontSize:22, color:t.accent, letterSpacing:-0.5, lineHeight:1 }}>{s.num}</span>
                   <Tag t={t}>{s.tag}</Tag>
                 </div>
-                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 13, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                  {s.en}
-                </div>
-                <div style={{ fontFamily: t.fontCN, fontSize: 15, fontWeight: 600, lineHeight: 1.3 }}>{s.cn}</div>
-                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, lineHeight: 1.5 }}>{s.sub}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                  <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>{s.minutes}</span>
-                  <span style={{ flex: 1 }}/>
-                  <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.ink }}>↗</span>
+                <div style={{ fontFamily:t.fontDisplay, fontWeight:700, fontSize:13, letterSpacing:0.5, textTransform:'uppercase' }}>{s.en}</div>
+                <div style={{ fontFamily:t.fontCN, fontSize:15, fontWeight:600, lineHeight:1.3 }}>{s.cn}</div>
+                <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, lineHeight:1.5 }}>{s.sub}</div>
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                  <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1 }}>{s.minutes}</span>
+                  <span style={{ flex:1 }}/>
+                  <span style={{ fontFamily:t.fontMono, fontSize:11, color:t.ink }}>↗</span>
                 </div>
               </button>
             ))}
+
+            {/* ── custom templates ── */}
+            {customTpls.templates.map((s) => (
+              <div key={s.id} style={{ position:'relative', borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}` }}>
+                <button type="button" onClick={()=>setPrompt(s.prompt)}
+                  style={{ width:'100%', height:'100%', background:t.paper, padding:'18px 22px', paddingRight:54, textAlign:'left', display:'flex', flexDirection:'column', gap:6, cursor:'pointer', fontFamily:t.fontBody, color:t.ink, transition:'background 0.12s', border:'none' }}
+                  onMouseEnter={e=>e.currentTarget.style.background=t.faint}
+                  onMouseLeave={e=>e.currentTarget.style.background=t.paper}
+                >
+                  <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:4 }}>
+                    <span style={{ fontSize:22, lineHeight:1 }}>{s.icon || '📝'}</span>
+                    <div style={{ display:'flex', gap:5, alignItems:'center' }}>
+                      <Tag t={t}>{s.tag || 'CUSTOM'}</Tag>
+                      <span style={{ fontFamily:t.fontMono, fontSize:8, letterSpacing:1, color:t.accent, border:`1px solid ${t.accent}`, padding:'1px 4px' }}>CUSTOM</span>
+                    </div>
+                  </div>
+                  <div style={{ fontFamily:t.fontDisplay, fontWeight:700, fontSize:13, letterSpacing:0.5, textTransform:'uppercase' }}>{s.en}</div>
+                  {s.cn&&<div style={{ fontFamily:t.fontCN, fontSize:15, fontWeight:600, lineHeight:1.3 }}>{s.cn}</div>}
+                  {s.sub&&<div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, lineHeight:1.5 }}>{s.sub}</div>}
+                  <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                    <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1 }}>{s.minutes}</span>
+                    <span style={{ flex:1 }}/><span style={{ fontFamily:t.fontMono, fontSize:11, color:t.ink }}>↗</span>
+                  </div>
+                </button>
+                {/* edit / delete */}
+                <div style={{ position:'absolute', top:10, right:10, display:'flex', flexDirection:'column', gap:4 }}>
+                  <button onClick={e=>{e.stopPropagation();setEditingTemplate(s);setEditorOpen(true);}} title="编辑"
+                    style={{ width:22, height:22, border:`1px solid ${t.rule}`, background:t.paper, cursor:'pointer', fontFamily:t.fontMono, fontSize:10, color:t.mute, display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>✎</button>
+                  <button onClick={e=>{e.stopPropagation();customTpls.remove(s.id);}} title="删除"
+                    style={{ width:22, height:22, border:`1px solid ${t.rule}`, background:t.paper, cursor:'pointer', fontFamily:t.fontMono, fontSize:12, color:t.mute, display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>×</button>
+                </div>
+              </div>
+            ))}
+
+            {/* ── + add new template ── */}
+            <button type="button" onClick={()=>{setEditingTemplate(null);setEditorOpen(true);}}
+              style={{ borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}`, background:'transparent', padding:'18px 22px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', minHeight:130, border:'none', borderRight:`1px dashed ${t.rule}`, borderBottom:`1px dashed ${t.rule}`, outline:`1px dashed ${t.rule}` }}
+              onMouseEnter={e=>{e.currentTarget.style.background=t.faint;}}
+              onMouseLeave={e=>{e.currentTarget.style.background='transparent';}}
+            >
+              <span style={{ fontFamily:t.fontSerif, fontStyle:'italic', fontSize:28, color:t.rule, lineHeight:1 }}>+</span>
+              <span style={{ fontFamily:t.fontMono, fontSize:9, letterSpacing:1.5, color:t.mute, textTransform:'uppercase' }}>Add Template</span>
+              <span style={{ fontFamily:t.fontCN, fontSize:11, color:t.mute }}>自定义模板</span>
+            </button>
           </div>
+
+          {/* template editor modal */}
+          {editorOpen&&(
+            <TemplateEditor t={t} initial={editingTemplate}
+              onSave={tpl=>{customTpls.save(tpl);setEditorOpen(false);setEditingTemplate(null);}}
+              onClose={()=>{setEditorOpen(false);setEditingTemplate(null);}}/>
+          )}
         </div>
       </div>
     </div>
@@ -5395,6 +5540,34 @@ const SAMPLE_FIRST_PROMPT = '梳理 2025 年 Q1 国内咖啡赛道的融资动�
 
 // ── Pet Widget (Rubber Hose Retro) ───────────────────────────────────────────
 const PET_W = 100;
+
+const PET_QA_KB = [
+  { kw:/导出|export/i,          ans:'点击右上角的 Export 按钮，支持 PDF、Markdown 和 HTML 三种格式～' },
+  { kw:/数据源|source/i,        ans:'目前支持手动输入，正在接入 Google 数据和 RSS 源，敬请期待！' },
+  { kw:/图表|chart|可视化/i,     ans:'报告里会自动生成 Fig. 标注区域，图表渲染功能在路线图上～' },
+  { kw:/模型|model|claude|gpt/i,ans:'可以在右上角 Model 选择器切换，支持 Claude 全系列和自定义 API！' },
+  { kw:/保存|save/i,            ans:'报告生成后点击 Save 按钮，保存到左侧 Library 里随时查看。' },
+  { kw:/收费|price|付费|免费/i,  ans:'Atlas 目前处于 Beta，完全免费！使用时需要自备 API Key。' },
+  { kw:/api.?key|apikey|密钥/i, ans:'顶部栏 → Model 设置 → 填入你的 Anthropic API Key 即可开始。' },
+  { kw:/多久|多长时间|speed|速度/i,ans:'根据报告长度约需 3–12 分钟。High 模式更细致，Low 模式更快！' },
+  { kw:/模板|template/i,        ans:'在主页右下角点击 "＋ Add Template" 可以新建自己的提示词模板～' },
+  { kw:/你好|hello|hi|嗨/i,     ans:'你好呀！我是 Atlas 的小助手，有什么可以帮你的吗？😊' },
+];
+
+function getPetReply(msg) {
+  for (const q of PET_QA_KB) { if (q.kw.test(msg)) return q.ans; }
+  return ['这个我暂时不清楚～可以去 GitHub Issues 提问！','好问题！我的知识库还在更新中，稍后再来问？','嗯……让我想想（其实我也不确定 😅）','这个问题好有深度，建议查看文档或联系支持！'][Math.floor(Math.random()*4)];
+}
+
+const CLICK_REACTIONS = [
+  { w:28, mood:'jump',    bubble:'啊！吓我一跳！',    dur:800 },
+  { w:18, mood:'idle',    bubble:'>///<',              dur:600 },
+  { w:18, mood:'dance',   bubble:'嗨～找我有事？',     dur:700 },
+  { w:16, mood:'think',   bubble:'？有什么需要~',      dur:700 },
+  { w:12, mood:'wave',    bubble:'来找我啦，抱抱！',    dur:600 },
+  { w:8,  mood:'scratch', bubble:'...说吧',            dur:500 },
+];
+
 function PetWidget({ t }) {
   const [mood, setMood] = React.useState('idle');
   const [blink, setBlink] = React.useState(false);
@@ -5402,6 +5575,8 @@ function PetWidget({ t }) {
   const [bubble, setBubble] = React.useState(null);
   const [inputOpen, setInputOpen] = React.useState(false);
   const [inputVal, setInputVal] = React.useState('');
+  const [activeTab, setActiveTab] = React.useState('cmd');
+  const [chatHistory, setChatHistory] = React.useState([]);
   const [minimized, setMinimized] = React.useState(false);
   const [petLeft, setPetLeft] = React.useState(null);
   const [facingRight, setFacingRight] = React.useState(false);
@@ -5410,6 +5585,7 @@ function PetWidget({ t }) {
   const bubTimerRef = React.useRef(null);
   const autoTimerRef = React.useRef(null);
   const audioCtxRef = React.useRef(null);
+  const chatEndRef = React.useRef(null);
 
   // ── init ───────────────────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -5423,7 +5599,7 @@ function PetWidget({ t }) {
     return () => clearTimeout(t);
   }, []);
 
-  // eye wander + return to center
+  // eye wander
   React.useEffect(() => {
     let t; const lp = () => {
       t = setTimeout(() => {
@@ -5442,14 +5618,19 @@ function PetWidget({ t }) {
     const sl = mood === 'sleep';
     const pool = sl
       ? [['sleep',4],['idle',1]]
-      : [['idle',4],['walk',2],['run',0.4],['jump',1.2],['think',1],['wave',0.6],['scratch',0.5],['stretch',0.4],['sleep',0.3]];
+      : [['idle',3],['walk',2],['run',0.4],['jump',1.2],['think',1.2],['wave',0.8],['scratch',0.7],['stretch',0.6],['lookaround',1],['sleep',0.3]];
     const tot = pool.reduce((s,[,w])=>s+w,0);
     let rnd = Math.random()*tot, pick = pool[0][0];
     for (const [b,w] of pool) { rnd-=w; if(rnd<=0){pick=b;break;} }
-    const delay = sl ? 11000+Math.random()*9000 : 4000+Math.random()*9000;
+    const delay = sl ? 11000+Math.random()*9000 : 3500+Math.random()*7000;
     autoTimerRef.current = setTimeout(()=>exec(pick), delay);
     return () => clearTimeout(autoTimerRef.current);
   }, [mood]);
+
+  // scroll chat to bottom
+  React.useEffect(() => {
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory]);
 
   // helpers
   const showBubble = (msg, ms=2600) => {
@@ -5510,22 +5691,28 @@ function PetWidget({ t }) {
   const exec = (b) => {
     if(b==='walk'){startWalk(false);return;}
     if(b==='run'){startWalk(true);return;}
+    if(b==='lookaround'){
+      // quick eye wander sequence without changing mood
+      const seq = [1,0,-1,0,1,-1,0];
+      seq.forEach((d,i)=>setTimeout(()=>setEyeDir(d), i*300));
+      return;
+    }
     const cfg = {
-      jump:    { msg:['嘿！','跳！','耶！'], dur:2000, msgMs:1800 },
+      jump:    { msg:['嘿！','跳！','耶～'], dur:2000, msgMs:1800 },
       stretch: { msg:[], dur:2800, msgMs:0 },
       think:   { msg:['该写什么报告？🤔','数据有意思...','嗯嗯~'], dur:3600, msgMs:3200 },
       wave:    { msg:['👋 你好！','嗨！'], dur:2600, msgMs:2400 },
-      scratch: { msg:['', ''], dur:2600, msgMs:0 },
+      scratch: { msg:[], dur:2600, msgMs:0 },
       sleep:   { msg:['呼呼... 💤'], dur:0, msgMs:8000 },
     };
-    const c = cfg[b] || {}; const m = c.msg?.[Math.floor(Math.random()*(c.msg.length))];
+    const c = cfg[b] || {}; const m = c.msg?.[Math.floor(Math.random()*(c.msg.length||1))];
     if(m) showBubble(m, c.msgMs||2600);
     setMood(b);
     if(c.dur) setTimeout(()=>setMood('idle'), c.dur);
   };
 
   const handleCmd = (raw) => {
-    setInputOpen(false); setInputVal('');
+    setInputVal('');
     const cmd = raw.trim(); if(!cmd) return;
     if(autoTimerRef.current) clearTimeout(autoTimerRef.current);
     stopAnim();
@@ -5543,6 +5730,32 @@ function PetWidget({ t }) {
     else if(/回来|回家|过来/.test(cmd)){showBubble('回来啦！');toCorner();}
     else if(/跳|蹦/.test(cmd)){exec('jump');}
     else{showBubble(['好的！🐾','嗯！','收到！','啊？😅','知道啦~'][Math.floor(Math.random()*5)]);}
+  };
+
+  const handleQA = (question) => {
+    if (!question.trim()) return;
+    setInputVal('');
+    const userMsg = question.trim();
+    setChatHistory(h => [...h, { role:'user', text:userMsg }]);
+    setMood('think');
+    setTimeout(() => {
+      const reply = getPetReply(userMsg);
+      setChatHistory(h => [...h, { role:'pet', text:reply }]);
+      setMood('idle');
+      showBubble('回答好了！', 1400);
+    }, 1200 + Math.random()*600);
+  };
+
+  // Click reaction handler
+  const handlePetClick = () => {
+    if (inputOpen) { setInputOpen(false); return; }
+    const tot = CLICK_REACTIONS.reduce((s,r)=>s+r.w,0);
+    let rnd = Math.random()*tot, react = CLICK_REACTIONS[0];
+    for (const r of CLICK_REACTIONS) { rnd -= r.w; if (rnd <= 0) { react = r; break; } }
+    stopAnim(); if(autoTimerRef.current) clearTimeout(autoTimerRef.current);
+    showBubble(react.bubble, react.dur + 800);
+    setMood(react.mood);
+    setTimeout(() => { setMood('idle'); setTimeout(() => setInputOpen(true), 150); }, react.dur);
   };
 
   // ── derived animation values ──────────────────────────────────────────────
@@ -5633,6 +5846,14 @@ function PetWidget({ t }) {
     ? {position:'fixed',left:petLeft,bottom:22,zIndex:9990,userSelect:'none'}
     : {position:'fixed',right:22,bottom:22,zIndex:9990,userSelect:'none'};
 
+  // shared panel styles
+  const tabStyle = (active) => ({
+    flex:1, padding:'5px 0', fontFamily:'monospace', fontSize:9, letterSpacing:1.2,
+    textTransform:'uppercase', border:'none', borderBottom: active ? `2px solid ${t?.ink||'#111'}` : '2px solid transparent',
+    background:'transparent', color: active ? (t?.ink||'#111') : (t?.mute||'#888'),
+    cursor:'pointer',
+  });
+
   return (
     <div style={posStyle}>
       {/* × button */}
@@ -5642,30 +5863,96 @@ function PetWidget({ t }) {
         fontSize:11,fontWeight:700,lineHeight:'22px',textAlign:'center',
       }}>×</button>
 
-      {/* Command panel */}
+      {/* ── Upgraded 3-tab panel ── */}
       {inputOpen&&(
         <div onClick={e=>e.stopPropagation()} style={{
           position:'absolute',bottom:'106%',right:0,background:t?.paper||'#fff',
-          border:`2px solid ${t?.ink||'#111'}`,padding:'10px 12px',width:234,
-          boxShadow:`3px 3px 0 ${t?.ink||'#111'}`,animation:'essay-fadein 0.15s ease',zIndex:11,
+          border:`2px solid ${t?.ink||'#111'}`,width:256,
+          boxShadow:`4px 4px 0 ${t?.ink||'#111'}`,animation:'essay-fadein 0.15s ease',zIndex:11,
         }}>
-          <div style={{fontFamily:t?.fontMono||'monospace',fontSize:9,color:t?.mute||'#888',marginBottom:6,letterSpacing:1.5}}>ATLAS PET · 发指令</div>
-          <input autoFocus value={inputVal}
-            onChange={e=>setInputVal(e.target.value)}
-            onKeyDown={e=>{if(e.key==='Enter')handleCmd(inputVal);if(e.key==='Escape')setInputOpen(false);}}
-            placeholder="散步、弹吉他、跳舞、工作…"
-            style={{width:'100%',border:`1.5px solid ${t?.rule||'#ddd'}`,padding:'6px 8px',
-              fontFamily:t?.fontCN||'sans-serif',fontSize:12,color:t?.ink||'#111',
-              background:t?.faint||'#f9f9f9',outline:'none',boxSizing:'border-box'}}/>
-          <div style={{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
-            {['散步','跑步','弹吉他','跳舞','转圈','工作','挥手','睡觉','回来'].map(h=>(
-              <button key={h} onClick={()=>handleCmd(h)} style={{
-                padding:'2px 7px',fontFamily:t?.fontMono||'monospace',fontSize:8.5,
-                border:`1px solid ${t?.rule||'#ddd'}`,background:'transparent',
-                cursor:'pointer',color:t?.inkSoft||'#555',letterSpacing:0.5,
-              }}>{h}</button>
+          {/* tab bar */}
+          <div style={{ display:'flex', borderBottom:`1.5px solid ${t?.rule||'#ddd'}`, padding:'0 2px' }}>
+            {[['cmd','发指令'],['qa','问问我'],['help','帮助']].map(([id,label])=>(
+              <button key={id} onClick={()=>setActiveTab(id)} style={tabStyle(activeTab===id)}>{label}</button>
             ))}
           </div>
+
+          {/* ── CMD tab ── */}
+          {activeTab==='cmd'&&(
+            <div style={{ padding:'10px 12px' }}>
+              <div style={{ fontFamily:t?.fontMono||'monospace', fontSize:9, color:t?.mute||'#888', marginBottom:6, letterSpacing:1.5 }}>ATLAS PET · 发指令</div>
+              <input autoFocus value={inputVal}
+                onChange={e=>setInputVal(e.target.value)}
+                onKeyDown={e=>{if(e.key==='Enter'){handleCmd(inputVal);setInputOpen(false);}if(e.key==='Escape')setInputOpen(false);}}
+                placeholder="散步、弹吉他、跳舞、工作…"
+                style={{ width:'100%', border:`1.5px solid ${t?.rule||'#ddd'}`, padding:'6px 8px',
+                  fontFamily:t?.fontCN||'sans-serif', fontSize:12, color:t?.ink||'#111',
+                  background:t?.faint||'#f9f9f9', outline:'none', boxSizing:'border-box' }}/>
+              <div style={{ display:'flex', gap:4, marginTop:8, flexWrap:'wrap' }}>
+                {['散步','跑步','弹吉他','跳舞','转圈','工作','挥手','睡觉','回来'].map(h=>(
+                  <button key={h} onClick={()=>{handleCmd(h);setInputOpen(false);}} style={{
+                    padding:'2px 6px', fontFamily:t?.fontMono||'monospace', fontSize:8,
+                    border:`1px solid ${t?.rule||'#ddd'}`, background:'transparent',
+                    cursor:'pointer', color:t?.inkSoft||'#555', letterSpacing:0.5,
+                  }}>{h}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Q&A tab ── */}
+          {activeTab==='qa'&&(
+            <div style={{ display:'flex', flexDirection:'column', height:280 }}>
+              <div style={{ flex:1, overflowY:'auto', padding:'10px 12px', display:'flex', flexDirection:'column', gap:8 }}>
+                {chatHistory.length===0&&(
+                  <div style={{ fontFamily:t?.fontCN||'sans-serif', fontSize:12, color:t?.mute||'#999', textAlign:'center', marginTop:28, lineHeight:1.7 }}>
+                    有任何关于 Atlas 的问题<br/>都可以问我～
+                  </div>
+                )}
+                {chatHistory.map((msg,i)=>(
+                  <div key={i} style={{ display:'flex', justifyContent: msg.role==='user'?'flex-end':'flex-start' }}>
+                    <div style={{
+                      maxWidth:'80%', padding:'7px 10px',
+                      background: msg.role==='user' ? (t?.ink||'#111') : (t?.faint||'#f5f5f5'),
+                      color: msg.role==='user' ? (t?.paper||'#fff') : (t?.ink||'#111'),
+                      fontFamily: t?.fontCN||'sans-serif', fontSize:12, lineHeight:1.5,
+                      border: msg.role==='pet' ? `1px solid ${t?.rule||'#ddd'}` : 'none',
+                    }}>{msg.text}</div>
+                  </div>
+                ))}
+                {mood==='think'&&(
+                  <div style={{ display:'flex', justifyContent:'flex-start' }}>
+                    <div style={{ padding:'7px 10px', border:`1px solid ${t?.rule||'#ddd'}`, color:t?.mute||'#888', fontFamily:t?.fontMono||'monospace', fontSize:10, letterSpacing:1 }}>思考中 ···</div>
+                  </div>
+                )}
+                <div ref={chatEndRef}/>
+              </div>
+              <div style={{ borderTop:`1px solid ${t?.rule||'#ddd'}`, padding:'8px 10px', display:'flex', gap:6 }}>
+                <input autoFocus={activeTab==='qa'} value={inputVal} onChange={e=>setInputVal(e.target.value)}
+                  onKeyDown={e=>{if(e.key==='Enter')handleQA(inputVal);if(e.key==='Escape')setInputOpen(false);}}
+                  placeholder="问我任何关于 Atlas 的问题…"
+                  style={{ flex:1, border:`1.5px solid ${t?.rule||'#ddd'}`, padding:'5px 8px', fontFamily:t?.fontCN||'sans-serif', fontSize:12, color:t?.ink||'#111', background:t?.faint||'#f9f9f9', outline:'none' }}/>
+                <button onClick={()=>handleQA(inputVal)} style={{ padding:'5px 10px', border:`1.5px solid ${t?.ink||'#111'}`, background:t?.ink||'#111', color:t?.paper||'#fff', fontFamily:t?.fontMono||'monospace', fontSize:9, cursor:'pointer', letterSpacing:1 }}>↵</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Help tab ── */}
+          {activeTab==='help'&&(
+            <div style={{ padding:'10px 12px', maxHeight:260, overflowY:'auto' }}>
+              <div style={{ fontFamily:t?.fontMono||'monospace', fontSize:9, color:t?.mute||'#888', marginBottom:10, letterSpacing:1.5 }}>QUICK HELP · 常见问题</div>
+              {[
+                ['如何开始生成报告？','在主页输入框描述你的需求，选择模型后点击 Generate。'],
+                ['支持哪些 AI 模型？','Claude 全系列（Opus/Sonnet/Haiku）及自定义 OpenAI 兼容 API。'],
+                ['报告如何导出？','报告页右上角 Export 按钮，支持 PDF / Markdown / HTML。'],
+                ['如何自定义模板？','主页"Or pick a starter"区域底部有"＋ Add Template"入口。'],
+                ['API Key 在哪里填？','顶部工具栏 → Model 图标 → 对应模型的密钥输入框。'],
+                ['遇到问题去哪里反馈？','GitHub Issues 或邮件联系我们。'],
+              ].map(([q,a],i)=>(
+                <HelpItem key={i} t={t} q={q} a={a}/>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -5687,7 +5974,7 @@ function PetWidget({ t }) {
       {/* Direction flip + SVG pet */}
       <div style={{transform:`scaleX(${facingRight?-1:1})`,display:'inline-block',transformOrigin:'50% 100%'}}>
         <svg viewBox="0 0 110 152" width={PET_W} height="138" style={{display:'block',overflow:'visible',cursor:'pointer'}}
-          onClick={()=>setInputOpen(o=>!o)} title="点击发指令 💬">
+          onClick={handlePetClick} title="点击互动 💬">
 
           {/* shadow */}
           <ellipse cx="55" cy="150" rx="28" ry="4.5" fill="rgba(0,0,0,0.09)" style={{filter:'blur(3px)'}}/>
@@ -5719,7 +6006,7 @@ function PetWidget({ t }) {
             {/* Body */}
             <ellipse cx="55" cy="85" rx="26" ry="27" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.8"/>
 
-            {/* Guitar prop – behind arms, in front of body */}
+            {/* Guitar prop */}
             {mood==='guitar'&&(
               <g transform="translate(2,52) rotate(-10,16,28)">
                 <rect x="14" y="0" width="5.5" height="36" rx="2.5" fill="#5c3320" stroke="#1c1c1c" strokeWidth="1.2"/>
@@ -5777,17 +6064,13 @@ function PetWidget({ t }) {
             <g style={{animation:'rh-head 4s ease-in-out -0.7s infinite'}}>
               <circle cx="55" cy="41" r="34" fill="#f8f4ec" stroke="#1c1c1c" strokeWidth="2.8"/>
 
-              {/* ZZZ */}
               {isSleep&&<>
                 <text x="76" y="22" fontSize="11" fontFamily="Georgia,serif" fill="#b0b0b0">z</text>
                 <text x="84" y="13" fontSize="16" fontFamily="Georgia,serif" fill="#a0a0a0">Z</text>
                 <text x="93" y="4"  fontSize="20" fontFamily="Georgia,serif" fill="#909090">Z</text>
               </>}
-
-              {/* Drool */}
               {isSleep&&<path d="M55 62 Q56.5 70 56 75" stroke="rgba(150,200,255,0.5)" strokeWidth="4" fill="none" strokeLinecap="round"/>}
 
-              {/* Normal open eyes */}
               {!isSleep&&mood!=='dance'&&<>
                 <g style={{transformOrigin:'41px 37px'}}>
                   <circle cx="41" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
@@ -5805,13 +6088,11 @@ function PetWidget({ t }) {
                   style={{transform:blink?'translateY(14px)':'translateY(0px)',transition:'transform 0.07s',transformOrigin:'69px 26px'}}/>
               </>}
 
-              {/* Sleep closed eyes */}
               {isSleep&&<>
                 <path d="M28 40 Q41 54 54 40" fill="none" stroke="#1c1c1c" strokeWidth="3" strokeLinecap="round"/>
                 <path d="M56 40 Q69 54 82 40" fill="none" stroke="#1c1c1c" strokeWidth="3" strokeLinecap="round"/>
               </>}
 
-              {/* Dance star eyes */}
               {mood==='dance'&&<>
                 <circle cx="41" cy="37" r="12.5" fill="white" stroke="#1c1c1c" strokeWidth="2"/>
                 <text x="33" y="43" fontSize="14" fill="#1c1c1c">★</text>
@@ -5819,25 +6100,20 @@ function PetWidget({ t }) {
                 <text x="61" y="43" fontSize="14" fill="#1c1c1c">★</text>
               </>}
 
-              {/* Guitar sunglasses */}
               {mood==='guitar'&&<>
                 <rect x="27" y="28" width="28" height="16" rx="8" fill="rgba(10,10,10,0.88)"/>
                 <rect x="55" y="28" width="28" height="16" rx="8" fill="rgba(10,10,10,0.88)"/>
                 <line x1="27" y1="36" x2="55" y2="36" stroke="rgba(10,10,10,0.88)" strokeWidth="5"/>
               </>}
 
-              {/* Brows */}
               <path d={browLd} fill="none" stroke="#1c1c1c" strokeWidth="2.5" strokeLinecap="round"/>
               <path d={browRd} fill="none" stroke="#1c1c1c" strokeWidth="2.5" strokeLinecap="round"/>
 
-              {/* Blush */}
               <ellipse cx="24" cy="50" rx="7" ry="4.5" fill="#ff9090" opacity={blushOp} style={{transition:'opacity 0.4s'}}/>
               <ellipse cx="86" cy="50" rx="7" ry="4.5" fill="#ff9090" opacity={blushOp} style={{transition:'opacity 0.4s'}}/>
 
-              {/* Mouth */}
               {!isSleep&&<path d={mouthD} fill="none" stroke="#1c1c1c" strokeWidth="2.2" strokeLinecap="round"/>}
 
-              {/* Guitar floating notes */}
               {mood==='guitar'&&<>
                 <text x="88" y="20" fontFamily="Georgia,serif" fontSize="18" fill="rgba(200,140,30,0.85)"
                   style={{animation:'rh-drift 0.5s ease-in-out infinite'}}>♪</text>
@@ -5853,6 +6129,19 @@ function PetWidget({ t }) {
 
         </svg>
       </div>
+    </div>
+  );
+}
+
+function HelpItem({ t, q, a }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div style={{ borderBottom:`1px solid ${t?.rule||'#eee'}`, paddingBottom:6, marginBottom:6 }}>
+      <button onClick={()=>setOpen(o=>!o)} style={{ width:'100%', textAlign:'left', background:'none', border:'none', cursor:'pointer', padding:'3px 0', display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+        <span style={{ fontFamily:t?.fontCN||'sans-serif', fontSize:11.5, color:t?.ink||'#111', lineHeight:1.4 }}>{q}</span>
+        <span style={{ fontFamily:t?.fontMono||'monospace', fontSize:10, color:t?.mute||'#888', flexShrink:0 }}>{open?'▲':'▼'}</span>
+      </button>
+      {open&&<div style={{ fontFamily:t?.fontCN||'sans-serif', fontSize:11, color:t?.mute||'#888', lineHeight:1.6, paddingTop:4, paddingLeft:2 }}>{a}</div>}
     </div>
   );
 }
