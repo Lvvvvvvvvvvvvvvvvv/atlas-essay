@@ -941,13 +941,17 @@ function UMenuReportModal({ visible, title, reports, selected, setSelected, onCo
 // ── Permission system ─────────────────────────────────────────────────────
 function usePermission() {
   const role = (() => { try { return localStorage.getItem('atlas_role') || 'admin'; } catch { return 'admin'; } })();
+  const DEFAULT_RULES = {
+    admin:  ['generate','save','export','template','library','sources','source_manage','sync','model_config','appearance'],
+    editor: ['generate','save','export','template','library','sources','appearance'],
+    viewer: ['library'],
+  };
   const can = (feature) => {
-    const rules = {
-      admin:  ['generate','save','export','template','library','sources','source_manage','sync','model_config','appearance'],
-      editor: ['generate','save','export','template','library','sources','appearance'],
-      viewer: ['library'],
-    };
-    return (rules[role] || rules.admin).includes(feature);
+    try {
+      const cfg = JSON.parse(localStorage.getItem('atlas_perm_config') || 'null');
+      if (cfg && cfg[role]) return !!cfg[role][feature];
+    } catch {}
+    return (DEFAULT_RULES[role] || DEFAULT_RULES.admin).includes(feature);
   };
   return { role, can };
 }
@@ -955,13 +959,13 @@ function usePermission() {
 // ── Settings Modal ────────────────────────────────────────────────────────
 function SettingsModal({ t, modelStore, onClose }) {
   const [tab, setTab] = React.useState('model');
-  const [modalReports] = React.useState(() => {
+  const [modalReports, setModalReports] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; }
   });
   const [exportSel, setExportSel] = React.useState(() => new Set());
   const [clearSel, setClearSel] = React.useState(() => new Set());
   React.useEffect(() => {
-    const ids = (JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]')).map(r => r.id);
+    const ids = modalReports.map(r => r.id);
     setExportSel(new Set(ids));
     setClearSel(new Set(ids));
   }, []);
@@ -975,31 +979,115 @@ function SettingsModal({ t, modelStore, onClose }) {
   });
   const saveRole = (r) => { setRoleState(r); try { localStorage.setItem('atlas_role', r); } catch {} };
 
-  const doExport = () => {
-    const data = modalReports.filter(r => exportSel.has(r.id));
-    if (!data.length) return;
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `atlas-reports-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
+  const [exportFmt, setExportFmt] = React.useState('json');
+  const [exportStatus, setExportStatus] = React.useState('idle');
+  const [exportStatusMsg, setExportStatusMsg] = React.useState('');
+
+  const [confirmingClear, setConfirmingClear] = React.useState(false);
+  const [clearToast, setClearToast] = React.useState('');
+
+  const PERM_TABLE = [
+    { feature: '生成报告',          key: 'generate',      admin: true,  editor: true,  viewer: false },
+    { feature: '保存 / 导出报告',   key: 'save',          admin: true,  editor: true,  viewer: false },
+    { feature: '自定义模板管理',     key: 'template',      admin: true,  editor: true,  viewer: false },
+    { feature: '查看报告库',         key: 'library',       admin: true,  editor: true,  viewer: true  },
+    { feature: '查看 Sources 页',   key: 'sources',       admin: true,  editor: true,  viewer: false },
+    { feature: '添加 / 断开数据源', key: 'source_manage', admin: true,  editor: false, viewer: false },
+    { feature: '手动同步数据源',     key: 'sync',          admin: true,  editor: false, viewer: false },
+    { feature: '修改模型 / 参数',   key: 'model_config',  admin: true,  editor: false, viewer: false },
+    { feature: '修改主题 / 外观',   key: 'appearance',    admin: true,  editor: true,  viewer: false },
+  ];
+  const [permConfig, setPermConfig] = React.useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('atlas_perm_config') || 'null');
+      if (stored) return stored;
+    } catch {}
+    const cfg = { admin: {}, editor: {}, viewer: {} };
+    for (const row of PERM_TABLE) {
+      cfg.admin[row.key] = row.admin;
+      cfg.editor[row.key] = row.editor;
+      cfg.viewer[row.key] = row.viewer;
+    }
+    return cfg;
+  });
+  const togglePerm = (roleKey, featureKey) => {
+    setPermConfig(prev => {
+      const next = { ...prev, [roleKey]: { ...prev[roleKey], [featureKey]: !prev[roleKey]?.[featureKey] } };
+      try { localStorage.setItem('atlas_perm_config', JSON.stringify(next)); } catch {}
+      return next;
+    });
   };
-  const doClear = () => {
-    if (!clearSel.size) return;
-    if (!window.confirm(`确认删除 ${clearSel.size} 份报告？此操作不可撤销。`)) return;
-    const keep = modalReports.filter(r => !clearSel.has(r.id));
-    try { localStorage.setItem('atlas_saved_reports', JSON.stringify(keep)); } catch {}
-    window.location.reload();
-  };
+
   const handleAddModel = () => {
     if (!form.name || !form.modelId || !form.apiUrl || !form.apiKey) return;
     modelStore.addModel({ id: form.modelId, name: form.name, apiUrl: form.apiUrl, apiKey: form.apiKey, provider: form.provider || 'Custom', builtin: false });
     setForm(emptyForm); setShowAddForm(false); setShowKey(false);
   };
 
+  const _norm = (r) => ({
+    ...r,
+    title: r.title || r.meta?.titleEn || r.meta?.title?.en || r.prompt?.slice(0,52) || '报告',
+    subtitle: r.subtitle || r.meta?.subtitle || '',
+  });
+
+  const doExport = async () => {
+    const data = modalReports.filter(r => exportSel.has(r.id));
+    if (!data.length) return;
+    setExportStatus('loading'); setExportStatusMsg('');
+    try {
+      if (exportFmt === 'json') {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        _dlBlob(blob, `atlas-reports-${new Date().toISOString().slice(0,10)}.json`);
+        setExportStatus('done'); setExportStatusMsg(`✓ JSON 已下载（${data.length} 份）`);
+      } else if (exportFmt === 'pdf') {
+        for (const r of data) { await _exportPDFDownload(_norm(r)); }
+        setExportStatus('done'); setExportStatusMsg(`✓ PDF 已下载（${data.length} 份）`);
+      } else if (exportFmt === 'docx') {
+        for (const r of data) {
+          const html = _buildWordHTML(_norm(r));
+          _dlBlob(new Blob(['﻿', html], { type: 'application/vnd.ms-word;charset=utf-8' }), _slug((r.title || r.meta?.titleEn || 'report')) + '.doc');
+        }
+        setExportStatus('done'); setExportStatusMsg(`✓ DOCX 已下载（${data.length} 份）`);
+      } else if (exportFmt === 'md') {
+        const combined = data.map(r => _buildMarkdown(_norm(r))).join('\n\n---\n\n');
+        _dlBlob(new Blob([combined], { type: 'text/markdown;charset=utf-8' }), `atlas-reports-${new Date().toISOString().slice(0,10)}.md`);
+        setExportStatus('done'); setExportStatusMsg(`✓ Markdown 已下载（${data.length} 份）`);
+      } else if (exportFmt === 'notion') {
+        const combined = data.map(r => _buildMarkdown(_norm(r))).join('\n\n---\n\n');
+        await navigator.clipboard.writeText(combined);
+        setExportStatus('done'); setExportStatusMsg('✓ 已复制 → 在 Notion 新建页面后直接粘贴');
+      } else if (exportFmt === 'link') {
+        const base = window.location.href.split('?')[0].split('#')[0];
+        const links = data.map(r => {
+          const param = btoa(encodeURIComponent(JSON.stringify({ id: r.id, title: r.title || r.meta?.titleEn || '', ts: Date.now() }))).slice(0, 32);
+          return `${base}?r=${param}`;
+        }).join('\n');
+        await navigator.clipboard.writeText(links);
+        setExportStatus('done'); setExportStatusMsg(`✓ ${data.length} 条链接已复制`);
+      }
+    } catch (err) {
+      setExportStatus('error'); setExportStatusMsg('✕ 操作失败：' + (err.message || String(err)));
+    }
+    setTimeout(() => { setExportStatus('idle'); setExportStatusMsg(''); }, 4000);
+  };
+
+  const doClear = () => { if (clearSel.size) setConfirmingClear(true); };
+  const doConfirmClear = () => {
+    const count = clearSel.size;
+    const keep = modalReports.filter(r => !clearSel.has(r.id));
+    try { localStorage.setItem('atlas_saved_reports', JSON.stringify(keep)); } catch {}
+    window.dispatchEvent(new Event('atlas-reports-updated'));
+    setModalReports(keep);
+    setExportSel(new Set(keep.map(r => r.id)));
+    setClearSel(new Set());
+    setConfirmingClear(false);
+    setClearToast(`已删除 ${count} 份报告`);
+    setTimeout(() => setClearToast(''), 3500);
+  };
+
   const TABS = [
     { k: 'model',      label: '模型',  sub: '参数 & 管理' },
-    { k: 'export',     label: '导出',  sub: 'JSON 备份'   },
+    { k: 'export',     label: '导出',  sub: '多格式导出'  },
     { k: 'clear',      label: '清除',  sub: '本地数据'    },
     { k: 'permission', label: '权限',  sub: '角色管理'    },
   ];
@@ -1008,16 +1096,13 @@ function SettingsModal({ t, modelStore, onClose }) {
     { k: 'editor', label: '编辑',   desc: '生成报告，不能改数据源', color: '#2a8c5c' },
     { k: 'viewer', label: '查看者', desc: '只读，仅查看报告库',    color: '#767368' },
   ];
-  const PERM_TABLE = [
-    { feature: '生成报告',         admin: true,  editor: true,  viewer: false },
-    { feature: '保存 / 导出报告',  admin: true,  editor: true,  viewer: false },
-    { feature: '自定义模板管理',    admin: true,  editor: true,  viewer: false },
-    { feature: '查看报告库',        admin: true,  editor: true,  viewer: true  },
-    { feature: '查看 Sources 页',  admin: true,  editor: true,  viewer: false },
-    { feature: '添加 / 断开数据源',admin: true,  editor: false, viewer: false },
-    { feature: '手动同步数据源',    admin: true,  editor: false, viewer: false },
-    { feature: '修改模型 / 参数',  admin: true,  editor: false, viewer: false },
-    { feature: '修改主题 / 外观',  admin: true,  editor: true,  viewer: false },
+  const EXPORT_FORMATS_SETTINGS = [
+    { k: 'json',   en: 'JSON',     cn: '完整备份，含所有元数据' },
+    { k: 'pdf',    en: 'PDF',      cn: '便于打印 / 邮件附件' },
+    { k: 'docx',   en: 'DOCX',    cn: '继续在 Word 编辑' },
+    { k: 'md',     en: 'Markdown', cn: '纯文本，所有报告合并为一个文件' },
+    { k: 'notion', en: 'NOTION',  cn: '复制 Markdown 到剪贴板，粘贴进 Notion' },
+    { k: 'link',   en: 'LINK',    cn: '每份报告生成一条分享链接，批量复制' },
   ];
 
   const lbl = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 5, display: 'block' };
@@ -1036,7 +1121,7 @@ function SettingsModal({ t, modelStore, onClose }) {
             <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>全选（共 {modalReports.length} 份）</span>
           </label>
         </div>
-        <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+        <div style={{ maxHeight: 220, overflowY: 'auto' }}>
           {modalReports.length === 0
             ? <div style={{ padding: '24px', fontFamily: t.fontCN, fontSize: 13, color: t.mute, textAlign: 'center' }}>报告库为空</div>
             : modalReports.map(r => (
@@ -1114,10 +1199,11 @@ function SettingsModal({ t, modelStore, onClose }) {
                             {modelStore.builtinKeys?.[m.id] ? '已配置 Key' : '需配置 Key'}
                           </span>
                         )}
-                        {!m.builtin && (
-                          <button type="button" onClick={() => modelStore.removeModel(m.id)}
-                            style={{ border: `1px solid #dc2626`, background: 'transparent', cursor: 'pointer', color: '#dc2626', fontFamily: t.fontMono, fontSize: 9, padding: '3px 8px', letterSpacing: 0.5, flexShrink: 0 }}>删除</button>
-                        )}
+                        <button type="button"
+                          onClick={() => m.builtin ? modelStore.hideBuiltin(m.id) : modelStore.removeModel(m.id)}
+                          style={{ border: `1px solid #dc2626`, background: 'transparent', cursor: 'pointer', color: '#dc2626', fontFamily: t.fontMono, fontSize: 9, padding: '3px 8px', letterSpacing: 0.5, flexShrink: 0 }}>
+                          {m.builtin ? '移除' : '删除'}
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1163,11 +1249,27 @@ function SettingsModal({ t, modelStore, onClose }) {
 
             {tab === 'export' && (
               <React.Fragment>
-                <div style={secHdr}>导出报告 · JSON 格式</div>
+                <div style={secHdr}>导出报告</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {EXPORT_FORMATS_SETTINGS.map(f => (
+                    <button key={f.k} type="button" onClick={() => setExportFmt(f.k)}
+                      style={{ padding: '7px 12px', border: `1.5px solid ${exportFmt === f.k ? t.ink : t.rule}`, background: exportFmt === f.k ? t.ink : 'transparent', color: exportFmt === f.k ? t.paper : t.ink, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, cursor: 'pointer', textTransform: 'uppercase' }}>
+                      {f.en}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute }}>
+                  {EXPORT_FORMATS_SETTINGS.find(f => f.k === exportFmt)?.cn || ''}
+                </div>
                 <ReportList sel={exportSel} setSel={setExportSel}/>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-                  <Btn t={t} size="md" primary onClick={doExport} disabled={exportSel.size === 0}>
-                    ↓ 下载 JSON（{exportSel.size} 份）
+                {exportStatus !== 'idle' && (
+                  <div style={{ padding: '8px 12px', background: exportStatus === 'error' ? '#fef2f2' : t.faint, border: `1px solid ${exportStatus === 'error' ? '#dc2626' : t.rule}`, fontFamily: t.fontMono, fontSize: 10, color: exportStatus === 'error' ? '#dc2626' : '#2a8c5c' }}>
+                    {exportStatus === 'loading' ? '处理中…' : exportStatusMsg}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Btn t={t} size="md" primary onClick={doExport} disabled={exportSel.size === 0 || exportStatus === 'loading'}>
+                    {exportStatus === 'loading' ? '处理中…' : `${['notion','link'].includes(exportFmt) ? '⎘ 复制' : '↓ 下载'} ${exportFmt.toUpperCase()}（${exportSel.size} 份）`}
                   </Btn>
                 </div>
               </React.Fragment>
@@ -1177,12 +1279,29 @@ function SettingsModal({ t, modelStore, onClose }) {
               <React.Fragment>
                 <div style={secHdr}>清除本地数据</div>
                 <ReportList sel={clearSel} setSel={setClearSel}/>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-                  <button type="button" onClick={doClear} disabled={clearSel.size === 0}
-                    style={{ padding: '10px 16px', border: `1.5px solid ${clearSel.size ? '#dc2626' : t.rule}`, background: clearSel.size ? '#dc2626' : 'transparent', color: clearSel.size ? '#fff' : t.mute, fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 1.3, cursor: clearSel.size ? 'pointer' : 'not-allowed', textTransform: 'uppercase', opacity: clearSel.size ? 1 : 0.5 }}>
-                    删除所选 {clearSel.size} 份报告
-                  </button>
-                </div>
+                {clearToast && (
+                  <div style={{ padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', fontFamily: t.fontMono, fontSize: 10, color: '#16a34a' }}>
+                    ✓ {clearToast}
+                  </div>
+                )}
+                {confirmingClear ? (
+                  <div style={{ padding: '14px 16px', border: '1.5px solid #dc2626', background: '#fef2f2' }}>
+                    <div style={{ fontFamily: t.fontCN, fontSize: 13, color: '#dc2626', fontWeight: 600, marginBottom: 10 }}>确认删除 {clearSel.size} 份报告？此操作不可撤销。</div>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button type="button" onClick={() => setConfirmingClear(false)}
+                        style={{ flex: 1, padding: '8px 0', border: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 9, color: t.mute, cursor: 'pointer', textTransform: 'uppercase' }}>取消</button>
+                      <button type="button" onClick={doConfirmClear}
+                        style={{ flex: 2, padding: '8px 0', border: '1.5px solid #dc2626', background: '#dc2626', color: '#fff', fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 1 }}>确认删除</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button type="button" onClick={doClear} disabled={clearSel.size === 0}
+                      style={{ padding: '10px 16px', border: `1.5px solid ${clearSel.size ? '#dc2626' : t.rule}`, background: clearSel.size ? '#dc2626' : 'transparent', color: clearSel.size ? '#fff' : t.mute, fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 1.3, cursor: clearSel.size ? 'pointer' : 'not-allowed', textTransform: 'uppercase', opacity: clearSel.size ? 1 : 0.5 }}>
+                      删除所选 {clearSel.size} 份报告
+                    </button>
+                  </div>
+                )}
               </React.Fragment>
             )}
 
@@ -1199,23 +1318,30 @@ function SettingsModal({ t, modelStore, onClose }) {
                       </div>
                     ))}
                   </div>
-                  <div style={secHdr}>权限对照表</div>
+                  <div style={{ ...secHdr, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>权限对照表</span>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, letterSpacing: 0.5, textTransform: 'none', fontWeight: 400 }}>点击单元格可切换</span>
+                  </div>
                   <div style={{ border: `1px solid ${t.rule}` }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 64px 64px 64px', padding: '7px 12px', background: t.faint, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute, textTransform: 'uppercase', borderBottom: `1px solid ${t.rule}` }}>
                       <span>功能</span><span style={{ textAlign: 'center' }}>管理员</span><span style={{ textAlign: 'center' }}>编辑</span><span style={{ textAlign: 'center' }}>查看</span>
                     </div>
-                    {PERM_TABLE.map((row, i) => {
-                      const active = (role==='admin'&&row.admin)||(role==='editor'&&row.editor)||(role==='viewer'&&row.viewer);
-                      return (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 64px 64px 64px', padding: '9px 12px', borderBottom: i < PERM_TABLE.length-1 ? `1px solid ${t.rule}` : 'none', background: active ? 'transparent' : 'rgba(220,38,38,0.03)' }}>
-                          <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink }}>{row.feature}</span>
-                          <span style={{ textAlign: 'center', fontSize: 13, color: row.admin ? '#2a8c5c' : t.mute }}>{row.admin ? '✓' : '—'}</span>
-                          <span style={{ textAlign: 'center', fontSize: 13, color: row.editor ? '#2a8c5c' : t.mute }}>{row.editor ? '✓' : '—'}</span>
-                          <span style={{ textAlign: 'center', fontSize: 13, color: row.viewer ? '#2a8c5c' : t.mute }}>{row.viewer ? '✓' : '—'}</span>
-                        </div>
-                      );
-                    })}
+                    {PERM_TABLE.map((row, i) => (
+                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 64px 64px 64px', padding: '9px 12px', borderBottom: i < PERM_TABLE.length-1 ? `1px solid ${t.rule}` : 'none' }}>
+                        <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink }}>{row.feature}</span>
+                        {['admin','editor','viewer'].map(rk => {
+                          const on = permConfig[rk]?.[row.key] !== undefined ? permConfig[rk][row.key] : row[rk];
+                          return (
+                            <span key={rk} onClick={() => togglePerm(rk, row.key)}
+                              style={{ textAlign: 'center', fontSize: 13, cursor: 'pointer', color: on ? '#2a8c5c' : t.mute, userSelect: 'none' }}>
+                              {on ? '✓' : '—'}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ))}
                   </div>
+                  <div style={{ marginTop: 8, fontFamily: t.fontMono, fontSize: 8, color: t.mute }}>更改即时生效并保存到本地</div>
                 </div>
               </React.Fragment>
             )}
@@ -2268,9 +2394,18 @@ function useModelStore() {
     return isNaN(v) ? null : v;
   });
 
-  // Merge builtin keys + custom URLs into allModels
+  const [hiddenBuiltins, setHiddenBuiltins] = React.useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('atlas_hidden_builtins') || '[]')); } catch { return new Set(); }
+  });
+  const hideBuiltin = (id) => {
+    const next = new Set([...hiddenBuiltins, id]);
+    setHiddenBuiltins(next);
+    try { localStorage.setItem('atlas_hidden_builtins', JSON.stringify([...next])); } catch {}
+  };
+
+  // Merge builtin keys + custom URLs into allModels, excluding hidden builtins
   const allModels = [
-    ...BUILTIN_MODELS.map(m => m.needsKey
+    ...BUILTIN_MODELS.filter(m => !hiddenBuiltins.has(m.id)).map(m => m.needsKey
       ? { ...m, apiKey: builtinKeys[m.id] || '', apiUrl: builtinUrls[m.id] || m.apiUrl }
       : m),
     ...customModels,
@@ -2310,7 +2445,7 @@ function useModelStore() {
     setMaxTokensOverrideState(v);
     try { v !== null ? localStorage.setItem('atlas_max_tokens_override', String(v)) : localStorage.removeItem('atlas_max_tokens_override'); } catch {}
   };
-  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra, topP, setTopP, frequencyPenalty, setFrequencyPenalty, presencePenalty, setPresencePenalty, maxTokensOverride, setMaxTokensOverride };
+  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, hideBuiltin, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra, topP, setTopP, frequencyPenalty, setFrequencyPenalty, presencePenalty, setPresencePenalty, maxTokensOverride, setMaxTokensOverride };
 }
 
 function ModelSelector({ t, store }) {
@@ -6634,6 +6769,13 @@ function useSavedReports() {
   const [reports, setReports] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem(SAVED_REPORTS_KEY) || '[]'); } catch { return []; }
   });
+  React.useEffect(() => {
+    const handler = () => {
+      try { setReports(JSON.parse(localStorage.getItem(SAVED_REPORTS_KEY) || '[]')); } catch {}
+    };
+    window.addEventListener('atlas-reports-updated', handler);
+    return () => window.removeEventListener('atlas-reports-updated', handler);
+  }, []);
   const save = React.useCallback((report) => {
     setReports(prev => {
       const next = [report, ...prev.filter(r => r.id !== report.id)];
@@ -6648,7 +6790,15 @@ function useSavedReports() {
       return next;
     });
   }, []);
-  return { reports, save, toggleFav };
+  const removeReports = React.useCallback((ids) => {
+    const idSet = new Set(ids);
+    setReports(prev => {
+      const next = prev.filter(r => !idSet.has(r.id));
+      try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  return { reports, save, toggleFav, removeReports };
 }
 
 function App() {
