@@ -792,7 +792,35 @@ function usePermission() {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────
-function SettingsModal({ t, modelStore, onClose }) {
+function AddLanguageInline({ t, inp, onAdd }) {
+  const [adding, setAdding] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const inputRef = React.useRef(null);
+  React.useEffect(() => { if (adding && inputRef.current) inputRef.current.focus(); }, [adding]);
+  const submit = () => { if (draft.trim()) { onAdd(draft.trim()); setDraft(''); setAdding(false); } };
+  if (!adding) {
+    return (
+      <button type="button" onClick={() => setAdding(true)}
+        style={{ width: '100%', padding: '9px 0', border: `1px dashed ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, color: t.mute, cursor: 'pointer', textTransform: 'uppercase', marginTop: 4 }}>
+        ＋ 新增自定义语言
+      </button>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+      <input ref={inputRef} value={draft} onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
+        placeholder="如：日本語、Français"
+        style={{ ...inp, flex: 1 }}/>
+      <button type="button" disabled={!draft.trim()} onClick={submit}
+        style={{ padding: '6px 14px', background: draft.trim() ? t.ink : t.rule, color: t.paper, border: 'none', fontFamily: t.fontMono, fontSize: 9, cursor: draft.trim() ? 'pointer' : 'not-allowed' }}>确认</button>
+      <button type="button" onClick={() => { setAdding(false); setDraft(''); }}
+        style={{ padding: '6px 10px', background: 'transparent', color: t.mute, border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9, cursor: 'pointer' }}>取消</button>
+    </div>
+  );
+}
+
+function SettingsModal({ t, modelStore, toolbarStore, onClose }) {
   const [tab, setTab] = React.useState('model');
   const [modalReports, setModalReports] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; }
@@ -935,6 +963,7 @@ function SettingsModal({ t, modelStore, onClose }) {
 
   const TABS = [
     { k: 'model',      label: '模型',  sub: '参数 & 管理' },
+    { k: 'prompt',     label: '提示词', sub: 'System Prompt' },
     { k: 'export',     label: '导出',  sub: '多格式导出'  },
     { k: 'clear',      label: '清除',  sub: '本地数据'    },
     { k: 'permission', label: '权限',  sub: '角色管理'    },
@@ -1025,11 +1054,7 @@ function SettingsModal({ t, modelStore, onClose }) {
                       style={inp}/>
                   </div>
                   <div>
-                    <label style={lbl}>SYSTEM PROMPT 附加指令</label>
-                    <textarea value={modelStore.systemPromptExtra||''} onChange={e => modelStore.setSystemPromptExtra(e.target.value)}
-                      placeholder="在基础指令后追加的自定义指令（可选）"
-                      style={{ ...inp, minHeight: 60, resize: 'vertical', lineHeight: 1.55 }}/>
-                    <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 3 }}>当前模型：{modelStore.selected?.name || '—'}</div>
+                    <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 3 }}>当前模型：{modelStore.selected?.name || '—'} · System Prompt 设置在「提示词」标签页</div>
                   </div>
                 </div>
                 <div>
@@ -1091,6 +1116,44 @@ function SettingsModal({ t, modelStore, onClose }) {
                       </div>
                     </div>
                   )}
+                </div>
+              </React.Fragment>
+            )}
+
+            {tab === 'prompt' && (
+              <React.Fragment>
+                <div>
+                  <div style={secHdr}>基础 System Prompt（预设专业版）</div>
+                  <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, marginBottom: 10, lineHeight: 1.6 }}>
+                    以下为每次生成时自动注入的基础指令，包含角色定义、写作原则、约束、可视化规则和质量自查层。语言/语气/风格/章节数由 Toolbar 动态注入。
+                  </div>
+                  <textarea readOnly value={BASE_SYSTEM_PROMPT}
+                    style={{ ...inp, minHeight: 260, resize: 'vertical', lineHeight: 1.55, fontFamily: t.fontMono, fontSize: 10, color: t.mute, background: t.faint }}/>
+                </div>
+                <div>
+                  <label style={lbl}>自定义追加指令</label>
+                  <textarea value={modelStore?.systemPromptExtra || ''} onChange={e => modelStore?.setSystemPromptExtra(e.target.value)}
+                    placeholder="在基础指令后追加的自定义内容（可选），如：每章结尾加一个关键词小结"
+                    style={{ ...inp, minHeight: 80, resize: 'vertical', lineHeight: 1.55 }}/>
+                  <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 3 }}>追加内容将嵌入 &lt;custom&gt; 标签，附加在基础指令末尾</div>
+                </div>
+                <div>
+                  <div style={secHdr}>语言管理</div>
+                  <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, marginBottom: 10 }}>内置语言无法删除，可在 Toolbar 切换。自定义语言可在此添加或删除。</div>
+                  {(toolbarStore?.allLanguages || BUILTIN_LANGUAGES).map(lang => (
+                    <div key={lang.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: `1px solid ${t.rule}`, marginBottom: 4, background: toolbarStore?.languageId === lang.id ? t.faint : 'transparent' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 600, color: t.ink }}>{lang.label}</div>
+                        <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>{lang.instr}</div>
+                      </div>
+                      {toolbarStore?.languageId === lang.id && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent }}>当前</span>}
+                      {lang.custom && (
+                        <button type="button" onClick={() => toolbarStore?.removeLanguage(lang.id)}
+                          style={{ border: `1px solid #dc2626`, background: 'transparent', cursor: 'pointer', color: '#dc2626', fontFamily: t.fontMono, fontSize: 9, padding: '3px 8px' }}>删除</button>
+                      )}
+                    </div>
+                  ))}
+                  <AddLanguageInline t={t} inp={inp} onAdd={label => toolbarStore?.addLanguage(label)}/>
                 </div>
               </React.Fragment>
             )}
@@ -1340,7 +1403,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore }) {
         </div>
       )}
 
-      {settingsOpen && <SettingsModal t={t} modelStore={modelStore} onClose={() => setSettingsOpen(false)}/>}
+      {settingsOpen && <SettingsModal t={t} modelStore={modelStore} toolbarStore={toolbarStore} onClose={() => setSettingsOpen(false)}/>}
     </div>
   );
 }
@@ -2672,6 +2735,75 @@ const BUILTIN_TONES = [
   { id: 'persuasive', cn: '说服性', en: 'Persuasive' },
 ];
 
+const BUILTIN_LANGUAGES = [
+  { id: 'zh-cn', label: '简体中文', instr: '使用简体中文写作' },
+  { id: 'en',    label: 'English',  instr: 'Write in English' },
+  { id: 'zh-tw', label: '繁體中文', instr: '使用繁體中文寫作' },
+];
+
+const BUILTIN_STYLES = [
+  { id: 'business',   cn: '商业可读', instr: '结论先行，每节开头一句话总结核心观点，适合高管快速阅读，避免术语堆砌' },
+  { id: 'academic',   cn: '学术严谨', instr: '论据展开充分，逻辑严密，引用规范，适合研究报告场景' },
+  { id: 'consulting', cn: '咨询框架', instr: '使用 MECE 原则分解问题，每节给出明确洞察和可执行建议，结构感强' },
+  { id: 'internal',   cn: '内部简报', instr: '极度精简直接，领导扫一遍即可抓住重点，不废话不铺垫' },
+];
+
+const BASE_SYSTEM_PROMPT = `<role>
+你是 Atlas Report Agent，一名专业深度报告撰写专家，具备咨询顾问、数据分析师、行业研究员的综合能力。
+你的任务：将用户输入的主题转化为结构严谨、论据充分、数据可溯源的深度分析报告。
+</role>
+
+<principles>
+- 结论先行（金字塔原理）：每章节第一句必须是核心结论，支撑论据居中，细节最后；结论禁止藏在段落末尾
+- 每个核心观点必须有支撑：数据 / 案例 / 逻辑推断三选一，不允许空泛陈述（禁止"显著增长"等无数字的定性描述）
+- 各章节必须符合 MECE 原则：互相独立、完整覆盖，无重叠无遗漏
+- 数据必须标注来源机构及时间范围（如：据 McKinsey 2024 年报告 / 截至 2024Q3）
+- 章节间必须有衔接过渡句，确保叙述连贯，不允许突兀跳转
+</principles>
+
+<constraints>
+- 禁止：开场白（"本报告将……"）、结尾客套话、免责声明
+- 禁止：将列表作为正文主体，正文以段落为主，列表仅用于并列枚举型数据
+- 禁止：无数字支撑的定性结论
+- 禁止：仅有标题、没有实质内容的章节
+</constraints>
+
+<visualization>
+凡正文涉及可量化对比数据时，必须在该段后插入图表块（每篇报告必须插入 1–3 个，不可省略）：
+[CHART:{"type":"bar","title":"图表标题","unit":"单位（亿元/%等）","source":"数据来源机构 · 年份","data":[{"label":"标签","value":数值}]}]
+- 图表数据必须与正文数字完全一致
+- 必填字段：title / unit / source（缺少任一视为不合格）
+- 类型选择：对比用 bar，趋势用 line，占比用 pie
+- 每个图表最多 6 个数据项
+</visualization>
+
+<quality_check>
+输出前完成以下自查，任一项不合格则修改后输出：
+
+【结构检查】
+- 各章节标题互相独立，无内容重叠（MECE）
+- 每章首句是核心结论而非背景铺垫（金字塔原理）
+- 章节间有过渡语句，叙述连贯不突兀
+- 报告标题准确概括核心内容，体现核心洞察，非泛化标题
+
+【数据检查】
+- 所有数据均标注了来源机构名称及时间范围
+- 凡出现可对比的量化数据，已插入对应图表（至少 1 个）
+- 图表数据与正文数字完全一致，含 title/unit/source
+- 无"显著增长""大幅下降"等未附具体数字的定性描述
+
+【内容检查】
+- 无仅有标题没有实质内容的章节
+- 报告结论可独立回答用户的核心问题（可操作性）
+- 已说明分析的范围边界（时间、地域、样本等）
+- 各章节逻辑递进，而非平铺罗列
+
+【格式检查】
+- 第一行是 [TITLE: 精炼标题（20字以内）]
+- 末尾有 [REFS]...[/REFS]，条数与正文 §N 标注一致
+- 无开场白、结尾客套话、免责声明
+</quality_check>`;
+
 const LENGTH_PRESETS = [
   { id: 'brief',    cn: '简报', chars: 800 },
   { id: 'standard', cn: '标准', chars: 1500 },
@@ -2691,12 +2823,24 @@ function useToolbarStore() {
   );
   const [lengthId, setLengthId] = React.useState('deep');
   const [customLength, setCustomLength] = React.useState('');
+  const [languageId, setLanguageIdRaw] = React.useState(
+    () => localStorage.getItem('atlas_language') || 'zh-cn'
+  );
+  const [customLanguages, setCustomLanguages] = React.useState(
+    () => { try { return JSON.parse(localStorage.getItem('atlas_custom_languages') || '[]'); } catch { return []; } }
+  );
+  const [styleId, setStyleIdRaw] = React.useState(
+    () => localStorage.getItem('atlas_style') || 'business'
+  );
 
   const allTones = [...BUILTIN_TONES, ...customTones];
   const currentTone = allTones.find(to => to.id === toneId) || allTones[0];
   const effectiveLength = lengthId === 'custom'
     ? (parseInt(customLength) || 2500)
     : (LENGTH_PRESETS.find(p => p.id === lengthId)?.chars || 2500);
+  const allLanguages = [...BUILTIN_LANGUAGES, ...customLanguages];
+  const currentLanguage = allLanguages.find(l => l.id === languageId) || allLanguages[0];
+  const currentStyle = BUILTIN_STYLES.find(s => s.id === styleId) || BUILTIN_STYLES[0];
 
   const addTone = (cn) => {
     const id = 'custom_' + Date.now();
@@ -2711,6 +2855,31 @@ function useToolbarStore() {
     setCustomTones(updated);
     try { localStorage.setItem('atlas_custom_tones', JSON.stringify(updated)); } catch {}
     if (toneId === id) setToneId('analytical');
+  };
+
+  const setLanguageId = (id) => {
+    setLanguageIdRaw(id);
+    try { localStorage.setItem('atlas_language', id); } catch {}
+  };
+
+  const setStyleId = (id) => {
+    setStyleIdRaw(id);
+    try { localStorage.setItem('atlas_style', id); } catch {}
+  };
+
+  const addLanguage = (label) => {
+    const id = 'custom_lang_' + Date.now();
+    const updated = [...customLanguages, { id, label, instr: `使用${label}写作`, custom: true }];
+    setCustomLanguages(updated);
+    try { localStorage.setItem('atlas_custom_languages', JSON.stringify(updated)); } catch {}
+    setLanguageIdRaw(id);
+  };
+
+  const removeLanguage = (id) => {
+    const updated = customLanguages.filter(l => l.id !== id);
+    setCustomLanguages(updated);
+    try { localStorage.setItem('atlas_custom_languages', JSON.stringify(updated)); } catch {}
+    if (languageId === id) setLanguageIdRaw('zh-cn');
   };
 
   const toggleSource = (name) => {
@@ -2743,6 +2912,8 @@ function useToolbarStore() {
     attachments, addAttachment, removeAttachment,
     toneId, setToneId, allTones, currentTone, addTone, removeTone,
     lengthId, setLengthId, customLength, setCustomLength, effectiveLength,
+    languageId, setLanguageId, allLanguages, currentLanguage, addLanguage, removeLanguage,
+    styleId, setStyleId, currentStyle,
   };
 }
 
@@ -2971,6 +3142,76 @@ function TonePopover({ t, store }) {
   );
 }
 
+// ── LanguagePopover ───────────────────────────────────────────────────────
+function LanguagePopover({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const inputRef = React.useRef(null);
+  React.useEffect(() => { if (adding && inputRef.current) inputRef.current.focus(); }, [adding]);
+  const submit = () => {
+    if (draft.trim()) { store.addLanguage(draft.trim()); setDraft(''); setAdding(false); }
+  };
+  return (
+    <ToolPopover t={t} label={`语言 · ${store.currentLanguage?.label || '简体中文'}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => { setOpen(false); setAdding(false); setDraft(''); }} width={200}>
+      <div style={{ padding: '6px 0' }}>
+        {store.allLanguages.map(lang => {
+          const active = lang.id === store.languageId;
+          return (
+            <div key={lang.id} style={{ display: 'flex', alignItems: 'center', padding: '7px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
+              <div onClick={() => { store.setLanguageId(lang.id); setOpen(false); }} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
+                <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{lang.label}</span>
+              </div>
+              {lang.custom && (
+                <button onClick={(e) => { e.stopPropagation(); store.removeLanguage(lang.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ padding: '8px 10px', borderTop: `1px solid ${t.rule}` }}>
+        {!adding ? (
+          <button onClick={() => setAdding(true)} style={{ width: '100%', padding: '5px 0', background: 'transparent', border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute, cursor: 'pointer' }}>＋ 新增语言</button>
+        ) : (
+          <div style={{ display: 'flex', gap: 5 }}>
+            <input ref={inputRef} value={draft} onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
+              placeholder="如：日本語"
+              style={{ flex: 1, padding: '4px 7px', fontFamily: t.fontCN, fontSize: 12, border: `1px solid ${t.ink}`, background: t.cardOn, color: t.ink, outline: 'none' }}/>
+            <button disabled={!draft.trim()} onClick={submit} style={{ padding: '4px 10px', background: draft.trim() ? t.ink : t.rule, border: 'none', fontFamily: t.fontMono, fontSize: 9, color: t.paper, cursor: draft.trim() ? 'pointer' : 'not-allowed' }}>确认</button>
+          </div>
+        )}
+      </div>
+    </ToolPopover>
+  );
+}
+
+// ── StylePopover ──────────────────────────────────────────────────────────
+function StylePopover({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <ToolPopover t={t} label={`风格 · ${store.currentStyle?.cn || '商业可读'}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={240}>
+      <div style={{ padding: '6px 0' }}>
+        {BUILTIN_STYLES.map(style => {
+          const active = style.id === store.styleId;
+          return (
+            <div key={style.id} onClick={() => { store.setStyleId(style.id); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{style.cn}</div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 10, color: t.mute, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{style.instr.slice(0, 22)}…</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </ToolPopover>
+  );
+}
+
 // ── LengthPopover ─────────────────────────────────────────────────────────
 function LengthPopover({ t, store }) {
   const [open, setOpen] = React.useState(false);
@@ -3088,6 +3329,8 @@ function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStor
             <SourcesPopover t={t} store={toolbarStore} onNavigateSources={onNavigateSources}/>
             <AttachmentsPopover t={t} store={toolbarStore}/>
             <TonePopover t={t} store={toolbarStore}/>
+            <LanguagePopover t={t} store={toolbarStore}/>
+            <StylePopover t={t} store={toolbarStore}/>
             <LengthPopover t={t} store={toolbarStore}/>
           </>
         ) : (
@@ -3095,6 +3338,8 @@ function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStor
             <Tag t={t}>＋ 数据源 (3)</Tag>
             <Tag t={t}>＋ 附件</Tag>
             <Tag t={t}>语气 · 分析性</Tag>
+            <Tag t={t}>语言 · 简体中文</Tag>
+            <Tag t={t}>风格 · 商业可读</Tag>
             <Tag t={t}>长度 · 2,500 字</Tag>
           </>
         )}
@@ -3163,11 +3408,15 @@ const RUN_TOTAL = 26.0;
 
 // ── Live API streaming -----------------------------------------------
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError }) {
-  const { tone, length, selectedSources, attachments, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride } = toolbarConfig || {};
+  const { tone, language, style, length, selectedSources, attachments, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
+  const langInstr = language?.instr || '使用简体中文写作';
+  const styleInstr = style?.instr || BUILTIN_STYLES[0].instr;
   const targetLength = length || 2500;
 
-  // Dynamic system prompt: enforces tone + length strictly
+  const minSections = targetLength < 1000 ? 3 : targetLength < 2000 ? 5 : targetLength < 3000 ? 6 : 8;
+  const minWordsPerSection = targetLength < 1000 ? 150 : targetLength < 2000 ? 200 : targetLength < 3000 ? 300 : 350;
+
   const sourceNote = (() => {
     if (!selectedSources?.size) return '';
     const allS = typeof SOURCES !== 'undefined' ? SOURCES : [];
@@ -3178,35 +3427,44 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
     enriched.sort((a, b) => ({ A: 0, B: 1, C: 2 }[a.quality] - ({ A: 0, B: 1, C: 2 }[b.quality] || 0)));
     const tiers = { A: [], B: [], C: [] };
     enriched.forEach(s => (tiers[s.quality] || tiers.A).push(s.name));
-    let note = '\n5. 参考数据源（按数据质量优先级排序）：';
-    if (tiers.A.length) note += `\n   - A级（核心来源，优先引用，高可信度）：${tiers.A.join('、')}`;
+    let note = '\n   - A级（核心来源，优先引用）：' + (tiers.A.join('、') || '—');
     if (tiers.B.length) note += `\n   - B级（可参考，适度引用）：${tiers.B.join('、')}`;
-    if (tiers.C.length) note += `\n   - C级（低优先级，谨慎引用，需注明局限性）：${tiers.C.join('、')}`;
-    return note;
+    if (tiers.C.length) note += `\n   - C级（低优先级，谨慎引用）：${tiers.C.join('、')}`;
+    return `\n\n参考数据源（按质量优先级排序）：${note}`;
   })();
-  // For very short targets, give a sensible floor so the model doesn't produce empty output
+
   const displayLength = targetLength;
-  const minLen = Math.max(targetLength, 50);
-  const maxLen = Math.max(Math.round(targetLength * 1.15), minLen + 20);
   const lengthInstr = targetLength < 100
-    ? `目标字数：约 ${displayLength} 字（尽量精简，控制在 ${minLen}–${maxLen} 字左右即可）`
+    ? `目标字数：约 ${displayLength} 字`
     : `目标字数：${displayLength} 字（严格控制在 ${Math.round(targetLength * 0.9)}–${Math.round(targetLength * 1.1)} 字以内）`;
 
-  const systemPrompt = `你是一个专业的商业分析师，擅长撰写深度行业报告。
-请用中文撰写一篇分析报告，严格遵守以下要求：
-1. 写作风格：${toneCN}（全程必须体现这种风格，不得偏离）
-2. ${lengthInstr}
-3. 结构要求（必须严格执行）：
-   - 报告必须包含至少 3 个章节，每个章节用「一、」「二、」「三、」「四、」等中文数字序号开头单独成行作为标题
-   - 开头第一章节标题后紧跟一句导语（一句话总结核心观点）
-4. 数据可视化：当某一段分析涉及多个可对比的数据点（如市场份额、增长率、排名等），在该段后插入一个图表数据块，格式为：
-   [CHART:{"type":"bar","title":"图表标题","unit":"单位","data":[{"label":"标签","value":数值},{"label":"标签","value":数值}]}]
-   图表数据须真实反映正文中提到的数字，最多 6 个数据项。每篇报告插入 1-2 个图表即可，不要过度使用。
-5. 引用格式：重要数据用 §1 §2 §3 标注脚注。报告所有章节结束后，必须输出引用列表，格式：
-   [REFS]
-   [1] 来源机构名 — 文献名 — 网址 — YYYY.MM
-   [/REFS]
-   条数与正文 §N 标注一致。${sourceNote}${systemPromptExtra ? '\n' + systemPromptExtra : ''}
+  const systemPrompt = `${BASE_SYSTEM_PROMPT}
+
+<output_language>
+${langInstr}
+</output_language>
+
+<style>
+报告风格：${styleInstr}
+写作语气：${toneCN}（全程必须体现，不得偏离）
+</style>
+
+<structure>
+本次报告结构要求：
+- 最少章节数：${minSections} 个，每章用「一、」「二、」等中文序号 + ## 标题格式
+- 每章最少字数：${minWordsPerSection} 字
+- ${lengthInstr}
+</structure>
+
+<citations>
+重要数据用 §1 §2 §3 标注脚注编号，报告末尾输出：
+[REFS]
+[1] 来源机构 — 文献名 — 网址 — YYYY.MM
+[/REFS]
+条数与正文 §N 标注一致。${sourceNote}
+</citations>
+${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}
+
 输出格式：第一行必须是 [TITLE: 精炼标题（20字以内）]，然后空行，再输出各章节，最后输出 [REFS]...[/REFS]。不要任何其他前言后记。`;
 
   // Build user message: prompt + optional attachment context
@@ -3793,12 +4051,16 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }
             <SourcesPopover t={t} store={toolbarStore}/>
             <AttachmentsPopover t={t} store={toolbarStore}/>
             <TonePopover t={t} store={toolbarStore}/>
+            <LanguagePopover t={t} store={toolbarStore}/>
+            <StylePopover t={t} store={toolbarStore}/>
             <LengthPopover t={t} store={toolbarStore}/>
           </>
         ) : (
           <>
             <Tag t={t}>＋ 数据源</Tag>
             <Tag t={t}>语气 · 分析性</Tag>
+            <Tag t={t}>语言 · 简体中文</Tag>
+            <Tag t={t}>风格 · 商业可读</Tag>
             <Tag t={t}>长度 · 深度</Tag>
           </>
         )}
@@ -6735,6 +6997,8 @@ function App() {
             marginaliaOn={tweaks.marginalia} density={tweaks.density}
             modelStore={modelStore} toolbarConfig={{
               tone: toolbarStore.currentTone,
+              language: toolbarStore.currentLanguage,
+              style: toolbarStore.currentStyle,
               length: toolbarStore.effectiveLength,
               selectedSources: toolbarStore.selectedSources,
               attachments: toolbarStore.attachments,
