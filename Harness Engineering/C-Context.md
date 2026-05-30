@@ -91,16 +91,78 @@
 
 ## 开发状态
 
-| 区域 | 状态 | 负责讨论 |
+| 区域 | 状态 | 完成版本 |
 |------|------|---------|
-| 区域一：System Prompt | 讨论中 | |
-| 区域二：Template | 待启动 | |
-| 区域三：Dynamic Context | 待启动 | |
+| 区域一：System Prompt | **已完成** | v2.2.0 |
+| 区域二：Template | 待启动 | — |
+| 区域三：Dynamic Context | 待启动 | — |
+
+---
+
+## 区域一实现记录（v2.2.0）
+
+**完成日期**：2026-05-30
+
+### 架构
+
+每次生成的 system prompt 由两部分拼接：
+
+```
+BASE_SYSTEM_PROMPT（常量，静态）
+    +
+动态注入块（language / style / tone / structure / citations）
+    +
+<custom>用户追加指令</custom>（可选）
+```
+
+### 静态基础层（BASE_SYSTEM_PROMPT）
+
+结构采用 XML 分区，共 5 个区：
+
+| 区块 | 作用 |
+|------|------|
+| `<role>` | 角色定位：Atlas Report Agent，咨询/分析/研究综合能力 |
+| `<principles>` | 金字塔原理、MECE、数据溯源、章节过渡 5 条核心原则 |
+| `<constraints>` | 4 条硬性禁止规则（开场白/列表主体/空泛定性/空章节） |
+| `<visualization>` | 图表必须插入规则：有量化对比数据→必须有 CHART 块，含 title/unit/source 三个必填字段 |
+| `<quality_check>` | 15 条自查清单，分结构/数据/内容/格式四组；新增：标题是否准确概括核心内容 |
+
+### 动态注入层
+
+每次生成时，根据 Toolbar 选择动态构建：
+
+| 变量 | 来源 | 默认值 |
+|------|------|-------|
+| 语言 (`langInstr`) | LanguagePopover | 简体中文 |
+| 风格 (`styleInstr`) | StylePopover | 商业可读 |
+| 语气 (`toneCN`) | TonePopover | 分析性 |
+| 章节数下限 (`minSections`) | 长度档位自动计算 | 简报3/标准5/深度6/长文8 |
+| 每节字数下限 (`minWordsPerSection`) | 同上 | 150/200/300/350 字 |
+
+### UI 改动
+
+**Toolbar 新增 2 个按钮：**
+- `LanguagePopover`：简体中文 / English / 繁體中文 + 自定义语言（localStorage 持久化）
+- `StylePopover`：商业可读 / 学术严谨 / 咨询框架 / 内部简报
+
+**Settings 新增「提示词」标签页：**
+- 只读预览 `BASE_SYSTEM_PROMPT` 全文
+- 可编辑「自定义追加指令」（嵌入 `<custom>` 标签）
+- 语言管理面板（内置语言展示 + 自定义语言增删）
+
+### 核心代码位置
+
+- `src/App.jsx` — `BASE_SYSTEM_PROMPT` 常量（静态基础层）
+- `src/App.jsx` — `BUILTIN_LANGUAGES` / `BUILTIN_STYLES` 常量
+- `src/App.jsx` — `useToolbarStore()` 新增 language / style 状态
+- `src/App.jsx` — `LanguagePopover` / `StylePopover` 组件
+- `src/App.jsx` — `streamReport()` system prompt 组装逻辑
+- `src/App.jsx` — `SettingsModal` 新增「提示词」tab + `AddLanguageInline` 组件
 
 ---
 
 ## 实现难度
 
-- 区域一（System Prompt）：低（纯参数修改）
+- 区域一（System Prompt）：已完成
 - 区域二（Template 升级）：中（需重构模板数据结构）
 - 区域三（动态注入）：中（Jina API 集成）
