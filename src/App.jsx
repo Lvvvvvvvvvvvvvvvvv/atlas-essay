@@ -640,7 +640,7 @@ const NAV_ITEMS = [
   { k: 'sources', en: 'SOURCES', cn: '数据源' },
 ];
 
-function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore }) {
+function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore, toolbarStore }) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -701,7 +701,7 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks,
           VOL.04 · № {issueNum}
         </span>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{dateStr} · {timeStr}</span>
-        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore}/>
+        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore}/>
       </div>
     </div>
   );
@@ -1274,7 +1274,7 @@ function SettingsModal({ t, modelStore, toolbarStore, onClose }) {
   );
 }
 
-function UserMenu({ t, tweaks, setTweak, modelStore }) {
+function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore }) {
   const [open, setOpen] = React.useState(false);
   const [section, setSection] = React.useState(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -6983,7 +6983,7 @@ function App() {
     }}>
       <TopBar t={t} route={route} setRoute={setRoute}
         runState={route === 'running' && !runDone ? 'running' : 'idle'}
-        tweaks={tweaks} setTweak={setTweak} modelStore={modelStore}/>
+        tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore}/>
       <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
         {route === 'home' && (
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
