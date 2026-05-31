@@ -3988,59 +3988,11 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
   const [liveTokens, setLiveTokens] = React.useState(0);
   const liveTimerRef = React.useRef(null);
 
-  // Auto-save generated report when streaming completes
+  // Ref always holds the latest streamed text — no stale-closure risk
+  const liveTextRef = React.useRef('');
   const savedRef = React.useRef(false);
-  React.useEffect(() => {
-    if (liveStatus === 'done' && liveText && isLiveMode && !savedRef.current && onSaveReport) {
-      savedRef.current = true;
-      const sections = parseMarkdownReport(liveText);
-      const cleanForCount = liveText.replace(/^\[TITLE:[^\]]*\]\s*/m,'').replace(/\[REFS\][\s\S]*?\[\/REFS\]/g,'');
-      const wordCount = cleanForCount.replace(/\s+/g,' ').trim().length;
-      const refsArr = extractRefsFromText(liveText);
-      const refs = refsArr.length || [...new Set((liveText.match(/§\d+/g) || []))].length;
-      const readMins = Math.max(1, Math.ceil(wordCount / 300));
-      const now = new Date();
-      const DAY_CN = ['日','一','二','三','四','五','六'];
-
-      // Title: use first line of prompt (before comma/newline), cleaned up
-      const aiTitle = extractTitleFromText(liveText);
-      const firstSectionTitle = sections?.[0]?.en?.replace(/^[一二三四五六七八九十]+[、．]\s*/, '').trim();
-      const promptFallback = prompt.split(/[\n\r,，。.]/)[0].trim()
-        .replace(/^(请|帮我|调研|分析|写一篇|生成|撰写|输出)\s*/,'')
-        .replace(/[「」【】『』《》""'']/g,' ').trim();
-      const titleEn = aiTitle || firstSectionTitle || promptFallback.slice(0, 52) || 'AI 分析报告';
-
-      // Subtitle: remainder of first prompt line or next segment
-      const subtitleRaw = prompt.replace(/^[^\n,，。.]{0,80}[,，。.\n]/, '').trim().split('\n')[0].trim();
-      const subtitle = subtitleRaw.slice(0, 80) || prompt.slice(0, 80);
-
-      onSaveReport({
-        id: now.getTime().toString(),
-        prompt,
-        text: liveText,
-        sections,
-        refs: refsArr,
-        selectedSources: [...(toolbarConfig?.selectedSources || [])],
-        attachments: (toolbarConfig?.attachments || []).map(a => ({ id: a.id, name: a.name, size: a.size, type: a.type, content: a.content })),
-        meta: {
-          titleEn,
-          titleCn: '',
-          title: { en: titleEn, cn: '' },
-          subtitle,
-          date: `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`,
-          words: wordCount.toLocaleString(),
-          sources: refs,
-          reading: `${readMins} min`,
-          category: `AI · ${selectedModel?.name || '生成'}`,
-          issue: 'AI',
-          model: selectedModel?.name || 'AI',
-          tone: toolbarConfig?.tone?.cn || '',
-          tokens: liveTokens,
-        },
-        favorited: false,
-      });
-    }
-  }, [liveStatus, liveTokens]);
+  const onSaveReportRef = React.useRef(onSaveReport);
+  React.useEffect(() => { onSaveReportRef.current = onSaveReport; });
 
   React.useEffect(() => {
     if (!isLiveMode) return;
@@ -4057,11 +4009,63 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
       },
       onChunk: (chunk) => {
         setLiveStatus('streaming');
-        setLiveText(prev => prev + chunk);
+        setLiveText(prev => {
+          const next = prev + chunk;
+          liveTextRef.current = next;
+          return next;
+        });
       },
       onDone: (tokens) => {
         clearInterval(liveTimerRef.current);
-        setLiveTokens(tokens || 0);
+        const finalText = liveTextRef.current;
+        const finalTokens = tokens || 0;
+        // Save synchronously here — before setLiveStatus('done') — so that
+        // activeReportId is set in the same React batch as liveStatus='done'.
+        // This guarantees reportData is ready when "View report" button appears.
+        if (!savedRef.current && onSaveReportRef.current && finalText && isLiveMode) {
+          savedRef.current = true;
+          const sections = parseMarkdownReport(finalText);
+          const cleanForCount = finalText.replace(/^\[TITLE:[^\]]*\]\s*/m,'').replace(/\[REFS\][\s\S]*?\[\/REFS\]/g,'');
+          const wordCount = cleanForCount.replace(/\s+/g,' ').trim().length;
+          const refsArr = extractRefsFromText(finalText);
+          const refs = refsArr.length || [...new Set((finalText.match(/§\d+/g) || []))].length;
+          const readMins = Math.max(1, Math.ceil(wordCount / 300));
+          const now = new Date();
+          const DAY_CN = ['日','一','二','三','四','五','六'];
+          const aiTitle = extractTitleFromText(finalText);
+          const firstSectionTitle = sections?.[0]?.en?.replace(/^[一二三四五六七八九十]+[、．]\s*/, '').trim();
+          const promptFallback = prompt.split(/[\n\r,，。.]/)[0].trim()
+            .replace(/^(请|帮我|调研|分析|写一篇|生成|撰写|输出)\s*/,'')
+            .replace(/[「」【】『』《》""'']/g,' ').trim();
+          const titleEn = aiTitle || firstSectionTitle || promptFallback.slice(0, 52) || 'AI 分析报告';
+          const subtitleRaw = prompt.replace(/^[^\n,，。.]{0,80}[,，。.\n]/, '').trim().split('\n')[0].trim();
+          const subtitle = subtitleRaw.slice(0, 80) || prompt.slice(0, 80);
+          onSaveReportRef.current({
+            id: now.getTime().toString(),
+            prompt,
+            text: finalText,
+            sections,
+            refs: refsArr,
+            selectedSources: [...(toolbarConfig?.selectedSources || [])],
+            attachments: (toolbarConfig?.attachments || []).map(a => ({ id: a.id, name: a.name, size: a.size, type: a.type, content: a.content })),
+            meta: {
+              titleEn, titleCn: '',
+              title: { en: titleEn, cn: '' },
+              subtitle,
+              date: `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`,
+              words: wordCount.toLocaleString(),
+              sources: refs,
+              reading: `${readMins} min`,
+              category: `AI · ${selectedModel?.name || '生成'}`,
+              issue: 'AI',
+              model: selectedModel?.name || 'AI',
+              tone: toolbarConfig?.tone?.cn || '',
+              tokens: finalTokens,
+            },
+            favorited: false,
+          });
+        }
+        setLiveTokens(finalTokens);
         setLiveStatus('done');
         onTimelineComplete && onTimelineComplete();
       },
@@ -4695,7 +4699,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
   const isStatic     = !reportData;
   const rMeta        = reportData?.meta     || REPORT_META;
   const rMetrics     = reportData?.metrics  || REPORT_METRICS;
-  const rSections    = reportData?.sections || REPORT_SECTIONS;
+  const rSections    = reportData?.sections?.length > 0 ? reportData.sections : REPORT_SECTIONS;
   const rRefs        = reportData?.refs     || REPORT_REFS;
   const rAttachments = reportData?.attachments || [];
 
@@ -7387,6 +7391,30 @@ function useSavedReports() {
   return { reports, save, toggleFav, removeReports };
 }
 
+class ReportErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(err) { return { error: err }; }
+  componentDidCatch(err, info) { console.error('[ReportErrorBoundary]', err, info); }
+  render() {
+    if (this.state.error) {
+      const t = this.props.t || {};
+      return (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 40, background: t.paper || '#f9f6f1' }}>
+          <div style={{ fontFamily: 'monospace', fontSize: 13, color: '#c53030', fontWeight: 700 }}>⚠ 报告渲染出错</div>
+          <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#718096', maxWidth: 520, wordBreak: 'break-all', textAlign: 'center', lineHeight: 1.6 }}>
+            {this.state.error?.message || String(this.state.error)}
+          </div>
+          <button onClick={() => this.setState({ error: null })}
+            style={{ padding: '8px 20px', border: '1.5px solid currentColor', background: 'transparent', cursor: 'pointer', fontFamily: 'monospace', fontSize: 11 }}>
+            重试
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const t = essayTokens({ theme: tweaks.theme, accent: tweaks.accent });
@@ -7461,19 +7489,21 @@ function App() {
             onSaveReport={handleSaveReport}/>
         )}
         {route === 'report' && (
-          <Report t={t} onExport={() => setShowExport(true)}
-            marginaliaOn={tweaks.marginalia} density={tweaks.density}
-            reportData={reportData}
-            isFavorited={activeReport?.favorited || false}
-            onToggleFavorite={activeReport ? () => savedReports.toggleFav(activeReportId) : null}
-            onRerun={activeReport ? () => { setPrompt(activeReport.prompt); goRun(); } : null}
-            toolbarStore={toolbarStore}
-            onSaveReport={activeReport ? (updated) => savedReports.save({ ...updated, id: activeReport.id }) : null}
-            onFollowUp={(followText) => {
-              const base = activeReport?.prompt || prompt;
-              setPrompt(`【追问】在下面的报告基础上：${base}\n\n【新要求】${followText}`);
-              goRun();
-            }}/>
+          <ReportErrorBoundary t={t}>
+            <Report t={t} onExport={() => setShowExport(true)}
+              marginaliaOn={tweaks.marginalia} density={tweaks.density}
+              reportData={reportData}
+              isFavorited={activeReport?.favorited || false}
+              onToggleFavorite={activeReport ? () => savedReports.toggleFav(activeReportId) : null}
+              onRerun={activeReport ? () => { setPrompt(activeReport.prompt); goRun(); } : null}
+              toolbarStore={toolbarStore}
+              onSaveReport={activeReport ? (updated) => savedReports.save({ ...updated, id: activeReport.id }) : null}
+              onFollowUp={(followText) => {
+                const base = activeReport?.prompt || prompt;
+                setPrompt(`【追问】在下面的报告基础上：${base}\n\n【新要求】${followText}`);
+                goRun();
+              }}/>
+          </ReportErrorBoundary>
         )}
         {route === 'library' && (
           <Library t={t}
