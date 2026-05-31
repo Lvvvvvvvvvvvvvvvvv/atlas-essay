@@ -2993,12 +2993,29 @@ function useToolbarStore() {
 
   const removeAttachment = (id) => setAttachments(prev => prev.filter(a => a.id !== id));
 
+  const [urlContexts, setUrlContexts] = React.useState(
+    () => { try { return JSON.parse(localStorage.getItem('atlas_url_contexts') || '[]'); } catch { return []; } }
+  );
+  const addUrlContext = (url) => {
+    const trimmed = url.trim();
+    if (!trimmed || urlContexts.includes(trimmed)) return;
+    const updated = [...urlContexts, trimmed];
+    setUrlContexts(updated);
+    try { localStorage.setItem('atlas_url_contexts', JSON.stringify(updated)); } catch {}
+  };
+  const removeUrlContext = (url) => {
+    const updated = urlContexts.filter(u => u !== url);
+    setUrlContexts(updated);
+    try { localStorage.setItem('atlas_url_contexts', JSON.stringify(updated)); } catch {}
+  };
+
   const setActiveTemplate = (tpl) => setActiveTemplateRaw(tpl);
   const clearActiveTemplate = () => setActiveTemplateRaw(null);
 
   return {
     selectedSources, toggleSource,
     attachments, addAttachment, removeAttachment,
+    urlContexts, addUrlContext, removeUrlContext,
     toneId, setToneId, allTones, currentTone, addTone, removeTone,
     lengthId, setLengthId, customLength, setCustomLength, effectiveLength,
     languageId, setLanguageId, allLanguages, currentLanguage, addLanguage, removeLanguage,
@@ -3107,6 +3124,73 @@ function SourcesPopover({ t, store, onNavigateSources }) {
           border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9,
           letterSpacing: 0.8, color: t.mute, cursor: 'pointer',
         }}>管理全部数据源 →</button>
+      </div>
+    </ToolPopover>
+  );
+}
+
+// ── UrlContextPopover ─────────────────────────────────────────────────────
+function UrlContextPopover({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const count = store.urlContexts.length;
+
+  const handleAdd = () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    const withProto = /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
+    store.addUrlContext(withProto);
+    setDraft('');
+  };
+
+  const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } };
+
+  return (
+    <ToolPopover t={t} label={`↗ 网页${count > 0 ? ` (${count})` : ''}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={340}>
+      <div style={{ padding: '10px 12px', borderBottom: `1px solid ${t.rule}` }}>
+        <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute, marginBottom: 8 }}>
+          URL CONTEXT · 生成前自动抓取正文
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="https://example.com/article"
+            style={{ flex: 1, border: `1px solid ${t.rule}`, padding: '5px 8px', fontFamily: t.fontBody, fontSize: 12, color: t.ink, background: t.paper, outline: 'none', minWidth: 0 }}
+          />
+          <button onClick={handleAdd} disabled={!draft.trim()} style={{
+            padding: '5px 10px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8,
+            border: `1px solid ${draft.trim() ? t.ink : t.rule}`,
+            background: draft.trim() ? t.ink : 'transparent',
+            color: draft.trim() ? t.paper : t.mute,
+            cursor: draft.trim() ? 'pointer' : 'default',
+          }}>ADD</button>
+        </div>
+      </div>
+      {count === 0 ? (
+        <div style={{ padding: '14px 12px', fontFamily: t.fontCN, fontSize: 12, color: t.mute, textAlign: 'center' }}>
+          粘贴网页 URL，生成时自动抓取正文注入上下文
+        </div>
+      ) : (
+        <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+          {store.urlContexts.map((url, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: `1px solid ${t.rule}` }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, flexShrink: 0 }}>↗</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: t.fontBody, fontSize: 11, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={url}>{hostOf(url)}</div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</div>
+              </div>
+              <button onClick={() => store.removeUrlContext(url)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ padding: '6px 12px', background: t.faint, borderTop: `1px solid ${t.rule}` }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
+          通过 Jina Reader API 抓取 · 每条截取前 2000 字
+        </span>
       </div>
     </ToolPopover>
   );
@@ -3474,6 +3558,7 @@ function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStor
         {toolbarStore ? (
           <>
             <SourcesPopover t={t} store={toolbarStore} onNavigateSources={onNavigateSources}/>
+            <UrlContextPopover t={t} store={toolbarStore}/>
             <AttachmentsPopover t={t} store={toolbarStore}/>
             <TonePopover t={t} store={toolbarStore}/>
             <LanguagePopover t={t} store={toolbarStore}/>
@@ -3557,8 +3642,27 @@ const RUN_EVENTS = [
 const RUN_TOTAL = 26.0;
 
 // ── Live API streaming -----------------------------------------------
-async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError }) {
-  const { tone, language, style, length, selectedSources, attachments, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
+async function fetchUrlContents(urls, onProgress) {
+  const results = [];
+  for (let i = 0; i < urls.length; i++) {
+    onProgress?.(i, urls.length);
+    try {
+      const resp = await fetch(`https://r.jina.ai/${encodeURIComponent(urls[i])}`, {
+        headers: { Accept: 'text/plain', 'X-No-Cache': 'true' },
+        signal: AbortSignal.timeout(12000),
+      });
+      const text = await resp.text();
+      results.push({ url: urls[i], content: text.slice(0, 2000), ok: true });
+    } catch (e) {
+      results.push({ url: urls[i], content: '', ok: false, error: String(e) });
+    }
+  }
+  onProgress?.(urls.length, urls.length);
+  return results;
+}
+
+async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError, onStatus }) {
+  const { tone, language, style, length, selectedSources, attachments, urlContexts, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
   const langInstr = language?.instr || '使用简体中文写作';
   const styleInstr = style?.instr || BUILTIN_STYLES[0].instr;
@@ -3566,6 +3670,32 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
 
   const minSections = templateSections?.length || (targetLength < 1000 ? 3 : targetLength < 2000 ? 5 : targetLength < 3000 ? 6 : 8);
   const minWordsPerSection = targetLength < 1000 ? 150 : targetLength < 2000 ? 200 : targetLength < 3000 ? 300 : 350;
+
+  // Zone 3: Fetch URL contents via Jina Reader API
+  let fetchedUrls = [];
+  if (urlContexts?.length > 0) {
+    onStatus?.({ phase: 'fetching', total: urlContexts.length, done: 0 });
+    fetchedUrls = await fetchUrlContents(urlContexts, (done, total) => {
+      onStatus?.({ phase: 'fetching', total, done });
+    });
+  }
+  onStatus?.({ phase: 'connecting' });
+
+  // Zone 3: Build <context> block (date + fetched URL content)
+  const now = new Date();
+  const DAY_CN_CTX = ['日','一','二','三','四','五','六'];
+  const dateStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日（周${DAY_CN_CTX[now.getDay()]}）`;
+  const urlContextBlock = fetchedUrls.length > 0
+    ? '\n\n' + fetchedUrls.map((r, i) =>
+        r.ok
+          ? `【参考网页 ${i+1}】${r.url}\n${r.content}`
+          : `【参考网页 ${i+1}】${r.url}\n（抓取失败，忽略此来源）`
+      ).join('\n\n---\n\n')
+    : '';
+
+  const contextBlock = `<context>
+生成日期：${dateStr}${urlContextBlock}
+</context>`;
 
   const sourceNote = (() => {
     if (!selectedSources?.size) return '';
@@ -3589,6 +3719,8 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
     : `目标字数：${displayLength} 字（严格控制在 ${Math.round(targetLength * 0.9)}–${Math.round(targetLength * 1.1)} 字以内）`;
 
   const systemPrompt = `${BASE_SYSTEM_PROMPT}
+
+${contextBlock}
 
 <output_language>
 ${langInstr}
@@ -3711,7 +3843,8 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
 
   // ── LIVE MODE state ──────────────────────────────────────────────────
   const [liveText, setLiveText] = React.useState('');
-  const [liveStatus, setLiveStatus] = React.useState('connecting'); // connecting | streaming | done | error
+  const [liveStatus, setLiveStatus] = React.useState('connecting'); // fetching | connecting | streaming | done | error
+  const [liveFetchProgress, setLiveFetchProgress] = React.useState({ done: 0, total: 0 });
   const [liveError, setLiveError] = React.useState('');
   const [liveStartTime] = React.useState(Date.now);
   const [liveElapsed, setLiveElapsed] = React.useState(0);
@@ -3781,6 +3914,10 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
       model: selectedModel,
       prompt: effectivePrompt,
       toolbarConfig,
+      onStatus: ({ phase, total, done }) => {
+        if (phase === 'fetching') { setLiveStatus('fetching'); setLiveFetchProgress({ done: done || 0, total: total || 0 }); }
+        else if (phase === 'connecting') { setLiveStatus('connecting'); }
+      },
       onChunk: (chunk) => {
         setLiveStatus('streaming');
         setLiveText(prev => prev + chunk);
@@ -3880,6 +4017,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
   const liveMargins = React.useMemo(() => {
     if (!isLiveMode) return [];
     const out = [];
+    if (liveStatus === 'fetching') out.push({ id: 'fetch', tag: 'FETCH', cn: `抓取网页内容… ${liveFetchProgress.done}/${liveFetchProgress.total}`, state: 'live', t: 0 });
     if (liveStatus === 'connecting') out.push({ id: 'connect', tag: 'CONNECT', cn: `正在连接 ${selectedModel?.name || '模型'}…`, state: 'live', t: 0 });
     if (liveStatus === 'streaming' || liveStatus === 'done') {
       out.push({ id: 'write', tag: 'WRITE', cn: `${selectedModel?.name || 'AI'} 正在撰写…`, state: liveStatus === 'done' ? 'done' : 'live', t: 0.5 });
@@ -3904,7 +4042,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
       }}>
         <LiveDot color={complete ? '#10b981' : (liveStatus === 'error' ? '#e5251d' : t.accent)}/>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1.4, color: complete ? '#10b981' : t.accent, minWidth: 120 }}>
-          {liveStatus === 'error' ? 'ERROR · 出错了' : complete ? 'DONE · 撰写完成' : isLiveMode ? `LIVE · ${selectedModel?.name}` : 'LIVE · 撰写中'}
+          {liveStatus === 'error' ? 'ERROR · 出错了' : complete ? 'DONE · 撰写完成' : liveStatus === 'fetching' ? `FETCH · ${liveFetchProgress.done}/${liveFetchProgress.total}` : isLiveMode ? `LIVE · ${selectedModel?.name}` : 'LIVE · 撰写中'}
         </span>
         <div style={{ flex: 1, height: 3, background: t.faint, position: 'relative' }}>
           <div style={{
@@ -3936,6 +4074,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
           {isLiveMode && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Tag t={t} accent>◈ {selectedModel?.name} · {selectedModel?.provider}</Tag>
+              {liveStatus === 'fetching' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>↗ 正在抓取网页内容… ({liveFetchProgress.done}/{liveFetchProgress.total})</span>}
               {liveStatus === 'connecting' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>正在连接…</span>}
             </div>
           )}
@@ -3958,6 +4097,12 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
             {isLiveMode && liveStatus === 'error' && (
               <div style={{ padding: '12px 16px', border: `1.5px solid #e5251d`, background: t.cardOn, fontFamily: t.fontCN, fontSize: 13, color: '#e5251d', lineHeight: 1.6 }}>
                 ✕ API 错误：{liveError}
+              </div>
+            )}
+            {isLiveMode && liveStatus === 'fetching' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.accent }}>
+                <span style={{ display: 'inline-block', width: 10, height: 18, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+                <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>↗ fetching {liveFetchProgress.done}/{liveFetchProgress.total} URLs via Jina Reader…</span>
               </div>
             )}
             {isLiveMode && liveStatus === 'connecting' && (
@@ -4209,6 +4354,7 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }
         {toolbarStore ? (
           <>
             <SourcesPopover t={t} store={toolbarStore}/>
+            <UrlContextPopover t={t} store={toolbarStore}/>
             <AttachmentsPopover t={t} store={toolbarStore}/>
             <TonePopover t={t} store={toolbarStore}/>
             <LanguagePopover t={t} store={toolbarStore}/>
@@ -7162,6 +7308,7 @@ function App() {
               length: toolbarStore.effectiveLength,
               selectedSources: toolbarStore.selectedSources,
               attachments: toolbarStore.attachments,
+              urlContexts: toolbarStore.urlContexts,
               temperature: modelStore.temperature,
               systemPromptExtra: modelStore.systemPromptExtra,
               topP: modelStore.topP,
