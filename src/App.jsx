@@ -4501,7 +4501,6 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }
             <LanguagePopover t={t} store={toolbarStore}/>
             <StylePopover t={t} store={toolbarStore}/>
             <LengthPopover t={t} store={toolbarStore}/>
-            {modelStore && <GenerationModePopover t={t} modelStore={modelStore}/>}
           </>
         ) : (
           <>
