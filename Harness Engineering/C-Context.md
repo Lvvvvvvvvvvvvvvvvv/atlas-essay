@@ -94,8 +94,82 @@
 | 区域 | 状态 | 完成版本 |
 |------|------|---------|
 | 区域一：System Prompt | **已完成** | v2.2.0 |
-| 区域二：Template | 待启动 | — |
+| 区域二：Template | **已完成** | v2.3.0 |
 | 区域三：Dynamic Context | 待启动 | — |
+
+---
+
+## 区域二实现记录（v2.3.0）
+
+**完成日期**：2026-05-31
+
+### 核心思路
+
+将模板的章节结构从「用户消息建议」升级为「系统提示强制框架」。模型收到的不是"参考格式"，而是"必须遵守的章节大纲"。
+
+### 数据结构变更
+
+每个模板（内置 + 自定义）新增两个字段：
+
+```json
+{
+  "topicPrompt": "填入输入框的话题提示词",
+  "sections": [
+    { "title": "章节标题", "req": "该章节的写作要求" },
+    ...
+  ]
+}
+```
+
+### System Prompt 注入机制
+
+有章节结构时，`streamReport` 动态构建 `<structure>` 块注入系统提示：
+
+```
+<structure>
+本次报告必须严格按以下章节框架展开，不可增减章节，不可重排顺序：
+
+一、核心结论（TL;DR）
+写作要求：开头一句导语（≤30字）点明最重要的结构性变化...
+
+二、主要玩家分析
+写作要求：分析头部3家各自竞争策略...
+
+...
+
+总字数要求 ≥ N 字（总字数分配到以上 M 个章节）
+每章最少字数：X 字
+</structure>
+```
+
+无章节结构时退回默认自由格式约束（最少 N 章、每章最少 X 字）。
+
+### UI 改动
+
+**模板卡片行为变更：**
+- 有 `sections` 的模板：点击后填入 `topicPrompt`，同时调用 `setActiveTemplate` 锁定章节结构
+- 无 `sections` 的模板：点击后填入 `prompt`，调用 `clearActiveTemplate`
+
+**Toolbar 新增 TemplateLockBadge：**
+- 显示当前锁定的模板名 + 章节数（如 `◆ Industry Scan · 4 章节`）
+- 展开 Popover 可预览全部章节标题与写作要求
+- × 按钮清除锁定
+
+**TemplateEditor 新增章节编辑器：**
+- 最多 8 个章节（对应中文序数一～八）
+- 每章：标题 input + 写作要求 textarea + × 删除
+- 有章节时 prompt textarea 高度自动缩减
+- 有章节时 prompt 变为可选（topicPrompt 自动使用 enName 作为默认值）
+- `＋ 添加章节` 按钮（章节数 ≥ 8 时隐藏）
+
+### 核心代码位置
+
+- `src/App.jsx` — `STARTERS` 数组新增 `topicPrompt` / `sections` 字段（4 个内置模板）
+- `src/App.jsx` — `useToolbarStore()` 新增 `activeTemplate` / `setActiveTemplate` / `clearActiveTemplate`
+- `src/App.jsx` — `TemplateLockBadge` 组件（toolbar 徽章）
+- `src/App.jsx` — `streamReport()` 中 `<structure>` 动态块构建逻辑
+- `src/App.jsx` — `TemplateEditor` 新增 `sections` 状态管理 + 章节编辑 JSX
+- `src/App.jsx` — `toolbarConfig.templateSections` 传递路径
 
 ---
 
