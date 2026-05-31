@@ -3706,11 +3706,13 @@ function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStor
         ) : (
           <>
             <Tag t={t}>＋ 数据源 (3)</Tag>
+            <Tag t={t}>↗ 网页</Tag>
             <Tag t={t}>＋ 附件</Tag>
-            <Tag t={t}>语气 · 分析性</Tag>
+            <div style={{ width: 1, alignSelf: 'stretch', background: '#ddd', margin: '2px 4px' }}/>
             <Tag t={t}>语言 · 简体中文</Tag>
             <Tag t={t}>风格 · 商业可读</Tag>
             <Tag t={t}>长度 · 2,500 字</Tag>
+            <Tag t={t}>◈ 均衡</Tag>
           </>
         )}
         {modelStore && <ModelSelector t={t} store={modelStore}/>}
@@ -4500,10 +4502,13 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }
         ) : (
           <>
             <Tag t={t}>＋ 数据源</Tag>
-            <Tag t={t}>语气 · 分析性</Tag>
+            <Tag t={t}>↗ 网页</Tag>
+            <Tag t={t}>＋ 附件</Tag>
+            <div style={{ width: 1, alignSelf: 'stretch', background: '#ddd', margin: '2px 4px' }}/>
             <Tag t={t}>语言 · 简体中文</Tag>
             <Tag t={t}>风格 · 商业可读</Tag>
             <Tag t={t}>长度 · 深度</Tag>
+            <Tag t={t}>◈ 均衡</Tag>
           </>
         )}
         <span style={{ flex: 1 }}/>
