@@ -3406,14 +3406,24 @@ function LanguagePopover({ t, store }) {
 // ── StylePopover ──────────────────────────────────────────────────────────
 function StylePopover({ t, store }) {
   const [open, setOpen] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const inputRef = React.useRef(null);
+  React.useEffect(() => { if (adding && inputRef.current) inputRef.current.focus(); }, [adding]);
+  const submitTone = () => {
+    if (draft.trim()) { store.addTone(draft.trim()); setDraft(''); setAdding(false); }
+  };
+  const sectionHdr = { fontFamily: t.fontMono, fontSize: 8, letterSpacing: 1.4, color: t.mute, padding: '7px 12px 4px', textTransform: 'uppercase' };
+
   return (
     <ToolPopover t={t} label={`风格 · ${store.currentStyle?.cn || '商业可读'}`}
-      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={240}>
-      <div style={{ padding: '6px 0' }}>
+      open={open} onOpen={() => setOpen(true)} onClose={() => { setOpen(false); setAdding(false); setDraft(''); }} width={260}>
+      <div style={sectionHdr}>报告风格</div>
+      <div style={{ paddingBottom: 4 }}>
         {BUILTIN_STYLES.map(style => {
           const active = style.id === store.styleId;
           return (
-            <div key={style.id} onClick={() => { store.setStyleId(style.id); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
+            <div key={style.id} onClick={() => store.setStyleId(style.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
               <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{style.cn}</div>
@@ -3422,6 +3432,38 @@ function StylePopover({ t, store }) {
             </div>
           );
         })}
+      </div>
+      <div style={{ ...sectionHdr, borderTop: `1px solid ${t.rule}`, paddingTop: 9 }}>写作语气</div>
+      <div style={{ paddingBottom: 4 }}>
+        {store.allTones.map(tone => {
+          const active = tone.id === store.toneId;
+          return (
+            <div key={tone.id} style={{ display: 'flex', alignItems: 'center', padding: '7px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
+              <div onClick={() => store.setToneId(tone.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
+                <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{tone.cn}</span>
+                {!tone.custom && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginLeft: 'auto' }}>{tone.en}</span>}
+              </div>
+              {tone.custom && (
+                <button onClick={e => { e.stopPropagation(); store.removeTone(tone.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 12, padding: '0 2px', lineHeight: 1 }}>×</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ padding: '7px 10px', borderTop: `1px solid ${t.rule}` }}>
+        {!adding ? (
+          <button onClick={() => setAdding(true)} style={{ width: '100%', padding: '4px 0', background: 'transparent', border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute, cursor: 'pointer' }}>＋ 新增语气</button>
+        ) : (
+          <div style={{ display: 'flex', gap: 5 }}>
+            <input ref={inputRef} value={draft} onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submitTone(); if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
+              placeholder="如：批判性"
+              style={{ flex: 1, padding: '4px 7px', fontFamily: t.fontCN, fontSize: 12, border: `1px solid ${t.ink}`, background: t.cardOn, color: t.ink, outline: 'none' }}
+            />
+            <button disabled={!draft.trim()} onClick={submitTone} style={{ padding: '4px 10px', background: draft.trim() ? t.ink : t.rule, border: 'none', fontFamily: t.fontMono, fontSize: 9, color: t.paper, cursor: draft.trim() ? 'pointer' : 'not-allowed' }}>确认</button>
+          </div>
+        )}
       </div>
     </ToolPopover>
   );
@@ -3652,7 +3694,7 @@ function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStor
             <SourcesPopover t={t} store={toolbarStore} onNavigateSources={onNavigateSources}/>
             <UrlContextPopover t={t} store={toolbarStore}/>
             <AttachmentsPopover t={t} store={toolbarStore}/>
-            <TonePopover t={t} store={toolbarStore}/>
+            <div style={{ width: 1, alignSelf: 'stretch', background: t.rule, margin: '2px 4px' }}/>
             <LanguagePopover t={t} store={toolbarStore}/>
             <StylePopover t={t} store={toolbarStore}/>
             <LengthPopover t={t} store={toolbarStore}/>
@@ -4449,7 +4491,7 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }
             <SourcesPopover t={t} store={toolbarStore}/>
             <UrlContextPopover t={t} store={toolbarStore}/>
             <AttachmentsPopover t={t} store={toolbarStore}/>
-            <TonePopover t={t} store={toolbarStore}/>
+            <div style={{ width: 1, alignSelf: 'stretch', background: t.rule, margin: '2px 4px' }}/>
             <LanguagePopover t={t} store={toolbarStore}/>
             <StylePopover t={t} store={toolbarStore}/>
             <LengthPopover t={t} store={toolbarStore}/>
