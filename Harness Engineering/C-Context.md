@@ -95,7 +95,60 @@
 |------|------|---------|
 | 区域一：System Prompt | **已完成** | v2.2.0 |
 | 区域二：Template | **已完成** | v2.3.0 |
-| 区域三：Dynamic Context | 待启动 | — |
+| 区域三：Dynamic Context | **已完成** | v2.4.0 |
+
+---
+
+## 区域三实现记录（v2.4.0）
+
+**完成日期**：2026-05-31
+
+### 实现内容
+
+每次生成前，系统自动向 system prompt 注入一个 `<context>` 块，包含：
+
+```
+<context>
+生成日期：2026年5月31日（周日）
+
+【参考网页 1】https://example.com/article
+[Jina Reader 抓取的页面正文，前 2000 字]
+
+【参考网页 2】https://another.com/page
+[Jina Reader 抓取的页面正文，前 2000 字]
+</context>
+```
+
+**生成日期注入**（无条件，每次生成均包含）：
+- 让模型知道当前准确日期，避免时效性错误（如引用过时数据、对近期事件判断错误）
+
+**URL 内容注入**（用户手动添加 URL 后触发）：
+- 通过 Jina Reader API（`https://r.jina.ai/{url}`）抓取网页正文
+- 每条 URL 截取前 2000 字注入上下文
+- 抓取失败时标记"抓取失败，忽略此来源"，不阻断生成
+
+### UI 改动
+
+**Toolbar 新增 UrlContextPopover（↗ 网页）：**
+- URL 输入框（支持 Enter 提交，自动补全 https://）
+- 已添加 URL 列表（显示 hostname + 完整 URL，× 删除）
+- 底部提示：「通过 Jina Reader API 抓取 · 每条截取前 2000 字」
+- 有 URL 时按钮显示计数：`↗ 网页 (N)`
+- localStorage 持久化（key: `atlas_url_contexts`）
+
+**Running 新增 fetching 状态：**
+- 进度条头部：`FETCH · N/M`
+- 模型 badge 旁：`↗ 正在抓取网页内容… (N/M)`
+- 内容区占位符：`↗ fetching N/M URLs via Jina Reader…`
+- Timeline marginalia：`FETCH · 抓取网页内容… N/M`
+
+### 核心代码位置
+
+- `src/App.jsx` — `fetchUrlContents()` 异步抓取函数
+- `src/App.jsx` — `streamReport()` 中 `<context>` 块构建 + `onStatus` 回调
+- `src/App.jsx` — `useToolbarStore()` 新增 `urlContexts` / `addUrlContext` / `removeUrlContext`
+- `src/App.jsx` — `UrlContextPopover` 组件（toolbar 按钮）
+- `src/App.jsx` — `Running` 组件新增 `liveFetchProgress` 状态 + fetching UI
 
 ---
 
