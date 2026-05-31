@@ -1040,9 +1040,23 @@ function SettingsModal({ t, modelStore, toolbarStore, onClose }) {
               <React.Fragment>
                 <div>
                   <div style={secHdr}>模型参数</div>
-                  <UMenuSliderRow t={t} label="TEMPERATURE" value={Number(modelStore.temperature||0.7)} min={0} max={2} step={0.1} onChange={v => modelStore.setTemperature(v)} formatVal={v => v.toFixed(1)} hints={['精确 0.0','均衡 0.7','创意 2.0']}/>
-                  <UMenuSliderRow t={t} label="TOP-P" value={Number(modelStore.topP ?? 1.0)} min={0} max={1} step={0.05} onChange={v => modelStore.setTopP(v)} formatVal={v => v.toFixed(2)} hints={['集中 0.0','均衡 0.5','多样 1.0']}/>
-                  <UMenuSliderRow t={t} label="FREQUENCY PENALTY" value={Number(modelStore.frequencyPenalty ?? 0)} min={-2} max={2} step={0.1} onChange={v => modelStore.setFrequencyPenalty(v)} formatVal={v => (v>=0?'+':'')+v.toFixed(1)} hints={['-2.0','0.0','+2.0']}/>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                    <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1 }}>当前生成模式</span>
+                    <div style={{ display:'flex', gap:4 }}>
+                      {[...GENERATION_MODES, { id:'custom', cn:'自定义' }].map(m => (
+                        <button key={m.id} onClick={() => m.id !== 'custom' && modelStore.setGenerationMode(m.id)} style={{
+                          padding:'2px 8px', fontFamily:t.fontMono, fontSize:8, letterSpacing:0.8,
+                          border:`1px solid ${modelStore.generationMode===m.id ? t.accent : t.rule}`,
+                          background: modelStore.generationMode===m.id ? t.accent : 'transparent',
+                          color: modelStore.generationMode===m.id ? t.paper : t.mute,
+                          cursor: m.id==='custom' ? 'default' : 'pointer',
+                        }}>{m.cn}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <UMenuSliderRow t={t} label="TEMPERATURE" value={Number(modelStore.temperature||0.45)} min={0} max={2} step={0.05} onChange={v => modelStore.setTemperature(v)} formatVal={v => v.toFixed(2)} hints={['严谨 0.25','均衡 0.45','探索 0.75']}/>
+                  <UMenuSliderRow t={t} label="TOP-P" value={Number(modelStore.topP ?? 0.90)} min={0} max={1} step={0.05} onChange={v => modelStore.setTopP(v)} formatVal={v => v.toFixed(2)} hints={['0.85','0.90','0.95']}/>
+                  <UMenuSliderRow t={t} label="FREQUENCY PENALTY" value={Number(modelStore.frequencyPenalty ?? 0.10)} min={-2} max={2} step={0.05} onChange={v => modelStore.setFrequencyPenalty(v)} formatVal={v => (v>=0?'+':'')+v.toFixed(2)} hints={['+0.20','+0.10','+0.00']}/>
                   <UMenuSliderRow t={t} label="PRESENCE PENALTY" value={Number(modelStore.presencePenalty ?? 0)} min={-2} max={2} step={0.1} onChange={v => modelStore.setPresencePenalty(v)} formatVal={v => (v>=0?'+':'')+v.toFixed(1)} hints={['-2.0','0.0','+2.0']}/>
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -2395,20 +2409,24 @@ function useModelStore() {
   });
   const [effort, setEffort] = React.useState('High');
   const [fastMode, setFastMode] = React.useState(false);
+  const [generationMode, setGenerationModeState] = React.useState(
+    () => localStorage.getItem('atlas_generation_mode') || 'balanced'
+  );
+  const DEFAULT_MODE = GENERATION_MODES.find(m => m.id === 'balanced');
   const [temperature, setTemperatureState] = React.useState(() => {
     const v = parseFloat(localStorage.getItem('atlas_temperature'));
-    return isNaN(v) ? 0.7 : v;
+    return isNaN(v) ? DEFAULT_MODE.temperature : v;
   });
   const [systemPromptExtra, setSystemPromptExtraState] = React.useState(
     () => localStorage.getItem('atlas_system_prompt_extra') || ''
   );
   const [topP, setTopPState] = React.useState(() => {
     const v = parseFloat(localStorage.getItem('atlas_top_p'));
-    return isNaN(v) ? 1.0 : v;
+    return isNaN(v) ? DEFAULT_MODE.topP : v;
   });
   const [frequencyPenalty, setFreqPenaltyState] = React.useState(() => {
     const v = parseFloat(localStorage.getItem('atlas_freq_penalty'));
-    return isNaN(v) ? 0 : v;
+    return isNaN(v) ? DEFAULT_MODE.frequencyPenalty : v;
   });
   const [presencePenalty, setPresPenaltyState] = React.useState(() => {
     const v = parseFloat(localStorage.getItem('atlas_pres_penalty'));
@@ -2461,16 +2479,33 @@ function useModelStore() {
     setCustomModels(updated);
     try { localStorage.setItem('atlas_custom_models', JSON.stringify(updated)); } catch {}
   };
-  const setTemperature = (v) => { setTemperatureState(v); try { localStorage.setItem('atlas_temperature', String(v)); } catch {} };
+  const setTemperature = (v) => {
+    setTemperatureState(v); try { localStorage.setItem('atlas_temperature', String(v)); } catch {}
+    setGenerationModeState('custom'); try { localStorage.setItem('atlas_generation_mode', 'custom'); } catch {}
+  };
   const setSystemPromptExtra = (v) => { setSystemPromptExtraState(v); try { localStorage.setItem('atlas_system_prompt_extra', v); } catch {} };
-  const setTopP = (v) => { setTopPState(v); try { localStorage.setItem('atlas_top_p', String(v)); } catch {} };
-  const setFrequencyPenalty = (v) => { setFreqPenaltyState(v); try { localStorage.setItem('atlas_freq_penalty', String(v)); } catch {} };
+  const setTopP = (v) => {
+    setTopPState(v); try { localStorage.setItem('atlas_top_p', String(v)); } catch {}
+    setGenerationModeState('custom'); try { localStorage.setItem('atlas_generation_mode', 'custom'); } catch {}
+  };
+  const setFrequencyPenalty = (v) => {
+    setFreqPenaltyState(v); try { localStorage.setItem('atlas_freq_penalty', String(v)); } catch {}
+    setGenerationModeState('custom'); try { localStorage.setItem('atlas_generation_mode', 'custom'); } catch {}
+  };
   const setPresencePenalty = (v) => { setPresPenaltyState(v); try { localStorage.setItem('atlas_pres_penalty', String(v)); } catch {} };
   const setMaxTokensOverride = (v) => {
     setMaxTokensOverrideState(v);
     try { v !== null ? localStorage.setItem('atlas_max_tokens_override', String(v)) : localStorage.removeItem('atlas_max_tokens_override'); } catch {}
   };
-  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, hideBuiltin, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra, topP, setTopP, frequencyPenalty, setFrequencyPenalty, presencePenalty, setPresencePenalty, maxTokensOverride, setMaxTokensOverride };
+  const setGenerationMode = (id) => {
+    const mode = GENERATION_MODES.find(m => m.id === id);
+    if (!mode) return;
+    setGenerationModeState(id); try { localStorage.setItem('atlas_generation_mode', id); } catch {}
+    setTemperatureState(mode.temperature); try { localStorage.setItem('atlas_temperature', String(mode.temperature)); } catch {}
+    setTopPState(mode.topP); try { localStorage.setItem('atlas_top_p', String(mode.topP)); } catch {}
+    setFreqPenaltyState(mode.frequencyPenalty); try { localStorage.setItem('atlas_freq_penalty', String(mode.frequencyPenalty)); } catch {}
+  };
+  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, hideBuiltin, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra, topP, setTopP, frequencyPenalty, setFrequencyPenalty, presencePenalty, setPresencePenalty, maxTokensOverride, setMaxTokensOverride, generationMode, setGenerationMode };
 }
 
 function ModelSelector({ t, store }) {
@@ -2894,6 +2929,12 @@ const LENGTH_PRESETS = [
   { id: 'standard', cn: '标准', chars: 1500 },
   { id: 'deep',     cn: '深度', chars: 2500 },
   { id: 'long',     cn: '长文', chars: 4000 },
+];
+
+const GENERATION_MODES = [
+  { id: 'precise',  cn: '严谨', en: 'Precise',  desc: '结构稳定，适合行业报告 / 技术分析', temperature: 0.25, topP: 0.85, frequencyPenalty: 0.20 },
+  { id: 'balanced', cn: '均衡', en: 'Balanced', desc: '通用报告首选，质量与流畅度均衡',       temperature: 0.45, topP: 0.90, frequencyPenalty: 0.10 },
+  { id: 'creative', cn: '探索', en: 'Creative', desc: '头脑风暴 / 探索性分析，表达更多样',   temperature: 0.75, topP: 0.95, frequencyPenalty: 0.00 },
 ];
 
 // ── Toolbar store ─────────────────────────────────────────────────────────
@@ -3444,6 +3485,57 @@ function LengthPopover({ t, store }) {
   );
 }
 
+// ── GenerationModePopover ─────────────────────────────────────────────────
+function GenerationModePopover({ t, modelStore }) {
+  const [open, setOpen] = React.useState(false);
+  const currentMode = GENERATION_MODES.find(m => m.id === modelStore.generationMode);
+  const label = currentMode ? `◈ ${currentMode.cn}` : '◈ 自定义';
+
+  return (
+    <ToolPopover t={t} label={label}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={280}>
+      <div style={{ padding: '8px 12px 4px', borderBottom: `1px solid ${t.rule}` }}>
+        <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute }}>
+          GENERATION MODE · 生成模式
+        </div>
+      </div>
+      <div>
+        {GENERATION_MODES.map(m => {
+          const active = modelStore.generationMode === m.id;
+          return (
+            <div key={m.id} onClick={() => { modelStore.setGenerationMode(m.id); setOpen(false); }} style={{
+              padding: '10px 14px', cursor: 'pointer', borderBottom: `1px solid ${t.rule}`,
+              background: active ? t.faint : 'transparent',
+              borderLeft: active ? `3px solid ${t.accent}` : '3px solid transparent',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
+                <span style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: active ? 700 : 400, color: t.ink }}>{m.cn}</span>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.8 }}>{m.en}</span>
+                {active && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, marginLeft: 'auto' }}>✓ 当前</span>}
+              </div>
+              <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, lineHeight: 1.5 }}>{m.desc}</div>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 4, opacity: 0.7 }}>
+                temp {m.temperature} · top_p {m.topP} · fp +{m.frequencyPenalty.toFixed(2)}
+              </div>
+            </div>
+          );
+        })}
+        {modelStore.generationMode === 'custom' && (
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${t.rule}`, borderLeft: `3px solid ${t.accent}`, background: t.faint }}>
+            <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 3 }}>自定义</div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
+              temp {Number(modelStore.temperature).toFixed(2)} · top_p {Number(modelStore.topP).toFixed(2)} · fp {(modelStore.frequencyPenalty >= 0 ? '+' : '') + Number(modelStore.frequencyPenalty).toFixed(2)}
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{ padding: '6px 12px', background: t.faint, borderTop: `1px solid ${t.rule}` }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>手动调参后自动切换为「自定义」</span>
+      </div>
+    </ToolPopover>
+  );
+}
+
 // ── PromptComposer ──────────────────────────────────────────────────────
 
 // ── TemplateLockBadge ─────────────────────────────────────────────────────
@@ -3564,6 +3656,7 @@ function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStor
             <LanguagePopover t={t} store={toolbarStore}/>
             <StylePopover t={t} store={toolbarStore}/>
             <LengthPopover t={t} store={toolbarStore}/>
+            {modelStore && <GenerationModePopover t={t} modelStore={modelStore}/>}
             {toolbarStore.activeTemplate && (
               <TemplateLockBadge t={t} store={toolbarStore}/>
             )}
@@ -4360,6 +4453,7 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }
             <LanguagePopover t={t} store={toolbarStore}/>
             <StylePopover t={t} store={toolbarStore}/>
             <LengthPopover t={t} store={toolbarStore}/>
+            {modelStore && <GenerationModePopover t={t} modelStore={modelStore}/>}
           </>
         ) : (
           <>
