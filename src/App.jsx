@@ -1700,6 +1700,13 @@ const STARTERS = [
     sub: '我先扫一圈公开报道、社群讨论和融资数据，输出洞察。',
     minutes: '8-12 min',
     tag: 'RESEARCH',
+    topicPrompt: '调研「家用清洁机器人」赛道，输出一篇约 2,200 字的内部分析报告。',
+    sections: [
+      { title: '核心结论（TL;DR）', req: '开头一句导语（≤30字）点明最重要的结构性变化；给出市场规模与增速数据；说明头部格局分化现状，谁在领跑、谁在掉队' },
+      { title: '主要玩家分析', req: '分析头部3家各自竞争策略与差异化路径；穿插行业内部人士引述（引号+来源标注）；说明旗舰/中端/白牌价格带逻辑' },
+      { title: '用户在说什么', req: '提炼高频好评关键词3个、差评关键词3个；指出一个被低估的细分人群及其需求特征与对应价格带' },
+      { title: '接下来看什么', req: '两个值得追踪的行业信号各展开一段；最后一段简要提及海外机会' },
+    ],
     prompt: `调研「家用清洁机器人」赛道，输出一篇 2,200 字的内部分析报告，严格按以下四节结构展开：
 
 第一节 · 核心结论（TL;DR）
@@ -1761,6 +1768,13 @@ const STARTERS = [
     sub: '上传或连接表格，我做清洗、聚类和洞察，附图。',
     minutes: '5-8 min',
     tag: 'DATA',
+    topicPrompt: '分析过去四个季度的门店销售数据，按城市等级分群，输出约 1,400 字的内部分析报告。',
+    sections: [
+      { title: '核心结论（TL;DR）', req: '开头一句导语直接点明增长分布的关键事实；整体增速与各分群实际增速的落差；新增量 vs 存量有机增长的区别' },
+      { title: '分群拆解分析', req: '逐层分析各分群表现（驱动因素、潜力、天花板）；穿插运营层面内部判断引述（引号+来源标注）' },
+      { title: '季节性与周期性规律', req: '分析各时段节奏：峰值与淡旺季效应；同比数据说明趋势是否在强化或减弱' },
+      { title: '建议与行动项', req: '3条具体可执行建议，每条说明：谁做、做什么、大概时间节点' },
+    ],
     prompt: `分析过去四个季度的门店销售数据，按城市等级分群，输出约 1,400 字的内部分析报告，严格按以下四节结构展开：
 
 第一节 · 核心结论（TL;DR）
@@ -1818,6 +1832,12 @@ const STARTERS = [
     sub: '我会自动整理上周日程、文档和项目进展。',
     minutes: '2-4 min',
     tag: 'INTERNAL',
+    topicPrompt: '帮我写一份本周工作周报，约 1,000 字。',
+    sections: [
+      { title: '本周进展', req: '开头一句导语点明本周最重要的一件事（≤25字）；分块说明关键客户/合作进展、已上线功能（附初步数据表现）' },
+      { title: '本周遇到的问题', req: '具体描述问题：发生时间、影响范围（用户数）、根本原因；穿插内部复盘关键判断（引号+发言人·场合标注）；善后处理情况' },
+      { title: '下周计划', req: '3件事，每件格式：事项描述 + 时间节点 + 负责人' },
+    ],
     prompt: `帮我写一份本周工作周报，约 1,000 字，严格按以下三节结构展开：
 
 第一节 · 本周进展
@@ -1867,6 +1887,13 @@ const STARTERS = [
     sub: '产品、定价、增长、舆情，四个角度做对比。',
     minutes: '10-15 min',
     tag: 'RESEARCH',
+    topicPrompt: '对 Notion AI 和 ChatGPT for Teams 进行竞品对比分析，输出约 2,200 字的内部报告。',
+    sections: [
+      { title: '核心结论（TL;DR）', req: '开头一句导语点明两者的本质差异（工作流哲学层面，非功能层面）；定价对比与综合TCO分析；各自最适合的团队类型一句话总结' },
+      { title: '产品功能对比', req: '竞品A核心竞争力（优势与局限）；竞品B核心竞争力（优势与局限）；穿插真实用户使用体感引述（引号+来源标注）' },
+      { title: '用户口碑与增长', req: '对比权威平台评分及成因；各自高频差评关键词各2-3个；增长数据与市场渗透趋势' },
+      { title: '选择建议', req: '分场景给出明确有立场的选择建议（至少3个具体场景）；最后点出需要关注的额外变量' },
+    ],
     prompt: `对 Notion AI 和 ChatGPT for Teams 进行竞品对比分析，输出约 2,200 字的内部报告，严格按以下四节结构展开：
 
 第一节 · 核心结论（TL;DR）
@@ -1949,8 +1976,17 @@ function TemplateEditor({ t, onSave, onClose, initial = null }) {
   const [tag, setTag]           = React.useState(initial?.tag     || 'CUSTOM');
   const [minutes, setMinutes]   = React.useState(initial?.minutes || '3-5 min');
   const [promptVal, setPromptVal] = React.useState(initial?.prompt || '');
-  const valid = enName.trim().length > 0 && promptVal.trim().length > 0;
-  const handleSave = () => { if (!valid) return; onSave({ ...initial, icon, en: enName.trim(), cn: cnName.trim(), sub: sub.trim(), tag, minutes, prompt: promptVal.trim() }); };
+  const [sections, setSections] = React.useState(initial?.sections || []);
+  const valid = enName.trim().length > 0 && (promptVal.trim().length > 0 || sections.length > 0);
+  const handleSave = () => {
+    if (!valid) return;
+    const cleanSections = sections.filter(s => s.title.trim());
+    const topicPrompt = cleanSections.length ? (promptVal.trim() || enName.trim()) : undefined;
+    onSave({ ...initial, icon, en: enName.trim(), cn: cnName.trim(), sub: sub.trim(), tag, minutes, prompt: promptVal.trim(), sections: cleanSections.length ? cleanSections : undefined, topicPrompt });
+  };
+  const addSection = () => setSections(prev => [...prev, { title: '', req: '' }]);
+  const removeSection = (i) => setSections(prev => prev.filter((_, idx) => idx !== i));
+  const updateSection = (i, field, val) => setSections(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
 
   const lbl = { fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute, textTransform: 'uppercase', marginBottom: 5, display: 'block' };
   const inp = { width: '100%', border: `1.5px solid ${t.rule}`, padding: '7px 10px', fontFamily: t.fontBody, fontSize: 13, color: t.ink, background: t.faint, outline: 'none', boxSizing: 'border-box' };
@@ -2008,10 +2044,38 @@ function TemplateEditor({ t, onSave, onClose, initial = null }) {
         </div>
 
         <div style={{ marginBottom:20 }}>
-          <span style={lbl}>Prompt · 提示词内容 *</span>
+          <span style={lbl}>Prompt · 提示词内容{sections.length === 0 ? ' *' : '（有章节结构时可留空）'}</span>
           <textarea value={promptVal} onChange={e=>setPromptVal(e.target.value)}
             placeholder="输入完整的提示词，点击模板卡片后会直接填入输入框…"
-            style={{...inp, height:150, resize:'vertical', lineHeight:1.6, borderColor: promptVal.trim() ? t.ink : t.rule}}/>
+            style={{...inp, height:sections.length ? 80 : 150, resize:'vertical', lineHeight:1.6, borderColor: promptVal.trim() ? t.ink : t.rule}}/>
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+            <span style={{...lbl, marginBottom:0}}>章节结构（可选）· 定义后将注入 System Prompt 作为强制框架</span>
+            {sections.length > 0 && <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.accent }}>已定义 {sections.length} 章节</span>}
+          </div>
+          {sections.map((s, i) => (
+            <div key={i} style={{ border:`1px solid ${t.rule}`, padding:'10px 12px', marginBottom:8, background:t.faint }}>
+              <div style={{ display:'flex', gap:8, marginBottom:6, alignItems:'center' }}>
+                <span style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, flexShrink:0, width:20, textAlign:'center' }}>
+                  {['一','二','三','四','五','六','七','八'][i]}
+                </span>
+                <input value={s.title} onChange={e=>updateSection(i,'title',e.target.value)}
+                  placeholder="章节标题（必填）"
+                  style={{...inp, flex:1, height:30, padding:'4px 8px', fontSize:12}} />
+                <button onClick={()=>removeSection(i)} style={{ background:'none', border:`1px solid ${t.rule}`, width:26, height:26, cursor:'pointer', color:t.mute, fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
+              </div>
+              <textarea value={s.req} onChange={e=>updateSection(i,'req',e.target.value)}
+                placeholder="写作要求（模型必须遵守的具体指令，如：开头一句结论，列举3个要点…）"
+                style={{...inp, height:52, resize:'vertical', fontSize:11, lineHeight:1.5, padding:'5px 8px'}} />
+            </div>
+          ))}
+          {sections.length < 8 && (
+            <button onClick={addSection} style={{ width:'100%', padding:'7px 0', fontFamily:t.fontMono, fontSize:9, letterSpacing:1.2, border:`1.5px dashed ${t.rule}`, background:'transparent', color:t.mute, cursor:'pointer' }}>
+              ＋ 添加章节
+            </button>
+          )}
         </div>
 
         <div style={{ display:'flex', gap:10, justifyContent:'flex-end', paddingTop:16, borderTop:`1px solid ${t.rule}` }}>
@@ -2204,7 +2268,15 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
           }}>
             {/* ── built-in starters ── */}
             {STARTERS.map((s) => (
-              <button key={s.num} type="button" onClick={() => setPrompt(s.prompt)}
+              <button key={s.num} type="button" onClick={() => {
+                if (s.sections?.length) {
+                  setPrompt(s.topicPrompt || s.prompt);
+                  toolbarStore?.setActiveTemplate({ id: s.en, en: s.en, cn: s.cn, sections: s.sections });
+                } else {
+                  setPrompt(s.prompt);
+                  toolbarStore?.clearActiveTemplate();
+                }
+              }}
                 style={{ borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}`, background:t.paper, padding:'18px 22px', textAlign:'left', display:'flex', flexDirection:'column', gap:6, cursor:'pointer', fontFamily:t.fontBody, color:t.ink, transition:'background 0.12s' }}
                 onMouseEnter={e=>e.currentTarget.style.background=t.faint}
                 onMouseLeave={e=>e.currentTarget.style.background=t.paper}
@@ -2218,6 +2290,11 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
                 <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute, lineHeight:1.5 }}>{s.sub}</div>
                 <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
                   <span style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:1 }}>{s.minutes}</span>
+                  {s.sections?.length > 0 && (
+                    <span style={{ fontFamily:t.fontMono, fontSize:8, color:t.accent, border:`1px solid ${t.accent}`, padding:'1px 5px', letterSpacing:0.5 }}>
+                      {s.sections.length} 章节
+                    </span>
+                  )}
                   <span style={{ flex:1 }}/>
                   <span style={{ fontFamily:t.fontMono, fontSize:11, color:t.ink }}>↗</span>
                 </div>
@@ -2231,7 +2308,15 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
                 onMouseLeave={()=>setHoveredCustomId(null)}
               >
                 {/* card body — same layout as built-in starters */}
-                <button type="button" onClick={()=>setPrompt(s.prompt)}
+                <button type="button" onClick={()=>{
+                  if (s.sections?.length) {
+                    setPrompt(s.topicPrompt || s.prompt);
+                    toolbarStore?.setActiveTemplate({ id: s.id, en: s.en, cn: s.cn, sections: s.sections });
+                  } else {
+                    setPrompt(s.prompt);
+                    toolbarStore?.clearActiveTemplate();
+                  }
+                }}
                   style={{ width:'100%', height:'100%', background: hoveredCustomId===s.id ? t.faint : t.paper, padding:'18px 22px', textAlign:'left', display:'flex', flexDirection:'column', gap:6, cursor:'pointer', fontFamily:t.fontBody, color:t.ink, transition:'background 0.12s', border:'none' }}
                 >
                   {/* top row: icon left, tag right — mirrors built-in num/tag row */}
@@ -2832,6 +2917,7 @@ function useToolbarStore() {
   const [styleId, setStyleIdRaw] = React.useState(
     () => localStorage.getItem('atlas_style') || 'business'
   );
+  const [activeTemplate, setActiveTemplateRaw] = React.useState(null);
 
   const allTones = [...BUILTIN_TONES, ...customTones];
   const currentTone = allTones.find(to => to.id === toneId) || allTones[0];
@@ -2907,6 +2993,9 @@ function useToolbarStore() {
 
   const removeAttachment = (id) => setAttachments(prev => prev.filter(a => a.id !== id));
 
+  const setActiveTemplate = (tpl) => setActiveTemplateRaw(tpl);
+  const clearActiveTemplate = () => setActiveTemplateRaw(null);
+
   return {
     selectedSources, toggleSource,
     attachments, addAttachment, removeAttachment,
@@ -2914,6 +3003,7 @@ function useToolbarStore() {
     lengthId, setLengthId, customLength, setCustomLength, effectiveLength,
     languageId, setLanguageId, allLanguages, currentLanguage, addLanguage, removeLanguage,
     styleId, setStyleId, currentStyle,
+    activeTemplate, setActiveTemplate, clearActiveTemplate,
   };
 }
 
@@ -3272,6 +3362,63 @@ function LengthPopover({ t, store }) {
 
 // ── PromptComposer ──────────────────────────────────────────────────────
 
+// ── TemplateLockBadge ─────────────────────────────────────────────────────
+function TemplateLockBadge({ t, store }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const tpl = store.activeTemplate;
+  if (!tpl) return null;
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div onClick={() => setOpen(o => !o)} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase',
+        padding: '3px 8px', border: `1px solid ${t.accent}`,
+        background: open ? t.accent : 'transparent',
+        color: open ? t.paper : t.accent,
+        cursor: 'pointer', userSelect: 'none',
+      }}>
+        ◆ {tpl.en} · {tpl.sections.length} 章节
+        <span onClick={(e) => { e.stopPropagation(); store.clearActiveTemplate(); }}
+          style={{ marginLeft: 3, opacity: 0.7, fontSize: 11, lineHeight: 1 }}>×</span>
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: 0, marginBottom: 6,
+          background: t.paper, border: `1.5px solid ${t.ink}`,
+          boxShadow: `3px 3px 0 rgba(0,0,0,0.12)`, zIndex: 200, width: 320, padding: '10px 0',
+        }}>
+          <div style={{ padding: '6px 14px 10px', borderBottom: `1px solid ${t.rule}` }}>
+            <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: t.accent }}>{tpl.en}</div>
+            {tpl.cn && <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, marginTop: 2 }}>{tpl.cn}</div>}
+          </div>
+          {tpl.sections.map((s, i) => (
+            <div key={i} style={{ padding: '8px 14px', borderBottom: `1px solid ${t.rule}` }}>
+              <div style={{ fontFamily: t.fontCN, fontSize: 12, fontWeight: 600, color: t.ink, marginBottom: 3 }}>
+                {['一','二','三','四','五','六','七','八'][i]}、{s.title}
+              </div>
+              <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, lineHeight: 1.5 }}>{s.req}</div>
+            </div>
+          ))}
+          <div style={{ padding: '8px 14px' }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 0.5 }}>
+              章节结构已注入 System Prompt · 点击 × 取消锁定
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStore, onNavigateSources }) {
   const charCount = prompt.length;
   const placeholder = '比如，"梳理一下 2025 年 Q1 咖啡赛道的融资动态…"';
@@ -3332,6 +3479,9 @@ function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStor
             <LanguagePopover t={t} store={toolbarStore}/>
             <StylePopover t={t} store={toolbarStore}/>
             <LengthPopover t={t} store={toolbarStore}/>
+            {toolbarStore.activeTemplate && (
+              <TemplateLockBadge t={t} store={toolbarStore}/>
+            )}
           </>
         ) : (
           <>
@@ -3408,13 +3558,13 @@ const RUN_TOTAL = 26.0;
 
 // ── Live API streaming -----------------------------------------------
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError }) {
-  const { tone, language, style, length, selectedSources, attachments, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride } = toolbarConfig || {};
+  const { tone, language, style, length, selectedSources, attachments, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
   const langInstr = language?.instr || '使用简体中文写作';
   const styleInstr = style?.instr || BUILTIN_STYLES[0].instr;
   const targetLength = length || 2500;
 
-  const minSections = targetLength < 1000 ? 3 : targetLength < 2000 ? 5 : targetLength < 3000 ? 6 : 8;
+  const minSections = templateSections?.length || (targetLength < 1000 ? 3 : targetLength < 2000 ? 5 : targetLength < 3000 ? 6 : 8);
   const minWordsPerSection = targetLength < 1000 ? 150 : targetLength < 2000 ? 200 : targetLength < 3000 ? 300 : 350;
 
   const sourceNote = (() => {
@@ -3449,12 +3599,22 @@ ${langInstr}
 写作语气：${toneCN}（全程必须体现，不得偏离）
 </style>
 
-<structure>
+${templateSections?.length ? `<structure>
+本次报告必须严格按以下章节框架展开，不可增减章节，不可重排顺序：
+
+${templateSections.map((s, i) => {
+  const nums = ['一','二','三','四','五','六','七','八'];
+  return `${nums[i] || (i+1)}、${s.title}\n写作要求：${s.req}`;
+}).join('\n\n')}
+
+${lengthInstr}（总字数分配到以上 ${templateSections.length} 个章节）
+每章最少字数：${minWordsPerSection} 字
+</structure>` : `<structure>
 本次报告结构要求：
 - 最少章节数：${minSections} 个，每章用「一、」「二、」等中文序号 + ## 标题格式
 - 每章最少字数：${minWordsPerSection} 字
 - ${lengthInstr}
-</structure>
+</structure>`}
 
 <citations>
 重要数据用 §1 §2 §3 标注脚注编号，报告末尾输出：
@@ -7008,6 +7168,7 @@ function App() {
               frequencyPenalty: modelStore.frequencyPenalty,
               presencePenalty: modelStore.presencePenalty,
               maxTokensOverride: modelStore.maxTokensOverride,
+              templateSections: toolbarStore.activeTemplate?.sections,
             }}
             onSaveReport={handleSaveReport}/>
         )}
