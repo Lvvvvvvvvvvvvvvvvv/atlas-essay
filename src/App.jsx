@@ -2322,7 +2322,7 @@ function useAINews() {
   return { items, loading };
 }
 
-function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
+function Home({ t, prompt, setPrompt, onStart, onBackground, bgTaskStatus, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
   const editorial = density === 'editorial';
   const headSize = editorial ? 'xxl' : 'xl';
   const customTpls = useCustomTemplates();
@@ -2395,7 +2395,7 @@ function Home({ t, prompt, setPrompt, onStart, density = 'editorial', modelStore
         </div>
 
         {/* Prompt input */}
-        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} modelStore={modelStore} toolbarStore={toolbarStore} onNavigateSources={onNavigateSources}/>
+        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} onBackground={onBackground} bgTaskStatus={bgTaskStatus} modelStore={modelStore} toolbarStore={toolbarStore} onNavigateSources={onNavigateSources}/>
 
         {/* AI news ticker */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', border: `1px solid ${t.ink}`, background: t.cardOn, minWidth: 0 }}>
@@ -3874,7 +3874,7 @@ function TemplateLockBadge({ t, store }) {
   );
 }
 
-function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStore, onNavigateSources }) {
+function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, bgTaskStatus, modelStore, toolbarStore, onNavigateSources }) {
   const charCount = prompt.length;
   const placeholder = '比如，"梳理一下 2025 年 Q1 咖啡赛道的融资动态…"';
   const taRef = React.useRef(null);
@@ -3961,6 +3961,13 @@ function PromptComposer({ t, prompt, setPrompt, onStart, modelStore, toolbarStor
         <Btn t={t} primary accent size="md" onClick={onStart} disabled={!prompt.trim()}>
           Start writing ↗
         </Btn>
+        {onBackground && (
+          <Btn t={t} size="md" onClick={onBackground}
+            disabled={!prompt.trim() || bgTaskStatus === 'queued' || bgTaskStatus === 'running'}
+            title="关 Tab 也能继续生成，完成后在报告库查看">
+            {bgTaskStatus === 'queued' ? '排队中…' : bgTaskStatus === 'running' ? '◈ 生成中…' : bgTaskStatus === 'done' ? '✓ 完成' : bgTaskStatus === 'failed' ? '✕ 失败' : '◈ 后台'}
+          </Btn>
+        )}
       </div>
     </div>
   );
@@ -8676,6 +8683,56 @@ function App() {
     setRoute(outlineMode && !hasTemplate && isLive ? 'outline' : 'running');
   };
 
+  const [bgTaskStatus, setBgTaskStatus] = React.useState(null); // null | 'queued' | 'running' | 'done' | 'failed'
+  const [bgTaskId, setBgTaskId] = React.useState(null);
+
+  const goBackground = React.useCallback(async () => {
+    if (!prompt.trim()) return;
+    setBgTaskStatus('queued');
+    try {
+      const { supabase } = await import('./lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) { setBgTaskStatus('failed'); return; }
+
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'full',
+          input: {
+            prompt,
+            model: modelStore.selected?.id,
+            provider: modelStore.selected?.provider,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 8000,
+            temperature: modelStore.temperature,
+          },
+        }),
+      });
+      if (!res.ok) { setBgTaskStatus('failed'); return; }
+      const { taskId } = await res.json();
+      setBgTaskId(taskId);
+      setBgTaskStatus('running');
+
+      // Poll for completion
+      const poll = setInterval(async () => {
+        const r = await fetch(`/api/tasks/${taskId}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) return;
+        const task = await r.json();
+        setBgTaskStatus(task.status);
+        if (task.status === 'done' || task.status === 'failed') {
+          clearInterval(poll);
+          if (task.status === 'done') {
+            // Reload reports from cloud to pick up new report
+            window.dispatchEvent(new Event('atlas-reports-updated'));
+          }
+        }
+      }, 3000);
+    } catch { setBgTaskStatus('failed'); }
+  }, [prompt, modelStore]);
+
+
   const handleOutlineConfirm = (sections) => {
     toolbarStore.setActiveTemplate({ en: 'AI 大纲', sections });
     setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false);
@@ -8723,7 +8780,8 @@ function App() {
       <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
         {route === 'home' && (
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
-            onStart={goRun} density={tweaks.density} modelStore={modelStore}
+            onStart={goRun} onBackground={goBackground} bgTaskStatus={bgTaskStatus}
+            density={tweaks.density} modelStore={modelStore}
             toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}/>
         )}
         {route === 'outline' && (
