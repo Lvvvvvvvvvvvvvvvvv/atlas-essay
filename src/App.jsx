@@ -640,7 +640,7 @@ const NAV_ITEMS = [
   { k: 'sources', en: 'SOURCES', cn: '数据源' },
 ];
 
-function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore, toolbarStore }) {
+function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode }) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -1490,6 +1490,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore }) {
       )}
 
       {settingsOpen && <SettingsModal t={t} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode} onClose={() => setSettingsOpen(false)}/>}
+
     </div>
   );
 }
@@ -8516,7 +8517,8 @@ function App() {
     }}>
       <TopBar t={t} route={route} setRoute={setRoute}
         runState={route === 'running' && !runDone ? 'running' : 'idle'}
-        tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore}/>
+        tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore}
+        outlineMode={outlineMode} setOutlineMode={setOutlineMode}/>
       <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
         {route === 'home' && (
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
