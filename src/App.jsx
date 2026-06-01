@@ -3932,6 +3932,43 @@ async function fetchUrlContents(urls, onProgress) {
   return results;
 }
 
+function validateReport(text, { effectiveLength, templateSections } = {}) {
+  const warnings = [];
+  const clean = text
+    .replace(/^\[TITLE:[^\]]*\]\s*/m, '')
+    .replace(/\[REFS\][\s\S]*?(?:\[\/REFS\]|$)/g, '');
+  const trimmed = clean.trim();
+  if (!trimmed) return warnings;
+
+  // 1. Starts with a heading
+  if (!/^#{1,3}\s/.test(trimmed)) {
+    warnings.push('报告未以标题开头，格式可能异常');
+  }
+
+  // 2. Section count (## headings)
+  const minSections = (templateSections?.length) ||
+    ((effectiveLength || 2500) < 1000 ? 3 : (effectiveLength || 2500) < 2000 ? 5 : (effectiveLength || 2500) < 3000 ? 6 : 8);
+  const sectionCount = (trimmed.match(/^## /gm) || []).length;
+  if (sectionCount > 0 && sectionCount < minSections) {
+    warnings.push(`章节数不足（检测到 ${sectionCount} 章，建议 ≥ ${minSections}）`);
+  }
+
+  // 3. Word / char count (CJK + ASCII words)
+  const minChars = Math.round((effectiveLength || 2500) * 0.7);
+  const charCount = trimmed.replace(/\s+/g, '').length;
+  if (charCount > 0 && charCount < minChars) {
+    warnings.push(`字数偏少（${charCount.toLocaleString()} 字，建议 ≥ ${minChars.toLocaleString()}）`);
+  }
+
+  // 4. Unclosed code block
+  const fenceCount = (text.match(/^```/gm) || []).length;
+  if (fenceCount % 2 !== 0) {
+    warnings.push('存在未闭合的代码块');
+  }
+
+  return warnings;
+}
+
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError, onStatus }) {
   const { tone, language, style, length, selectedSources, attachments, urlContexts, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
@@ -4174,6 +4211,10 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
           const titleEn = aiTitle || firstSectionTitle || promptFallback.slice(0, 52) || 'AI 分析报告';
           const subtitleRaw = prompt.replace(/^[^\n,，。.]{0,80}[,，。.\n]/, '').trim().split('\n')[0].trim();
           const subtitle = subtitleRaw.slice(0, 80) || prompt.slice(0, 80);
+          const validationWarnings = validateReport(finalText, {
+            effectiveLength: toolbarConfig?.length,
+            templateSections: toolbarConfig?.templateSections,
+          });
           onSaveReportRef.current({
             id: now.getTime().toString(),
             prompt,
@@ -4195,6 +4236,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
               model: selectedModel?.name || 'AI',
               tone: toolbarConfig?.tone?.cn || '',
               tokens: finalTokens,
+              warnings: validationWarnings.length > 0 ? validationWarnings : undefined,
             },
             favorited: false,
           });
@@ -4806,6 +4848,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
   const containerRef = React.useRef(null);
   const [editMode, setEditMode] = React.useState(false);
   const [edits, setEdits] = React.useState({});
+  const [warnDismissed, setWarnDismissed] = React.useState(false);
 
   const getEdit = (key, fallback) => edits[key] !== undefined ? edits[key] : fallback;
   const setEdit = (key, val) => setEdits(prev => ({ ...prev, [key]: val }));
@@ -4902,6 +4945,18 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
         </>}
         <Btn t={t} size="sm" primary accent onClick={onExport}>↗ 导出 / 分享</Btn>
       </div>
+
+      {/* Validation warning banner */}
+      {!warnDismissed && reportData?.meta?.warnings?.length > 0 && (
+        <div style={{ padding: '7px 36px', borderBottom: `1px solid rgba(200,140,40,0.35)`, background: 'rgba(200,140,40,0.07)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#b07a20', flexShrink: 0 }}>⚠</span>
+          <span style={{ fontFamily: t.fontCN, fontSize: 11, color: '#7a5510', flex: 1, lineHeight: 1.5 }}>
+            {reportData.meta.warnings.join(' · ')}
+          </span>
+          <button type="button" onClick={onRerun || undefined} style={{ border: `1px solid rgba(200,140,40,0.5)`, background: 'transparent', cursor: onRerun ? 'pointer' : 'default', color: '#b07a20', fontFamily: t.fontMono, fontSize: 8, padding: '3px 8px', letterSpacing: 0.8, opacity: onRerun ? 1 : 0.4, flexShrink: 0 }}>重新生成</button>
+          <button type="button" onClick={() => setWarnDismissed(true)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#b07a20', fontFamily: t.fontMono, fontSize: 13, padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>×</button>
+        </div>
+      )}
 
       {/* Scrollable body */}
       <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: bodyCols }}>
