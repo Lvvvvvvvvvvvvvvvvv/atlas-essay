@@ -3418,38 +3418,40 @@ function StylePopover({ t, store }) {
   return (
     <ToolPopover t={t} label={`风格 · ${store.currentStyle?.cn || '商业可读'}`}
       open={open} onOpen={() => setOpen(true)} onClose={() => { setOpen(false); setAdding(false); setDraft(''); }} width={260}>
-      <div style={sectionHdr}>报告风格</div>
-      <div style={{ paddingBottom: 4 }}>
-        {BUILTIN_STYLES.map(style => {
-          const active = style.id === store.styleId;
-          return (
-            <div key={style.id} onClick={() => store.setStyleId(style.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{style.cn}</div>
-                <div style={{ fontFamily: t.fontCN, fontSize: 10, color: t.mute, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{style.instr.slice(0, 22)}…</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ ...sectionHdr, borderTop: `1px solid ${t.rule}`, paddingTop: 9 }}>写作语气</div>
-      <div style={{ paddingBottom: 4 }}>
-        {store.allTones.map(tone => {
-          const active = tone.id === store.toneId;
-          return (
-            <div key={tone.id} style={{ display: 'flex', alignItems: 'center', padding: '7px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
-              <div onClick={() => store.setToneId(tone.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+        <div style={sectionHdr}>报告风格</div>
+        <div style={{ paddingBottom: 4 }}>
+          {BUILTIN_STYLES.map(style => {
+            const active = style.id === store.styleId;
+            return (
+              <div key={style.id} onClick={() => store.setStyleId(style.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
                 <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
-                <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{tone.cn}</span>
-                {!tone.custom && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginLeft: 'auto' }}>{tone.en}</span>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{style.cn}</div>
+                  <div style={{ fontFamily: t.fontCN, fontSize: 10, color: t.mute, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{style.instr.slice(0, 22)}…</div>
+                </div>
               </div>
-              {tone.custom && (
-                <button onClick={e => { e.stopPropagation(); store.removeTone(tone.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 12, padding: '0 2px', lineHeight: 1 }}>×</button>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+        <div style={{ ...sectionHdr, borderTop: `1px solid ${t.rule}`, paddingTop: 9 }}>写作语气</div>
+        <div style={{ paddingBottom: 4 }}>
+          {store.allTones.map(tone => {
+            const active = tone.id === store.toneId;
+            return (
+              <div key={tone.id} style={{ display: 'flex', alignItems: 'center', padding: '7px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
+                <div onClick={() => store.setToneId(tone.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
+                  <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{tone.cn}</span>
+                  {!tone.custom && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginLeft: 'auto' }}>{tone.en}</span>}
+                </div>
+                {tone.custom && (
+                  <button onClick={e => { e.stopPropagation(); store.removeTone(tone.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 12, padding: '0 2px', lineHeight: 1 }}>×</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div style={{ padding: '7px 10px', borderTop: `1px solid ${t.rule}` }}>
         {!adding ? (
