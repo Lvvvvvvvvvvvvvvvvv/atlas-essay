@@ -12,7 +12,7 @@
 |------|------|---------|
 | 层级一：结构验证 | **已完成** | v2.4.0 |
 | 层级二：截断检测 | **已完成** | v2.4.0 |
-| 层级三：用户评分 | 待启动 | — |
+| 层级三：用户评分 | **已完成** | v2.4.1 |
 | 层级四：自动 Retry | 待启动 | — |
 
 ---
@@ -48,6 +48,27 @@
 - `src/App.jsx` — `validateReport()` 纯函数（`streamReport` 之前）
 - `src/App.jsx` — `Running` 组件 `onDone`：调用验证，`meta.warnings` 写入
 - `src/App.jsx` — `Report` 组件：`warnDismissed` state + banner JSX
+
+---
+
+## 实现记录（v2.4.1）
+
+**完成日期**：2026-06-01
+
+### 核心改动
+
+**用户评分（`+ 好` / `- 差`）：**
+- `useSavedReports` 新增 `setRating(id, rating)` — toggle 逻辑（点同一评分 → 取消）
+- 报告 `rating` 字段：`'good' | 'bad' | null`，持久化至 localStorage
+- `Report` header bar：收藏按钮右侧新增「+ 好」「- 差」两个按钮，已选中时高亮（绿/红）
+- `LibraryCard` 底部 footer：已评分时显示 `+ 好评` / `- 差评` 标签（绿/红边框）
+
+### 核心代码位置
+
+- `src/App.jsx` — `useSavedReports.setRating()`
+- `src/App.jsx` — `Report` 组件：`rating` / `onRate` props + 两个评分按钮
+- `src/App.jsx` — `Library` 组件：`generatedEntries` 新增 `rating` 字段 + `onRate` prop 传递
+- `src/App.jsx` — `LibraryCard`：footer 评分标签
 
 ---
 

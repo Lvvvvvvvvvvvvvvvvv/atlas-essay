@@ -4852,7 +4852,7 @@ function ReportCoverPlate({ t, title, category, isStatic, editorial }) {
   );
 }
 
-function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport }) {
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport, rating, onRate }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
   const [editMode, setEditMode] = React.useState(false);
@@ -4945,6 +4945,18 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
           style={isFavorited ? { background: '#c8a84b', borderColor: '#c8a84b', color: '#fff' } : (!onToggleFavorite ? { opacity: 0.4 } : {})}>
           {isFavorited ? '★ 已收藏' : '☆ 收藏'}
         </Btn>
+        {onRate && (
+          <React.Fragment>
+            <Btn t={t} size="sm" onClick={() => onRate('good')}
+              style={rating === 'good' ? { background: '#2a8c5c', borderColor: '#2a8c5c', color: '#fff' } : {}}>
+              + 好
+            </Btn>
+            <Btn t={t} size="sm" onClick={() => onRate('bad')}
+              style={rating === 'bad' ? { background: '#b04040', borderColor: '#b04040', color: '#fff' } : {}}>
+              - 差
+            </Btn>
+          </React.Fragment>
+        )}
         {!isStatic && !editMode && (
           <Btn t={t} size="sm" onClick={() => setEditMode(true)}>✎ 编辑</Btn>
         )}
@@ -5549,7 +5561,7 @@ function inferTagFromReport(r) {
   return 'INDUSTRY';
 }
 
-function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
+function Library({ t, onOpen, savedReports = [], onToggleFavorite, onRate }) {
   const [filter, setFilter] = React.useState('ALL');
   const [sort, setSort] = React.useState('date');
   const [favOnly, setFavOnly] = React.useState(false);
@@ -5570,6 +5582,7 @@ function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
     by: `ATLAS · ${r.meta.model || 'AI'}`,
     teaser: r.meta.subtitle || r.prompt?.slice(0, 80),
     favorited: r.favorited,
+    rating: r.rating || null,
     feature: false,
   }));
   const staticEntries = LIBRARY_ENTRIES.map(e => ({ ...e, favorited: false }));
@@ -5684,14 +5697,15 @@ function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
       <div style={{ padding: '24px 36px 48px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, borderTop: `1px solid ${t.rule}`, borderLeft: `1px solid ${t.rule}` }}>
         {rest.map((e, i) => (
           <LibraryCard key={e._id || e.issue} entry={e} t={t} onOpen={onOpen}
-            onToggleFavorite={e._id && onToggleFavorite ? (ev) => { ev.stopPropagation(); onToggleFavorite(e._id); } : null}/>
+            onToggleFavorite={e._id && onToggleFavorite ? (ev) => { ev.stopPropagation(); onToggleFavorite(e._id); } : null}
+            onRate={e._id && onRate ? (rating, ev) => { ev.stopPropagation(); onRate(e._id, rating); } : null}/>
         ))}
       </div>
     </div>
   );
 }
 
-function LibraryCard({ entry, t, onOpen, onToggleFavorite }) {
+function LibraryCard({ entry, t, onOpen, onToggleFavorite, onRate }) {
   return (
     <article onClick={() => onOpen(entry)} style={{
       borderRight: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}`,
@@ -5737,6 +5751,14 @@ function LibraryCard({ entry, t, onOpen, onToggleFavorite }) {
         <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>·</span>
         <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{entry.words} 字</span>
         <span style={{ flex: 1 }}/>
+        {entry.rating && (
+          <span style={{ fontFamily: t.fontMono, fontSize: 8, letterSpacing: 0.8,
+            color: entry.rating === 'good' ? '#2a8c5c' : '#b04040',
+            border: `1px solid ${entry.rating === 'good' ? 'rgba(42,140,92,0.4)' : 'rgba(176,64,64,0.4)'}`,
+            padding: '1px 5px' }}>
+            {entry.rating === 'good' ? '+ 好评' : '- 差评'}
+          </span>
+        )}
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>↗</span>
       </div>
     </article>
@@ -8122,6 +8144,13 @@ function useSavedReports() {
       return next;
     });
   }, []);
+  const setRating = React.useCallback((id, rating) => {
+    setReports(prev => {
+      const next = prev.map(r => r.id === id ? { ...r, rating: r.rating === rating ? null : rating } : r);
+      try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
   const removeReports = React.useCallback((ids) => {
     const idSet = new Set(ids);
     setReports(prev => {
@@ -8130,7 +8159,7 @@ function useSavedReports() {
       return next;
     });
   }, []);
-  return { reports, save, toggleFav, removeReports };
+  return { reports, save, toggleFav, setRating, removeReports };
 }
 
 class ReportErrorBoundary extends React.Component {
@@ -8237,6 +8266,8 @@ function App() {
               reportData={reportData}
               isFavorited={activeReport?.favorited || false}
               onToggleFavorite={activeReport ? () => savedReports.toggleFav(activeReportId) : null}
+              rating={activeReport?.rating || null}
+              onRate={activeReport ? (r) => savedReports.setRating(activeReportId, r) : null}
               onRerun={activeReport ? () => { setPrompt(activeReport.prompt); goRun(); } : null}
               toolbarStore={toolbarStore}
               onSaveReport={activeReport ? (updated) => savedReports.save({ ...updated, id: activeReport.id }) : null}
@@ -8251,6 +8282,7 @@ function App() {
           <Library t={t}
             savedReports={savedReports.reports}
             onToggleFavorite={savedReports.toggleFav}
+            onRate={savedReports.setRating}
             onOpen={(entry) => {
               if (entry._id) setActiveReportId(entry._id);
               else setActiveReportId(null);
