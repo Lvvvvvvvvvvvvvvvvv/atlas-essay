@@ -820,7 +820,7 @@ function AddLanguageInline({ t, inp, onAdd }) {
   );
 }
 
-function SettingsModal({ t, modelStore, toolbarStore, onClose }) {
+function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMode, onClose }) {
   const [tab, setTab] = React.useState('model');
   const [modalReports, setModalReports] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; }
@@ -1040,6 +1040,26 @@ function SettingsModal({ t, modelStore, toolbarStore, onClose }) {
 
             {tab === 'model' && modelStore && (
               <React.Fragment>
+                <div>
+                  <div style={secHdr}>生成流程</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', border: `1px solid ${t.rule}`, marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>大纲先行模式</div>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>生成前先预览 AI 大纲，确认后再生成全文 · 无模板时触发</div>
+                    </div>
+                    <button type="button" onClick={() => setOutlineMode && setOutlineMode(!outlineMode)} style={{
+                      width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', flexShrink: 0,
+                      background: outlineMode ? t.accent : t.rule,
+                      position: 'relative', transition: 'background 0.2s',
+                    }}>
+                      <span style={{
+                        position: 'absolute', top: 3, left: outlineMode ? 18 : 3,
+                        width: 14, height: 14, borderRadius: '50%', background: t.paper,
+                        transition: 'left 0.2s',
+                      }}/>
+                    </button>
+                  </div>
+                </div>
                 <div>
                   <div style={secHdr}>模型参数</div>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
@@ -1469,7 +1489,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore }) {
         </div>
       )}
 
-      {settingsOpen && <SettingsModal t={t} modelStore={modelStore} toolbarStore={toolbarStore} onClose={() => setSettingsOpen(false)}/>}
+      {settingsOpen && <SettingsModal t={t} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode} onClose={() => setSettingsOpen(false)}/>}
     </div>
   );
 }
@@ -3978,6 +3998,75 @@ function validateReport(text, { effectiveLength, templateSections } = {}) {
   return warnings;
 }
 
+function parseOutlineFromText(text) {
+  const sections = [];
+  const parts = text.split(/^## /gm).filter(Boolean);
+  for (const part of parts) {
+    const lines = part.trim().split('\n');
+    const title = lines[0].replace(/^[一二三四五六七八九十]+[、．\.\s]+/, '').trim();
+    const reqLine = lines.slice(1).join(' ').replace(/^写作要求[：:]\s*/, '').trim();
+    if (title) sections.push({ title, req: reqLine });
+  }
+  return sections;
+}
+
+async function streamOutline({ model, prompt, language, onChunk, onDone, onError }) {
+  const langInstr = language?.instr || '使用简体中文写作';
+  const systemPrompt = `你是专业报告写作助手。根据用户提供的话题，生成一份结构化报告大纲。${langInstr}。
+
+格式要求（严格遵守）：
+- 生成 4-6 个章节
+- 每章节格式：
+## 章节标题（简洁，≤15字）
+写作要求：具体说明这章要分析的核心问题、数据角度、逻辑框架（30-60字）
+
+只输出大纲，不写正文内容，不要任何前言或后记。`;
+
+  const apiKey = model.apiKey || '';
+  const apiUrl = (model.apiUrl || '').replace(/\/$/, '');
+  try {
+    const resp = await fetch(`${apiUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: model.id,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `请为以下话题生成报告大纲：\n\n${prompt}` },
+        ],
+        stream: true,
+        max_tokens: 1500,
+        temperature: 0.4,
+      }),
+    });
+    if (!resp.ok) { const e = await resp.text(); throw new Error(`API ${resp.status}: ${e.slice(0, 200)}`); }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(trimmed.slice(6));
+            const text = data.choices?.[0]?.delta?.content || '';
+            if (text) onChunk(text);
+          } catch {}
+        }
+      }
+    }
+    onDone();
+  } catch (err) {
+    onError(err.message || String(err));
+  }
+}
+
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError, onStatus }) {
   const { tone, language, style, length, selectedSources, attachments, urlContexts, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
@@ -4148,6 +4237,119 @@ ${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}
   } catch (err) {
     onError(err.message || String(err));
   }
+}
+
+// ── OutlineStep ─────────────────────────────────────────────────────────────
+function OutlineStep({ t, prompt, modelStore, toolbarConfig, onConfirm, onSkip }) {
+  const [status, setStatus] = React.useState('connecting');
+  const [rawText, setRawText] = React.useState('');
+  const [sections, setSections] = React.useState([]);
+  const [error, setError] = React.useState('');
+  const rawRef = React.useRef('');
+  const runKey = React.useRef(0);
+
+  const startGenerate = React.useCallback(() => {
+    rawRef.current = '';
+    setRawText('');
+    setSections([]);
+    setError('');
+    setStatus('connecting');
+    const key = ++runKey.current;
+    streamOutline({
+      model: modelStore.selected,
+      prompt,
+      language: toolbarConfig?.language,
+      onChunk: (chunk) => {
+        if (runKey.current !== key) return;
+        rawRef.current += chunk;
+        setRawText(rawRef.current);
+        setSections(parseOutlineFromText(rawRef.current));
+        setStatus('streaming');
+      },
+      onDone: () => {
+        if (runKey.current !== key) return;
+        setSections(parseOutlineFromText(rawRef.current));
+        setStatus('done');
+      },
+      onError: (msg) => {
+        if (runKey.current !== key) return;
+        setError(msg);
+        setStatus('error');
+      },
+    });
+  }, [prompt, modelStore, toolbarConfig]);
+
+  React.useEffect(() => { startGenerate(); }, []);
+
+  const updateSection = (i, field, val) =>
+    setSections(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
+
+  const isDone = status === 'done';
+
+  return (
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Header bar */}
+      <div style={{ padding: '12px 36px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, background: t.paper }}>
+        <Tag t={t} accent>◆ 大纲预览 · {modelStore.selected?.name}</Tag>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
+          {status === 'connecting' && '正在生成大纲…'}
+          {status === 'streaming' && `生成中… ${sections.length} 章节`}
+          {status === 'done' && `${sections.length} 章节 · 可直接编辑后确认`}
+          {status === 'error' && '生成失败'}
+        </span>
+        <span style={{ flex: 1 }}/>
+        <Btn t={t} size="sm" onClick={startGenerate}>↺ 重新生成</Btn>
+        <Btn t={t} size="sm" onClick={onSkip}>跳过，直接生成</Btn>
+        <Btn t={t} size="sm" primary accent onClick={() => sections.length > 0 && onConfirm(sections)}
+          style={{ opacity: !isDone || sections.length === 0 ? 0.45 : 1, cursor: !isDone || sections.length === 0 ? 'default' : 'pointer' }}>
+          确认，开始生成
+        </Btn>
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '32px 36px', maxWidth: 760 }}>
+        {/* Topic */}
+        <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.mute, marginBottom: 24, lineHeight: 1.6, paddingBottom: 16, borderBottom: `1px solid ${t.rule}` }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute, marginRight: 8 }}>TOPIC</span>
+          {prompt.slice(0, 120)}{prompt.length > 120 ? '…' : ''}
+        </div>
+
+        {/* Streaming skeleton / sections */}
+        {status === 'error' && (
+          <div style={{ padding: '12px 16px', border: `1.5px solid #e5251d`, fontFamily: t.fontCN, fontSize: 13, color: '#e5251d' }}>
+            ✕ {error}
+          </div>
+        )}
+        {(status === 'connecting') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.mute }}>
+            <span style={{ display: 'inline-block', width: 10, height: 18, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+            <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>connecting to {modelStore.selected?.name}…</span>
+          </div>
+        )}
+        {sections.map((sec, i) => (
+          <div key={i} style={{ marginBottom: 16, border: `1px solid ${t.rule}`, padding: '14px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>
+                {['一','二','三','四','五','六'][i] || i+1}
+              </span>
+              <input value={sec.title} onChange={e => updateSection(i, 'title', e.target.value)}
+                disabled={!isDone}
+                style={{ flex: 1, border: 'none', borderBottom: isDone ? `1px solid ${t.rule}` : 'none', background: 'transparent', fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 15, color: t.ink, outline: 'none', padding: '2px 0' }}/>
+            </div>
+            <textarea value={sec.req} onChange={e => updateSection(i, 'req', e.target.value)}
+              disabled={!isDone} rows={2}
+              style={{ width: '100%', border: 'none', borderTop: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, lineHeight: 1.65, outline: 'none', resize: 'none', padding: '8px 0 0', boxSizing: 'border-box' }}/>
+          </div>
+        ))}
+        {status === 'streaming' && sections.length === 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.accent }}>
+            <span style={{ display: 'inline-block', width: 10, height: 18, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+            <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>生成大纲中…</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Component -----------------------------------------------------------
@@ -7550,10 +7752,11 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 
 const FOOTER_CONTEXT = {
   home:    { page: '01', section: 'COVER · 封面' },
-  running: { page: '02', section: 'IN PROGRESS · 撰写中' },
-  report:  { page: '03', section: 'FEATURE · 正文' },
-  library: { page: '04', section: 'ARCHIVE · 报告库' },
-  sources: { page: '05', section: 'SOURCES · 数据源' },
+  outline: { page: '02', section: 'OUTLINE · 大纲确认' },
+  running: { page: '03', section: 'IN PROGRESS · 撰写中' },
+  report:  { page: '04', section: 'FEATURE · 正文' },
+  library: { page: '05', section: 'ARCHIVE · 报告库' },
+  sources: { page: '06', section: 'SOURCES · 数据源' },
 };
 
 const SAMPLE_FIRST_PROMPT = '梳理 2025 年 Q1 国内咖啡赛道的融资动态，重点说说 Manner、库迪和挪瓦的新动向，给一份 2000 字的内部分析。';
@@ -8266,8 +8469,26 @@ function App() {
   const [showExport, setShowExport] = React.useState(false);
   const [runKey, setRunKey] = React.useState(0);
   const [runDone, setRunDone] = React.useState(false);
+  const [outlineMode, setOutlineModeState] = React.useState(
+    () => localStorage.getItem('atlas_outline_mode') === 'true'
+  );
+  const setOutlineMode = (v) => {
+    setOutlineModeState(v);
+    localStorage.setItem('atlas_outline_mode', String(v));
+  };
 
-  const goRun = () => { setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false); setRoute('running'); };
+  const goRun = () => {
+    setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false);
+    const hasTemplate = !!toolbarStore.activeTemplate;
+    const isLive = !!modelStore.selected?.apiKey;
+    setRoute(outlineMode && !hasTemplate && isLive ? 'outline' : 'running');
+  };
+
+  const handleOutlineConfirm = (sections) => {
+    toolbarStore.setActiveTemplate({ en: 'AI 大纲', sections });
+    setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false);
+    setRoute('running');
+  };
 
   const handleSaveReport = React.useCallback((report) => {
     savedReports.save(report);
@@ -8301,6 +8522,14 @@ function App() {
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
             onStart={goRun} density={tweaks.density} modelStore={modelStore}
             toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}/>
+        )}
+        {route === 'outline' && (
+          <OutlineStep t={t} prompt={prompt} modelStore={modelStore}
+            toolbarConfig={{
+              language: toolbarStore.currentLanguage,
+            }}
+            onConfirm={handleOutlineConfirm}
+            onSkip={() => { setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false); setRoute('running'); }}/>
         )}
         {route === 'running' && (
           <Running key={runKey} t={t} prompt={prompt}

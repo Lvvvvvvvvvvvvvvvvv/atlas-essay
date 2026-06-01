@@ -6,6 +6,55 @@
 
 ---
 
+## 开发状态
+
+| 阶段 | 状态 | 完成版本 |
+|------|------|---------|
+| 阶段一：大纲先行模式 | **已完成** | v2.5.0 |
+| 阶段二：分节并行生成 | 待启动 | — |
+| 阶段三：节点式工作流 | 待启动（需后端） | — |
+
+---
+
+## 实现记录（v2.5.0）
+
+**完成日期**：2026-06-01
+
+### 核心改动
+
+**新增 `route: 'outline'` 路由：**
+- Settings > 模型 > 「大纲先行模式」开关（默认关闭，localStorage 持久化）
+- 触发条件：开关开启 + 无 activeTemplate + Live 模式（有 API Key）
+- 已手动锁定模板时跳过大纲步骤，直接生成
+
+**`streamOutline()` 函数：**
+- 专用轻量级 API 调用（max_tokens 1500，temperature 0.4）
+- 简化系统提示，要求模型输出 `## 标题\n写作要求：...` 格式的大纲
+
+**`parseOutlineFromText()` 解析器：**
+- 按 `## ` 切分，提取每章 `{title, req}`
+- 边流式输出边解析，实时显示章节卡片
+
+**`OutlineStep` 组件：**
+- 大纲流式渲染，每章以可编辑卡片展示（标题 input + 写作要求 textarea）
+- 三个操作：「确认，开始生成」→ `setActiveTemplate` + 跳入 Running；「↺ 重新生成」→ 重新请求；「跳过，直接生成」→ 直接跳入 Running
+
+**确认后流程：**
+- `handleOutlineConfirm(sections)` 调用 `toolbarStore.setActiveTemplate({ en: 'AI 大纲', sections })`
+- 复用现有 C-区域二 的 `<structure>` 注入机制，按确认章节框架生成全文
+- TemplateLockBadge 显示「AI 大纲 · N 章节」，用户可手动 × 清除
+
+### 核心代码位置
+
+- `src/App.jsx` — `streamOutline()` 函数（`streamReport` 之前）
+- `src/App.jsx` — `parseOutlineFromText()` 辅助函数
+- `src/App.jsx` — `OutlineStep` 组件（`Running` 之前）
+- `src/App.jsx` — `FOOTER_CONTEXT` 新增 `outline` 条目
+- `src/App.jsx` — App 组件：`outlineMode` state、`goRun()` 路由分支、`handleOutlineConfirm()`
+- `src/App.jsx` — `SettingsModal`：model tab 新增「生成流程」区块 + toggle
+
+---
+
 ## 当前状态
 
 ```
