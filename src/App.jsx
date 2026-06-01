@@ -1,5 +1,7 @@
 import React from 'react';
 import './styles/globals.css';
+import { useAuth } from './hooks/useAuth.jsx';
+import LoginModal from './components/LoginModal.jsx';
 
 
 // tweaks-panel.jsx
@@ -8457,6 +8459,7 @@ class ReportErrorBoundary extends React.Component {
 }
 
 function App() {
+  const { user, loading: authLoading } = useAuth();
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const t = essayTokens({ theme: tweaks.theme, accent: tweaks.accent });
 
@@ -8508,6 +8511,16 @@ function App() {
     { v: 'forest', swatch: '#1f6f44', label: 'Sage' },
     { v: 'cobalt', swatch: '#1d4ed8', label: 'Blue' },
   ];
+
+  // Auth loading splash
+  if (authLoading) return (
+    <div style={{ width: '100vw', height: '100vh', background: '#fbf9f4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#767368', letterSpacing: 1.4 }}>ATLAS …</span>
+    </div>
+  );
+
+  // Not logged in — show login modal (uses computed theme so user's theme pref is respected)
+  if (!user) return <LoginModal t={t} />;
 
   return (
     <div style={{
