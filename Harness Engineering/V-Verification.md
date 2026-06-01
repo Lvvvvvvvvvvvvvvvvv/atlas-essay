@@ -13,7 +13,7 @@
 | 层级一：结构验证 | **已完成** | v2.4.0 |
 | 层级二：截断检测 | **已完成** | v2.4.0 |
 | 层级三：用户评分 | **已完成** | v2.4.1 |
-| 层级四：自动 Retry | 待启动 | — |
+| 层级四：自动 Retry | **已完成** | v2.4.2 |
 
 ---
 
@@ -69,6 +69,45 @@
 - `src/App.jsx` — `Report` 组件：`rating` / `onRate` props + 两个评分按钮
 - `src/App.jsx` — `Library` 组件：`generatedEntries` 新增 `rating` 字段 + `onRate` prop 传递
 - `src/App.jsx` — `LibraryCard`：footer 评分标签
+
+---
+
+## 实现记录（v2.4.2）
+
+**完成日期**：2026-06-01
+
+### 核心改动
+
+**触发条件**：仅截断警告（`meta.warnings` 中含"截断"字样）且未重试过时自动触发，最多 1 次。
+
+**续写 Prompt 模式**：
+```
+[原始 topic]
+
+【续写指令】上一次生成因 token 限制被截断，请从截断处继续完成报告。
+直接续写，不要重复已有内容，保持相同格式和风格。
+
+截断处最后内容：
+[原始文本末尾 500 字]
+
+请从这里继续：
+```
+
+**执行流程**：
+- `onDone` 回调内检测截断 → `retryDoneRef` 防止循环 → 重启计时器 → 发起第二次 `streamReport`
+- retry `onChunk` 实时追加到原始文本，流式渲染不中断
+- retry `onDone` 合并文本重新 `validateReport`，写入 `meta.retried: true`
+- retry 失败（`onError`）→ 保存原始截断文本，不阻断流程
+
+**再次截断时警告文案**：`"… （已自动续写一次，建议增大 Max Tokens 后重跑）"`
+
+**UI**：retry 进行中，model badge 旁显示 `◈ 检测到截断，正在自动补全…`
+
+### 核心代码位置
+
+- `src/App.jsx` — `Running` 组件：`retryDoneRef` / `retryStatus` state
+- `src/App.jsx` — `Running` 组件 `onDone` 内 `doSave()` 提取 + retry 分支
+- `src/App.jsx` — Running model badge 区域：`retryStatus === 'retrying'` 状态文字
 
 ---
 

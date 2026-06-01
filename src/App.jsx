@@ -4171,6 +4171,8 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
   // Ref always holds the latest streamed text — no stale-closure risk
   const liveTextRef = React.useRef('');
   const savedRef = React.useRef(false);
+  const retryDoneRef = React.useRef(false);
+  const [retryStatus, setRetryStatus] = React.useState(null); // null | 'retrying'
   const onSaveReportRef = React.useRef(onSaveReport);
   React.useEffect(() => { onSaveReportRef.current = onSaveReport; });
 
@@ -4198,21 +4200,18 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
       onDone: (tokens) => {
         clearInterval(liveTimerRef.current);
         const finalText = liveTextRef.current;
-        const finalTokens = tokens || 0;
-        // Save synchronously here — before setLiveStatus('done') — so that
-        // activeReportId is set in the same React batch as liveStatus='done'.
-        // This guarantees reportData is ready when "View report" button appears.
-        if (!savedRef.current && onSaveReportRef.current && finalText && isLiveMode) {
-          savedRef.current = true;
-          const sections = parseMarkdownReport(finalText);
-          const cleanForCount = finalText.replace(/^\[TITLE:[^\]]*\]\s*/m,'').replace(/\[REFS\][\s\S]*?(?:\[\/REFS\]|$)/g,'');
+
+        const doSave = (text, totalTokens, retried) => {
+          if (!onSaveReportRef.current || !text) return;
+          const sections = parseMarkdownReport(text);
+          const cleanForCount = text.replace(/^\[TITLE:[^\]]*\]\s*/m,'').replace(/\[REFS\][\s\S]*?(?:\[\/REFS\]|$)/g,'');
           const wordCount = cleanForCount.replace(/\s+/g,' ').trim().length;
-          const refsArr = extractRefsFromText(finalText);
-          const refs = refsArr.length || [...new Set((finalText.match(/§\d+/g) || []))].length;
+          const refsArr = extractRefsFromText(text);
+          const refs = refsArr.length || [...new Set((text.match(/§\d+/g) || []))].length;
           const readMins = Math.max(1, Math.ceil(wordCount / 300));
           const now = new Date();
           const DAY_CN = ['日','一','二','三','四','五','六'];
-          const aiTitle = extractTitleFromText(finalText);
+          const aiTitle = extractTitleFromText(text);
           const firstSectionTitle = sections?.[0]?.en?.replace(/^[一二三四五六七八九十]+[、．]\s*/, '').trim();
           const promptFallback = prompt.split(/[\n\r,，。.]/)[0].trim()
             .replace(/^(请|帮我|调研|分析|写一篇|生成|撰写|输出)\s*/,'')
@@ -4220,14 +4219,17 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
           const titleEn = aiTitle || firstSectionTitle || promptFallback.slice(0, 52) || 'AI 分析报告';
           const subtitleRaw = prompt.replace(/^[^\n,，。.]{0,80}[,，。.\n]/, '').trim().split('\n')[0].trim();
           const subtitle = subtitleRaw.slice(0, 80) || prompt.slice(0, 80);
-          const validationWarnings = validateReport(finalText, {
+          const rawWarnings = validateReport(text, {
             effectiveLength: toolbarConfig?.length,
             templateSections: toolbarConfig?.templateSections,
           });
+          const warnings = retried
+            ? rawWarnings.map(w => w.includes('截断') ? w + '（已自动续写一次，建议增大 Max Tokens 后重跑）' : w)
+            : rawWarnings;
           onSaveReportRef.current({
             id: now.getTime().toString(),
             prompt,
-            text: finalText,
+            text,
             sections,
             refs: refsArr,
             selectedSources: [...(toolbarConfig?.selectedSources || [])],
@@ -4244,13 +4246,76 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
               issue: 'AI',
               model: selectedModel?.name || 'AI',
               tone: toolbarConfig?.tone?.cn || '',
-              tokens: finalTokens,
-              warnings: validationWarnings.length > 0 ? validationWarnings : undefined,
+              tokens: totalTokens,
+              warnings: warnings.length > 0 ? warnings : undefined,
+              retried: retried || undefined,
             },
             favorited: false,
           });
+        };
+
+        // Auto retry on truncation (once only)
+        const isTruncated = validateReport(finalText, {
+          effectiveLength: toolbarConfig?.length,
+          templateSections: toolbarConfig?.templateSections,
+        }).some(w => w.includes('截断'));
+
+        if (isTruncated && !retryDoneRef.current && finalText) {
+          retryDoneRef.current = true;
+          setRetryStatus('retrying');
+          setLiveStatus('streaming');
+          liveTimerRef.current = setInterval(() => {
+            setLiveElapsed(((Date.now() - liveStartTime) / 1000));
+          }, 200);
+
+          const tail = finalText.slice(-500);
+          const retryPrompt = `${prompt}\n\n【续写指令】上一次生成因 token 限制被截断，请从截断处继续完成报告。直接续写，不要重复已有内容，保持相同格式和风格。\n\n截断处最后内容：\n${tail}\n\n请从这里继续：`;
+          let retryChunks = '';
+
+          streamReport({
+            model: selectedModel,
+            prompt: retryPrompt,
+            toolbarConfig,
+            onStatus: () => {},
+            onChunk: (chunk) => {
+              retryChunks += chunk;
+              const merged = finalText + retryChunks;
+              setLiveText(merged);
+              liveTextRef.current = merged;
+            },
+            onDone: (retryTokens) => {
+              clearInterval(liveTimerRef.current);
+              const mergedText = finalText + retryChunks;
+              if (!savedRef.current) {
+                savedRef.current = true;
+                doSave(mergedText, (tokens || 0) + (retryTokens || 0), true);
+              }
+              setRetryStatus(null);
+              setLiveTokens((tokens || 0) + (retryTokens || 0));
+              setLiveStatus('done');
+              onTimelineComplete && onTimelineComplete();
+            },
+            onError: () => {
+              clearInterval(liveTimerRef.current);
+              if (!savedRef.current) {
+                savedRef.current = true;
+                doSave(finalText, tokens || 0, false);
+              }
+              setRetryStatus(null);
+              setLiveTokens(tokens || 0);
+              setLiveStatus('done');
+              onTimelineComplete && onTimelineComplete();
+            },
+          });
+          return;
         }
-        setLiveTokens(finalTokens);
+
+        // Normal path
+        if (!savedRef.current && finalText && isLiveMode) {
+          savedRef.current = true;
+          doSave(finalText, tokens || 0, false);
+        }
+        setLiveTokens(tokens || 0);
         setLiveStatus('done');
         onTimelineComplete && onTimelineComplete();
       },
@@ -4402,6 +4467,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
               <Tag t={t} accent>◈ {selectedModel?.name} · {selectedModel?.provider}</Tag>
               {liveStatus === 'fetching' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>↗ 正在抓取网页内容… ({liveFetchProgress.done}/{liveFetchProgress.total})</span>}
               {liveStatus === 'connecting' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>正在连接…</span>}
+              {retryStatus === 'retrying' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>◈ 检测到截断，正在自动补全…</span>}
             </div>
           )}
           {!isLiveMode && (
