@@ -5269,7 +5269,7 @@ const LIBRARY_ENTRIES = [
   {
     issue: 241, status: 'NEW',
     title: { en: 'Cold brew, hotter capital.', cn: '2025 Q1 国内咖啡赛道融资速记' },
-    category: 'INDUSTRY · 行业研究', tag: 'RESEARCH',
+    category: 'INDUSTRY · 行业研究', tag: 'INDUSTRY',
     date: '5月21日', words: '2,418', reading: '6 min', sources: 9,
     by: 'ATLAS · 04:07–07:42',
     teaser: '钱没少，故事变了——资本退出"高密度精品"叙事，重新拥抱规模与下沉。',
@@ -5286,7 +5286,7 @@ const LIBRARY_ENTRIES = [
   {
     issue: 239, status: '',
     title: { en: 'Notion AI · ChatGPT Teams', cn: 'AI 协作工具竞品拆解' },
-    category: 'COMPETITOR · 竞品', tag: 'RESEARCH',
+    category: 'COMPETITOR · 竞品', tag: 'COMPETITOR',
     date: '5月15日', words: '3,102', reading: '9 min', sources: 14,
     by: 'ATLAS · 11:08',
     teaser: '两家在「知识检索」上的产品差异，比定价策略更值得讨论。',
@@ -5302,7 +5302,7 @@ const LIBRARY_ENTRIES = [
   {
     issue: 237, status: '',
     title: { en: 'Home robotics scan', cn: '家用清洁机器人赛道扫描' },
-    category: 'INDUSTRY · 行业研究', tag: 'RESEARCH',
+    category: 'INDUSTRY · 行业研究', tag: 'INDUSTRY',
     date: '5月09日', words: '2,710', reading: '7 min', sources: 11,
     by: 'ATLAS · 08:55',
     teaser: '价格带正在被 1,500-2,500 元这一段重新定义。',
@@ -5310,7 +5310,7 @@ const LIBRARY_ENTRIES = [
   {
     issue: 236, status: '',
     title: { en: 'Remote work · rent', cn: '远程办公对一线城市租房市场影响' },
-    category: 'SOCIETY · 社会观察', tag: 'RESEARCH',
+    category: 'SOCIETY · 社会观察', tag: 'STRATEGY',
     date: '5月05日', words: '2,194', reading: '5 min', sources: 8,
     by: 'ATLAS · 06:38',
     teaser: '远郊租金回升了 4-6%，市中心仍在跌——但比一年前已收窄。',
@@ -5334,15 +5334,29 @@ const LIBRARY_ENTRIES = [
 ];
 
 const LIB_FILTERS = [
-  { k: 'ALL',        en: 'All',         cn: '全部' },
-  { k: 'RESEARCH',   en: 'Research',    cn: '研究' },
-  { k: 'DATA',       en: 'Data',        cn: '数据分析' },
-  { k: 'INTERNAL',   en: 'Internal',    cn: '内部' },
+  { k: 'ALL',        en: 'All',        cn: '全部' },
+  { k: 'INDUSTRY',   en: 'Industry',   cn: '行业' },
+  { k: 'COMPETITOR', en: 'Competitor', cn: '竞品' },
+  { k: 'DATA',       en: 'Data',       cn: '数据' },
+  { k: 'STRATEGY',   en: 'Strategy',   cn: '战略' },
+  { k: 'INTERNAL',   en: 'Internal',   cn: '内部' },
 ];
+
+function inferTagFromReport(r) {
+  const cat = (r.meta?.category || r.category || '').toLowerCase();
+  const prompt = (r.prompt || '').toLowerCase();
+  const text = cat + ' ' + prompt;
+  if (/internal|内部|周报|月报|memo|board|retro|gtm|复盘|团队|weekly|wk\d/.test(text)) return 'INTERNAL';
+  if (/data|数据|sales|销售|gmv|指标|q[1-4]|quarter|kpi|增长|漏斗|留存/.test(text)) return 'DATA';
+  if (/competitor|竞品|对比|vs\b|versus|comparison|拆解/.test(text)) return 'COMPETITOR';
+  if (/strategy|战略|macro|宏观|policy|政策|society|社会|okr|planning|rent|远程|出行|楼市/.test(text)) return 'STRATEGY';
+  return 'INDUSTRY';
+}
 
 function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
   const [filter, setFilter] = React.useState('ALL');
   const [sort, setSort] = React.useState('date');
+  const [favOnly, setFavOnly] = React.useState(false);
 
   // Merge saved (generated) + static entries
   const generatedEntries = savedReports.map(r => ({
@@ -5351,7 +5365,8 @@ function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
     status: 'NEW',
     title: r.meta.title,
     category: r.meta.category,
-    tag: 'AI',
+    tag: inferTagFromReport(r),
+    isAI: true,
     date: r.meta.date,
     words: r.meta.words,
     reading: r.meta.reading,
@@ -5365,16 +5380,16 @@ function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
   const allEntries = [...generatedEntries, ...staticEntries];
 
   const LIB_FILTERS_DYNAMIC = [
-    { k: 'ALL',       en: 'All',       cn: '全部' },
-    { k: 'FAVORITES', en: '★ Fav',     cn: '收藏' },
-    { k: 'AI',        en: 'Generated', cn: 'AI 生成' },
-    { k: 'RESEARCH',  en: 'Research',  cn: '研究' },
-    { k: 'DATA',      en: 'Data',      cn: '数据' },
-    { k: 'INTERNAL',  en: 'Internal',  cn: '内部' },
+    { k: 'ALL',        en: 'ALL',        cn: '全部' },
+    { k: 'INDUSTRY',   en: 'INDUSTRY',   cn: '行业' },
+    { k: 'COMPETITOR', en: 'COMPETITOR', cn: '竞品' },
+    { k: 'DATA',       en: 'DATA',       cn: '数据' },
+    { k: 'STRATEGY',   en: 'STRATEGY',   cn: '战略' },
+    { k: 'INTERNAL',   en: 'INTERNAL',   cn: '内部' },
   ];
 
   const filtered = allEntries.filter(e => {
-    if (filter === 'FAVORITES') return e.favorited;
+    if (favOnly && !e.favorited) return false;
     if (filter === 'ALL') return true;
     return e.tag === filter;
   });
@@ -5420,6 +5435,17 @@ function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
           </button>
         ))}
         <span style={{ flex: 1 }}/>
+        <button type="button" onClick={() => setFavOnly(v => !v)} style={{
+          padding: '5px 11px', border: `1px solid ${favOnly ? '#c8a84b' : t.rule}`,
+          background: favOnly ? 'rgba(200,168,75,0.10)' : 'transparent',
+          color: favOnly ? '#c8a84b' : t.mute,
+          fontFamily: t.fontMono, fontSize: 10, cursor: 'pointer',
+          letterSpacing: 1, display: 'inline-flex', alignItems: 'center', gap: 5,
+          transition: 'all 0.15s',
+        }}>
+          <span>{favOnly ? '★' : '☆'}</span>
+          <span>收藏</span>
+        </button>
         <button type="button" onClick={() => setSort(s => s === 'date' ? 'words' : 'date')}
           style={{ padding: '5px 10px', border: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 10, color: t.ink, cursor: 'pointer', letterSpacing: 1, textTransform: 'uppercase' }}>
           {sort === 'date' ? 'BY DATE ↓' : 'BY LENGTH ↓'}
@@ -5428,7 +5454,7 @@ function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
 
       {filtered.length === 0 && (
         <div style={{ padding: '48px 36px', fontFamily: t.fontCN, fontSize: 16, color: t.mute, textAlign: 'center' }}>
-          {filter === 'FAVORITES' ? '还没有收藏的报告' : '没有符合条件的报告'}
+          {favOnly ? '还没有收藏的报告' : '没有符合条件的报告'}
         </div>
       )}
 
@@ -5439,7 +5465,7 @@ function Library({ t, onOpen, savedReports = [], onToggleFavorite }) {
           onMouseLeave={e => e.currentTarget.style.background = t.paper}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Tag t={t} accent filled>◆ {feature._id ? 'AI · GENERATED' : `ISSUE № ${feature.issue} · LATEST`}</Tag>
+              <Tag t={t} accent filled>◆ {feature._id ? `${feature.tag} · AI` : `ISSUE № ${feature.issue} · LATEST`}</Tag>
               <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{feature.category}</span>
             </div>
             <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 48, lineHeight: 0.96, letterSpacing: -1.6 }}>{feature.title.en}</div>
@@ -5494,7 +5520,7 @@ function LibraryCard({ entry, t, onOpen, onToggleFavorite }) {
       )}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1.2 }}>
-          {entry._id ? 'AI · 生成' : `№ ${entry.issue}`}
+          {entry._id ? `№ —` : `№ ${entry.issue}`}
         </span>
         <Tag t={t}>{entry.tag}</Tag>
       </div>
@@ -5524,13 +5550,15 @@ function LibraryCard({ entry, t, onOpen, onToggleFavorite }) {
 // Simple typographic "cover art" — bold geometric composition per category
 function CoverArt({ t, entry, mini = false }) {
   const h = mini ? 110 : 280;
-  // Color & shapes vary by tag
   const variants = {
-    RESEARCH: { bg: t.ink, fg: t.paper, accent: t.accent },
-    DATA:     { bg: t.accent, fg: t.paper, accent: t.ink },
-    INTERNAL: { bg: t.paperAlt, fg: t.ink, accent: t.accent },
+    INDUSTRY:   { bg: t.ink,      fg: t.paper,    accent: t.accent },
+    COMPETITOR: { bg: '#1a0f0a',  fg: '#f0e6d3',  accent: '#e07b4a' },
+    DATA:       { bg: t.accent,   fg: t.paper,    accent: t.ink },
+    STRATEGY:   { bg: '#0d1117',  fg: '#c9d1d9',  accent: '#58a6ff' },
+    INTERNAL:   { bg: t.paperAlt, fg: t.ink,      accent: t.accent },
+    RESEARCH:   { bg: t.ink,      fg: t.paper,    accent: t.accent },
   };
-  const v = variants[entry.tag] || variants.RESEARCH;
+  const v = variants[entry.tag] || variants.INDUSTRY;
   const seed = entry.issue;
   return (
     <div style={{
@@ -5547,6 +5575,21 @@ function CoverArt({ t, entry, mini = false }) {
       <div style={{ position: 'absolute', bottom: 10, right: 12 }}>
         <span style={{ fontFamily: t.fontMono, fontSize: mini ? 8 : 10, letterSpacing: 1.2, opacity: 0.85 }}>{entry.date}</span>
       </div>
+      {(entry._id || entry.isAI) && (
+        <div style={{
+          position: 'absolute', top: mini ? 6 : 10, right: mini ? 6 : 10,
+          background: 'linear-gradient(135deg, #0f0f0f 0%, #1c1408 100%)',
+          border: `1px solid rgba(200,168,75,0.7)`,
+          borderRadius: 2,
+          padding: mini ? '2px 5px' : '3px 8px',
+          display: 'flex', alignItems: 'center', gap: 3,
+          boxShadow: '0 0 6px rgba(200,168,75,0.2)',
+          backdropFilter: 'blur(4px)',
+        }}>
+          <span style={{ color: '#c8a84b', fontSize: mini ? 7 : 8, lineHeight: 1 }}>◆</span>
+          <span style={{ fontFamily: t.fontMono, fontSize: mini ? 7 : 8, fontWeight: 700, color: '#c8a84b', letterSpacing: 1.2 }}>AI</span>
+        </div>
+      )}
     </div>
   );
 }
