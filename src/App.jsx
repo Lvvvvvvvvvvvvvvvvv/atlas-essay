@@ -5574,70 +5574,250 @@ Object.assign(window, { Library, LIBRARY_ENTRIES });
 // Plus the ExportModal overlay used from the report screen.
 
 const SOURCE_CATEGORIES = [
-  { k: 'all',   en: 'All',         cn: '全部',    count: 23 },
+  { k: 'all',   en: 'All',         cn: '全部',    count: 38 },
   { k: 'db',    en: 'Databases',   cn: '数据库',  count: 4 },
-  { k: 'files', en: 'Files & Docs', cn: '文件',   count: 9 },
-  { k: 'web',   en: 'Web crawl',   cn: '网络抓取', count: 6 },
-  { k: 'api',   en: 'APIs',        cn: 'API',     count: 4 },
+  { k: 'files', en: 'Files & Docs', cn: '文件',   count: 5 },
+  { k: 'web',   en: 'Web crawl',   cn: '网络抓取', count: 16 },
+  { k: 'api',   en: 'APIs',        cn: 'API',     count: 13 },
 ];
 
 const SOURCES = [
+  // ── 宏观经济 · 官方统计 ────────────────────────────────────────────────
   {
-    name: '乘联会 · 销量月报', en: 'CPCA monthly sales',
+    name: '国家统计局 · 统计数据库', en: 'NBS · National Data',
+    type: 'web', kind: 'WEB · 官方', size: '—', docs: '120k+ 指标',
+    lastSync: '5月31日 10:00', cadence: 'monthly', status: 'ok', quality: 'A',
+    note: 'GDP / CPI / PPI / PMI / 工业产值 / 固定资产投资。每月 15 日前后发布。',
+  },
+  {
+    name: '中国人民银行 · 货币金融统计', en: 'PBOC · Monetary Statistics',
+    type: 'web', kind: 'WEB · 官方', size: '—', docs: '85k+ 指标',
+    lastSync: '5月30日 16:30', cadence: 'monthly', status: 'ok', quality: 'A',
+    note: 'M0/M1/M2 货币供应 / 社融规模 / 信贷数据 / LPR 基准利率。',
+  },
+  {
+    name: '海关总署 · 进出口统计', en: 'GACC · Trade Statistics',
+    type: 'web', kind: 'WEB · 官方', size: '—', docs: '42k+ 商品',
+    lastSync: '5月13日 09:00', cadence: 'monthly', status: 'ok', quality: 'A',
+    note: '按 HS 编码细分的进出口量 / 金额 / 贸易伙伴。月度数据约滞后 2 周。',
+  },
+  {
+    name: '发改委 · 重要商品价格监测', en: 'NDRC · Commodity Prices',
+    type: 'web', kind: 'WEB · 官方', size: '—', docs: '280 品类',
+    lastSync: '5月31日 08:00', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '生猪、蔬菜、粮油、煤炭等重要商品零售与批发价格。每日更新。',
+  },
+  {
+    name: '证监会 · 上市公司定期报告', en: 'CSRC · Listed Co. Filings',
+    type: 'web', kind: 'WEB · 官方', size: '—', docs: '5200+ 公司',
+    lastSync: '5月31日 18:00', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '季报 / 半年报 / 年报。含巨潮资讯全量公告镜像，T+0 更新。',
+  },
+
+  // ── 金融市场 ────────────────────────────────────────────────────────────
+  {
+    name: '东方财富 · A 股实时行情', en: 'Eastmoney · A-Share Quotes',
+    type: 'api', kind: 'API · REST', size: '—', docs: '5300+ 股票',
+    lastSync: '5月31日 15:00', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '沪深全量股票行情 / 涨跌幅 / 资金流向 / 龙虎榜。3 秒延迟。',
+  },
+  {
+    name: '中国货币网 · 汇率与利率', en: 'CFETS · FX & Rates',
+    type: 'api', kind: 'API · 官方', size: '—', docs: '160+ 货币对',
+    lastSync: '5月31日 16:30', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '人民币中间价 / SHIBOR / LPR / 银行间债券报价。外汇交易中心官方源。',
+  },
+  {
+    name: 'Wind 万得 · 金融数据终端', en: 'Wind · Financial Terminal',
+    type: 'api', kind: 'API · SDK', size: '—', docs: '600k+ 指标',
+    lastSync: '5月31日 15:30', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '机构级金融数据。A 股 / 债券 / 期货 / 基金 / 宏观经济全覆盖。需授权 Key。',
+  },
+  {
+    name: '巨潮资讯 · 上市公司公告', en: 'CNINFO · Announcements',
+    type: 'api', kind: 'API · REST', size: '—', docs: '18M+ 公告',
+    lastSync: '5月31日 20:00', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '交易所指定信披平台。公告全文 PDF + 结构化摘要。实时推送。',
+  },
+  {
+    name: '上交所 · 债券与 ETF 行情', en: 'SSE · Bond & ETF Market',
+    type: 'api', kind: 'API · 官方', size: '—', docs: '8200+ 品种',
+    lastSync: '5月31日 15:00', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '交易所债券收益率 / ETF 净值与折溢价。T+0 日终数据。',
+  },
+
+  // ── 一级市场 & 创投 ─────────────────────────────────────────────────────
+  {
+    name: 'IT 桔子 · 一级市场数据库', en: 'IT Juzi · VC/PE Events',
+    type: 'api', kind: 'API · v3', size: '—', docs: '91k+ 事件',
+    lastSync: '5月31日 09:14', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '融资事件 / 估值 / 投资方关系。支持行业 / 轮次 / 金额多维筛选。',
+  },
+  {
+    name: '鲸准研究院 · VC 数据库', en: 'JingData · VC Intelligence',
+    type: 'api', kind: 'API · v2', size: '—', docs: '62k+ 项目',
+    lastSync: '5月30日 22:00', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '一级市场投融资 / 财务预测 / 投资机构图谱。含并购与 IPO 追踪。',
+  },
+
+  // ── 行业垂直数据 ────────────────────────────────────────────────────────
+  {
+    name: '乘联会 · 乘用车月度销量', en: 'CPCA · Monthly Sales',
     type: 'web', kind: 'WEB · RSS', size: '12.3 MB', docs: 96,
-    lastSync: '5月20日 18:02', cadence: 'daily', status: 'ok', quality: 'A',
-    note: '官方乘联会数据，按月发布。涵盖乘用车 / 新能源 / 出口三个口径。',
+    lastSync: '5月28日 18:02', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '官方乘用车销量。涵盖燃油 / 新能源 / 出口三个口径，每月 10 日前后发布。',
   },
   {
-    name: 'IT 桔子 · 一级市场数据库', en: 'IT Juzi · primary market',
-    type: 'api', kind: 'API · v3', size: '—', docs: 8400,
-    lastSync: '5月21日 09:14', cadence: 'realtime', status: 'ok', quality: 'A',
-    note: '融资事件 / 估值 / 投资方关系。仅 Q1-Q2 数据进入此次报告范围。',
+    name: '中汽协 · 汽车行业统计', en: 'CAAM · Auto Industry',
+    type: 'web', kind: 'WEB · 官方', size: '—', docs: '240+ 指标',
+    lastSync: '5月13日 10:00', cadence: 'monthly', status: 'ok', quality: 'A',
+    note: '汽车总产销 / 分车型 / 分品牌 / 出口数据。中国汽车工业协会官方发布。',
   },
   {
-    name: '小红书讨论抓取', en: 'Xiaohongshu discussions',
-    type: 'web', kind: 'WEB · scraper', size: '4.1 MB', docs: 218,
-    lastSync: '5月19日 22:40', cadence: 'weekly', status: 'warn', quality: 'B',
-    note: '218 条相关讨论，已自动去重 / 过滤广告。下次抓取建议增加关键词。',
+    name: '国家能源局 · 电力工业数据', en: 'NEA · Power Statistics',
+    type: 'web', kind: 'WEB · 官方', size: '—', docs: '180+ 指标',
+    lastSync: '5月16日 09:00', cadence: 'monthly', status: 'ok', quality: 'A',
+    note: '发电量 / 用电量 / 装机容量 / 新能源占比。月度数据，每月中旬发布。',
   },
   {
-    name: '36 氪报道精选', en: '36Kr articles',
-    type: 'web', kind: 'WEB · RSS', size: '8.6 MB', docs: 412,
-    lastSync: '5月21日 06:30', cadence: 'daily', status: 'ok', quality: 'A',
+    name: '中指院 · 房地产价格指数', en: 'CRIC · Property Index',
+    type: 'api', kind: 'API · v2', size: '—', docs: '300+ 城市',
+    lastSync: '5月31日 08:00', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '新房 / 二手房价格指数 / 成交量 / 库存周期。覆盖 300+ 城市，日更。',
   },
   {
-    name: '内部销售数据库', en: 'Internal sales DB',
-    type: 'db', kind: 'PostgreSQL', size: '1.4 GB', docs: '~ 240k 行',
-    lastSync: '5月21日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
-    note: '只读连接。涵盖近 24 个月所有渠道、品类、城市维度的销售数据。',
+    name: '窄门餐眼 · 门店与品牌数据', en: 'Zhaimen · F&B Stores',
+    type: 'api', kind: 'API · v1', size: '—', docs: '12M+ 门店',
+    lastSync: '5月31日 16:40', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '全国餐饮 / 零售门店开关店追踪。支持品牌 / 城市 / 商圈多维查询。',
+  },
+
+  // ── 财经媒体 & 资讯 ─────────────────────────────────────────────────────
+  {
+    name: '财联社 · 实时财经快讯', en: 'CLS · Breaking Finance News',
+    type: 'web', kind: 'WEB · 实时', size: '—', docs: '3000+ 条/日',
+    lastSync: '5月31日 23:59', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '国内领先财经快讯平台。政策解读 / 公司公告 / 市场异动即时推送。',
   },
   {
-    name: '客户访谈纪要 (Q1)', en: 'Customer interview transcripts',
-    type: 'files', kind: 'FILES · 18 项', size: '3.2 MB', docs: 18,
-    lastSync: '5月14日 11:22', cadence: 'manual', status: 'ok', quality: 'A',
-    note: '已经过隐私脱敏处理。仅 Atlas 内部可见。',
+    name: '财新传媒 · 深度报道', en: 'Caixin · Investigative Finance',
+    type: 'web', kind: 'WEB · RSS', size: '6.2 MB', docs: '580+ 篇/月',
+    lastSync: '5月31日 20:30', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '深度财经调查报道。含 PMI 独家数据（财新 PMI）/ 宏观政策分析。',
   },
   {
-    name: '团队 Notion 知识库', en: 'Team Notion workspace',
-    type: 'api', kind: 'NOTION · workspace', size: '—', docs: 1240,
-    lastSync: '5月21日 13:55', cadence: 'realtime', status: 'ok', quality: 'B',
-    note: '索引滞后约 15 分钟。',
+    name: '36 氪 · 创投与科技报道', en: '36Kr · Tech & VC News',
+    type: 'web', kind: 'WEB · RSS', size: '8.6 MB', docs: '412+ 篇/月',
+    lastSync: '5月31日 06:30', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '科技创业 / 融资快讯 / 行业深度。RSS 全文可抓，日均 15 篇。',
   },
   {
-    name: 'J.D. Power 中国汽车', en: 'J.D. Power China auto',
+    name: '第一财经 · 经济报道', en: 'CBN · Economic News',
+    type: 'web', kind: 'WEB · RSS', size: '—', docs: '800+ 篇/月',
+    lastSync: '5月31日 22:00', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '第一财经全频道 RSS。宏观 / 产业 / 金融 / 国际经济。实时更新。',
+  },
+  {
+    name: '虎嗅 · 深度产业报道', en: 'Huxiu · Industry Analysis',
+    type: 'web', kind: 'WEB · RSS', size: '3.4 MB', docs: '320+ 篇/月',
+    lastSync: '5月31日 19:00', cadence: 'daily', status: 'ok', quality: 'B',
+    note: '科技 / 消费 / 商业模式深度分析。RSS 可用，含作者背景信息。',
+  },
+  {
+    name: '晚点 LatePost · 科技深报', en: 'LatePost · Tech Deep Dive',
+    type: 'web', kind: 'WEB · 抓取', size: '1.2 MB', docs: '40+ 篇/月',
+    lastSync: '5月28日 14:00', cadence: 'weekly', status: 'ok', quality: 'A',
+    note: '国内顶级科技报道。互联网大厂独家消息与战略分析。更新频率约每周 2 篇。',
+  },
+
+  // ── 社交媒体 & 搜索指数 ─────────────────────────────────────────────────
+  {
+    name: '百度指数 · 搜索热度趋势', en: 'Baidu Index · Search Trends',
+    type: 'api', kind: 'API · v4', size: '—', docs: '1B+ 关键词',
+    lastSync: '5月31日 08:00', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '关键词日均搜索量 / 用户画像 / 需求图谱。支持地域与人群维度拆分。',
+  },
+  {
+    name: '微博热搜 · 实时榜单', en: 'Weibo Hot Search',
+    type: 'api', kind: 'API · 第三方', size: '—', docs: 'Top 50 实时',
+    lastSync: '5月31日 23:30', cadence: 'realtime', status: 'ok', quality: 'B',
+    note: '每 30 分钟更新。含热度指数 / 标签类型（娱乐 / 社会 / 财经）。',
+  },
+  {
+    name: '微信指数 · 内容热度', en: 'WeChat Index · Content Heat',
+    type: 'api', kind: 'API · 第三方', size: '—', docs: '500M+ 词条',
+    lastSync: '5月31日 08:00', cadence: 'daily', status: 'ok', quality: 'B',
+    note: '基于公众号 / 朋友圈 / 搜索的综合热度指数。覆盖 7 / 30 / 90 天趋势。',
+  },
+  {
+    name: '小红书 · 讨论与热点抓取', en: 'Xiaohongshu · Community Crawl',
+    type: 'web', kind: 'WEB · 抓取', size: '4.8 MB', docs: '340+ 条',
+    lastSync: '5月30日 22:40', cadence: 'weekly', status: 'warn', quality: 'B',
+    note: '按关键词抓取种草内容 / 用户评论。已去重过滤广告。建议扩展关键词池。',
+  },
+
+  // ── 电商 & 消费 ─────────────────────────────────────────────────────────
+  {
+    name: '阿里数据 · 天猫商品趋势', en: 'Alibaba · Tmall Trends',
+    type: 'api', kind: 'API · 开放平台', size: '—', docs: '1B+ SKU',
+    lastSync: '5月31日 03:00', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '天猫 / 淘宝品类销量榜 / 搜索热词 / 价格趋势。官方开放平台 API。',
+  },
+  {
+    name: '京东 · 商品价格实时监控', en: 'JD.com · Price Monitor',
+    type: 'api', kind: 'API · 联盟', size: '—', docs: '500M+ SKU',
+    lastSync: '5月31日 15:00', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '全站实时价格 / 促销信息 / 销量排名。经京东联盟 API 接入，无频率限制。',
+  },
+  {
+    name: '商务部 · 商品流通数据', en: 'MOFCOM · Retail & Trade',
+    type: 'web', kind: 'WEB · 官方', size: '—', docs: '560+ 指标',
+    lastSync: '5月28日 09:00', cadence: 'weekly', status: 'ok', quality: 'A',
+    note: '社会消费品零售总额 / 重点城市商品流通价格 / 生活必需品监测。',
+  },
+
+  // ── 内部数据源 ───────────────────────────────────────────────────────────
+  {
+    name: '内部销售数据库', en: 'Internal Sales DB',
+    type: 'db', kind: 'PostgreSQL', size: '1.4 GB', docs: '~240k 行',
+    lastSync: '5月31日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: '只读连接。涵盖近 24 个月所有渠道 / 品类 / 城市维度销售数据。',
+  },
+  {
+    name: 'BigQuery · 用户行为日志', en: 'BigQuery · Event Log',
+    type: 'db', kind: 'BigQuery', size: '83 GB', docs: '~84M 事件',
+    lastSync: '5月31日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
+    note: 'DAU / 留存 / 转化漏斗 / A/B 实验结果。分区表，按日查询成本约 $0.02。',
+  },
+  {
+    name: '团队 Notion 知识库', en: 'Team Notion Workspace',
+    type: 'api', kind: 'NOTION · workspace', size: '—', docs: '1240+ 页',
+    lastSync: '5月31日 13:55', cadence: 'realtime', status: 'ok', quality: 'B',
+    note: '索引滞后约 15 分钟。含战略文档 / 产品 PRD / 竞品分析。',
+  },
+  {
+    name: '内部 CRM 客户数据库', en: 'Internal CRM Database',
+    type: 'db', kind: 'MySQL', size: '280 MB', docs: '~18k 客户',
+    lastSync: '5月31日 10:00', cadence: 'daily', status: 'ok', quality: 'A',
+    note: '客户档案 / 合同金额 / 续约率。已脱敏处理，仅聚合维度可引用。',
+  },
+  {
+    name: '客户访谈纪要 (Q1-Q2)', en: 'Customer Interview Transcripts',
+    type: 'files', kind: 'FILES · 24 项', size: '4.6 MB', docs: 24,
+    lastSync: '5月22日 11:22', cadence: 'manual', status: 'ok', quality: 'A',
+    note: '已经过隐私脱敏。含深度访谈录音转写稿与结构化摘要。仅 Atlas 内部可见。',
+  },
+  {
+    name: 'J.D. Power 中国汽车研究', en: 'J.D. Power China Auto',
     type: 'files', kind: 'FILES · PDF', size: '24 MB', docs: 6,
     lastSync: '5月02日 09:10', cadence: 'manual', status: 'stale', quality: 'A',
-    note: '上次更新已超过 14 天。建议刷新。',
+    note: '上次更新已超 14 天，建议刷新。含 APEAL / IQS / VDS 三份年度研究报告。',
   },
   {
-    name: 'BigQuery · 行为日志', en: 'BigQuery · event log',
-    type: 'db', kind: 'BigQuery', size: '83 GB', docs: '~ 84M 事件',
-    lastSync: '5月21日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
-  },
-  {
-    name: '窄门餐眼 · 门店数据', en: 'Zhaimen · stores',
-    type: 'api', kind: 'API · v1', size: '—', docs: 4800,
-    lastSync: '5月20日 16:40', cadence: 'daily', status: 'ok', quality: 'A',
+    name: '艾瑞咨询 · 行业研究报告', en: 'iResearch · Industry Reports',
+    type: 'files', kind: 'FILES · PDF', size: '68 MB', docs: 22,
+    lastSync: '5月26日 15:00', cadence: 'manual', status: 'ok', quality: 'A',
+    note: '互联网 / 电商 / 移动端用户行为年度与季度报告。已整理为可检索文档。',
   },
 ];
 
