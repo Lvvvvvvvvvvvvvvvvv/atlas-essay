@@ -5588,30 +5588,65 @@ const SOURCES = [
     type: 'web', kind: 'WEB · 官方', size: '—', docs: '120k+ 指标',
     lastSync: '5月31日 10:00', cadence: 'monthly', status: 'ok', quality: 'A',
     note: 'GDP / CPI / PPI / PMI / 工业产值 / 固定资产投资。每月 15 日前后发布。',
+    preview: { type: 'metrics', items: [
+      { label: 'GDP 增速 (Q1)', value: '5.3', unit: '%', change: '+0.1pp YoY', dir: 'up' },
+      { label: 'CPI (4月)', value: '0.3', unit: '%', change: '-0.1pp MoM', dir: 'down' },
+      { label: 'PPI (4月)', value: '-2.5', unit: '%', change: '连续 19 月负增', dir: 'down' },
+      { label: 'PMI 制造业 (5月)', value: '50.4', unit: '', change: '+0.2pt MoM', dir: 'up' },
+      { label: '工业产值 (4月)', value: '+6.7', unit: '%', change: '超预期', dir: 'up' },
+      { label: '固定资产投资 (1–4月)', value: '+4.2', unit: '%', change: 'YoY', dir: 'up' },
+    ]},
   },
   {
     name: '中国人民银行 · 货币金融统计', en: 'PBOC · Monetary Statistics',
     type: 'web', kind: 'WEB · 官方', size: '—', docs: '85k+ 指标',
     lastSync: '5月30日 16:30', cadence: 'monthly', status: 'ok', quality: 'A',
     note: 'M0/M1/M2 货币供应 / 社融规模 / 信贷数据 / LPR 基准利率。',
+    preview: { type: 'metrics', items: [
+      { label: 'M2 增速 (4月)', value: '8.7', unit: '%', change: '-0.2pp MoM', dir: 'down' },
+      { label: '社融增量 (4月)', value: '1.87', unit: '万亿', change: '同比少增0.12万亿', dir: 'down' },
+      { label: 'LPR 1年期', value: '3.45', unit: '%', change: '持平', dir: 'neutral' },
+      { label: 'LPR 5年期', value: '3.95', unit: '%', change: '持平', dir: 'neutral' },
+      { label: '新增人民币贷款 (4月)', value: '7300', unit: '亿', change: '同比少增约600亿', dir: 'down' },
+    ]},
   },
   {
     name: '海关总署 · 进出口统计', en: 'GACC · Trade Statistics',
     type: 'web', kind: 'WEB · 官方', size: '—', docs: '42k+ 商品',
     lastSync: '5月13日 09:00', cadence: 'monthly', status: 'ok', quality: 'A',
     note: '按 HS 编码细分的进出口量 / 金额 / 贸易伙伴。月度数据约滞后 2 周。',
+    preview: { type: 'metrics', items: [
+      { label: '出口 YoY (4月)', value: '+8.5', unit: '%', change: '超市场预期', dir: 'up' },
+      { label: '进口 YoY (4月)', value: '+2.3', unit: '%', change: '弱于预期', dir: 'down' },
+      { label: '贸易顺差 (4月)', value: '823', unit: '亿美元', change: '同比+24%', dir: 'up' },
+      { label: '对美出口 (4月)', value: '-3.2', unit: '%', change: '关税压力显现', dir: 'down' },
+      { label: '对东盟出口 (4月)', value: '+12.4', unit: '%', change: '高速增长', dir: 'up' },
+    ]},
   },
   {
     name: '发改委 · 重要商品价格监测', en: 'NDRC · Commodity Prices',
     type: 'web', kind: 'WEB · 官方', size: '—', docs: '280 品类',
     lastSync: '5月31日 08:00', cadence: 'daily', status: 'ok', quality: 'A',
     note: '生猪、蔬菜、粮油、煤炭等重要商品零售与批发价格。每日更新。',
+    preview: { type: 'table', cols: ['品类', '最新价', '单位', '周变动'], rows: [
+      ['生猪 (批发)', '20.8', '元/kg', '-1.3%'],
+      ['普通粳米', '3.84', '元/斤', '+0.2%'],
+      ['大豆油 (5L)', '62.5', '元/桶', '+0.8%'],
+      ['动力煤 (秦皇岛)', '780', '元/吨', '-2.1%'],
+      ['93#汽油 (全国均)', '7.48', '元/L', '持平'],
+    ]},
   },
   {
     name: '证监会 · 上市公司定期报告', en: 'CSRC · Listed Co. Filings',
     type: 'web', kind: 'WEB · 官方', size: '—', docs: '5200+ 公司',
     lastSync: '5月31日 18:00', cadence: 'daily', status: 'ok', quality: 'A',
     note: '季报 / 半年报 / 年报。含巨潮资讯全量公告镜像，T+0 更新。',
+    preview: { type: 'headlines', items: [
+      { time: '05-31 18:42', title: '贵州茅台 (600519) 披露 2024 年年度报告，营收同比 +17%', tag: '年报' },
+      { time: '05-31 17:30', title: '宁德时代 (300750) Q1 净利润 105 亿元，同比 +33%', tag: '季报' },
+      { time: '05-31 16:15', title: '比亚迪 (002594) 一季报：净利润 45.7 亿，同比 +11%', tag: '季报' },
+      { time: '05-31 15:00', title: '中国平安 (601318) 2024 年报：净利 1196 亿，同比 +36%', tag: '年报' },
+    ]},
   },
 
   // ── 金融市场 ────────────────────────────────────────────────────────────
@@ -5620,30 +5655,63 @@ const SOURCES = [
     type: 'api', kind: 'API · REST', size: '—', docs: '5300+ 股票',
     lastSync: '5月31日 15:00', cadence: 'realtime', status: 'ok', quality: 'A',
     note: '沪深全量股票行情 / 涨跌幅 / 资金流向 / 龙虎榜。3 秒延迟。',
+    preview: { type: 'table', cols: ['代码', '名称', '现价', '涨跌幅', '成交额'], rows: [
+      ['600519', '贵州茅台', '1762.00', '+1.24%', '22.4亿'],
+      ['300750', '宁德时代', '214.50', '+2.88%', '48.6亿'],
+      ['002594', '比亚迪', '308.20', '-0.52%', '19.1亿'],
+      ['601318', '中国平安', '52.80', '+0.76%', '15.3亿'],
+      ['600036', '招商银行', '38.42', '+0.34%', '11.7亿'],
+    ]},
   },
   {
     name: '中国货币网 · 汇率与利率', en: 'CFETS · FX & Rates',
     type: 'api', kind: 'API · 官方', size: '—', docs: '160+ 货币对',
     lastSync: '5月31日 16:30', cadence: 'realtime', status: 'ok', quality: 'A',
     note: '人民币中间价 / SHIBOR / LPR / 银行间债券报价。外汇交易中心官方源。',
+    preview: { type: 'metrics', items: [
+      { label: 'USD/CNY 中间价', value: '7.1068', unit: '', change: '-0.0023', dir: 'up' },
+      { label: 'EUR/CNY', value: '7.7534', unit: '', change: '+0.0082', dir: 'up' },
+      { label: 'SHIBOR 隔夜', value: '1.823', unit: '%', change: '-1.2bp', dir: 'down' },
+      { label: 'SHIBOR 1M', value: '2.015', unit: '%', change: '+0.5bp', dir: 'up' },
+      { label: '10Y 国债收益率', value: '2.285', unit: '%', change: '-1.5bp', dir: 'down' },
+    ]},
   },
   {
     name: 'Wind 万得 · 金融数据终端', en: 'Wind · Financial Terminal',
     type: 'api', kind: 'API · SDK', size: '—', docs: '600k+ 指标',
     lastSync: '5月31日 15:30', cadence: 'realtime', status: 'ok', quality: 'A',
     note: '机构级金融数据。A 股 / 债券 / 期货 / 基金 / 宏观经济全覆盖。需授权 Key。',
+    preview: { type: 'metrics', items: [
+      { label: '沪深300 指数', value: '3872.56', unit: 'pts', change: '+0.68%', dir: 'up' },
+      { label: '上证综指', value: '3124.42', unit: 'pts', change: '+0.44%', dir: 'up' },
+      { label: '中债净价指数', value: '221.84', unit: 'pts', change: '+0.12%', dir: 'up' },
+      { label: 'CRB 商品指数', value: '541.2', unit: 'pts', change: '-0.31%', dir: 'down' },
+      { label: '恒生指数', value: '19184.6', unit: 'pts', change: '+1.24%', dir: 'up' },
+    ]},
   },
   {
     name: '巨潮资讯 · 上市公司公告', en: 'CNINFO · Announcements',
     type: 'api', kind: 'API · REST', size: '—', docs: '18M+ 公告',
     lastSync: '5月31日 20:00', cadence: 'realtime', status: 'ok', quality: 'A',
     note: '交易所指定信披平台。公告全文 PDF + 结构化摘要。实时推送。',
+    preview: { type: 'headlines', items: [
+      { time: '05-31 20:02', title: '中芯国际 (688981) 拟定增募资不超过 120 亿元', tag: '再融资' },
+      { time: '05-31 18:55', title: '药明康德 (603259) 董事会审议通过回购 5 亿股方案', tag: '回购' },
+      { time: '05-31 17:30', title: '海天味业 (603288) 公告股权激励计划，授予 480 万股', tag: '激励' },
+      { time: '05-31 16:02', title: '格力电器 (000651) 拟分红每股 4.2 元，总额 25 亿', tag: '分红' },
+    ]},
   },
   {
     name: '上交所 · 债券与 ETF 行情', en: 'SSE · Bond & ETF Market',
     type: 'api', kind: 'API · 官方', size: '—', docs: '8200+ 品种',
     lastSync: '5月31日 15:00', cadence: 'daily', status: 'ok', quality: 'A',
     note: '交易所债券收益率 / ETF 净值与折溢价。T+0 日终数据。',
+    preview: { type: 'table', cols: ['代码', '品种', '净值/收益率', '折溢价', '成交额'], rows: [
+      ['510300', '沪深300ETF', '3.872', '+0.02%', '32.8亿'],
+      ['510050', '上证50ETF', '3.021', '-0.01%', '18.4亿'],
+      ['512010', '医药ETF', '1.185', '+0.05%', '8.2亿'],
+      ['019673', '30年国债', '2.89%', '—', '11.3亿'],
+    ]},
   },
 
   // ── 一级市场 & 创投 ─────────────────────────────────────────────────────
@@ -5652,12 +5720,24 @@ const SOURCES = [
     type: 'api', kind: 'API · v3', size: '—', docs: '91k+ 事件',
     lastSync: '5月31日 09:14', cadence: 'realtime', status: 'ok', quality: 'A',
     note: '融资事件 / 估值 / 投资方关系。支持行业 / 轮次 / 金额多维筛选。',
+    preview: { type: 'table', cols: ['公司', '行业', '轮次', '金额', '机构'], rows: [
+      ['智元机器人', '机器人', 'B轮', '7亿元', '高瓴 / 蔚来资本'],
+      ['面壁智能', 'AI大模型', 'A轮', '3000万$', 'Sequoia China'],
+      ['清陶能源', '固态电池', 'D轮', '40亿元', '国家大基金II'],
+      ['Manus AI', 'AI Agent', '天使轮', '500万$', 'ZhenFund'],
+    ]},
   },
   {
     name: '鲸准研究院 · VC 数据库', en: 'JingData · VC Intelligence',
     type: 'api', kind: 'API · v2', size: '—', docs: '62k+ 项目',
     lastSync: '5月30日 22:00', cadence: 'daily', status: 'ok', quality: 'A',
     note: '一级市场投融资 / 财务预测 / 投资机构图谱。含并购与 IPO 追踪。',
+    preview: { type: 'table', cols: ['事件', '标的', '金额/估值', '日期'], rows: [
+      ['IPO过会', '三菱电梯中国', 'A股主板', '2024-05-28'],
+      ['并购', '商汤收购香港AI公司', '3.2亿HKD', '2024-05-25'],
+      ['战略融资', '九号公司(689009)', '5000万元', '2024-05-22'],
+      ['基金设立', '国新科创基金II期', '200亿元', '2024-05-18'],
+    ]},
   },
 
   // ── 行业垂直数据 ────────────────────────────────────────────────────────
@@ -5666,30 +5746,63 @@ const SOURCES = [
     type: 'web', kind: 'WEB · RSS', size: '12.3 MB', docs: 96,
     lastSync: '5月28日 18:02', cadence: 'daily', status: 'ok', quality: 'A',
     note: '官方乘用车销量。涵盖燃油 / 新能源 / 出口三个口径，每月 10 日前后发布。',
+    preview: { type: 'metrics', items: [
+      { label: '4月 乘用车批发', value: '208.2', unit: '万辆', change: '+10.0% YoY', dir: 'up' },
+      { label: '4月 新能源批发', value: '92.4', unit: '万辆', change: '+31.2% YoY', dir: 'up' },
+      { label: '4月 NEV 渗透率', value: '44.4', unit: '%', change: '+10pp YoY', dir: 'up' },
+      { label: '4月 出口', value: '38.5', unit: '万辆', change: '+21.3% YoY', dir: 'up' },
+    ]},
   },
   {
     name: '中汽协 · 汽车行业统计', en: 'CAAM · Auto Industry',
     type: 'web', kind: 'WEB · 官方', size: '—', docs: '240+ 指标',
     lastSync: '5月13日 10:00', cadence: 'monthly', status: 'ok', quality: 'A',
     note: '汽车总产销 / 分车型 / 分品牌 / 出口数据。中国汽车工业协会官方发布。',
+    preview: { type: 'table', cols: ['品牌', '4月销量 (万辆)', 'YoY', '市占率'], rows: [
+      ['比亚迪', '31.25', '+46.1%', '15.0%'],
+      ['大众集团', '28.40', '-5.2%', '13.7%'],
+      ['通用集团', '18.62', '-12.8%', '8.9%'],
+      ['特斯拉中国', '7.42', '+8.5%', '3.6%'],
+      ['小米汽车', '3.20', '首发', '1.5%'],
+    ]},
   },
   {
     name: '国家能源局 · 电力工业数据', en: 'NEA · Power Statistics',
     type: 'web', kind: 'WEB · 官方', size: '—', docs: '180+ 指标',
     lastSync: '5月16日 09:00', cadence: 'monthly', status: 'ok', quality: 'A',
     note: '发电量 / 用电量 / 装机容量 / 新能源占比。月度数据，每月中旬发布。',
+    preview: { type: 'metrics', items: [
+      { label: '全社会用电量 (4月)', value: '7408', unit: '亿kWh', change: '+6.8% YoY', dir: 'up' },
+      { label: '新能源发电量 (4月)', value: '2580', unit: '亿kWh', change: '+22.4% YoY', dir: 'up' },
+      { label: '可再生能源占比', value: '34.8', unit: '%', change: '+5.2pp YoY', dir: 'up' },
+      { label: '光伏新增装机 (1-4月)', value: '62.4', unit: 'GW', change: '+28% YoY', dir: 'up' },
+    ]},
   },
   {
     name: '中指院 · 房地产价格指数', en: 'CRIC · Property Index',
     type: 'api', kind: 'API · v2', size: '—', docs: '300+ 城市',
     lastSync: '5月31日 08:00', cadence: 'daily', status: 'ok', quality: 'A',
     note: '新房 / 二手房价格指数 / 成交量 / 库存周期。覆盖 300+ 城市，日更。',
+    preview: { type: 'table', cols: ['城市', '新房均价', '月变动', '去化周期'], rows: [
+      ['北京', '72,840 元/m²', '-0.3%', '14.2月'],
+      ['上海', '80,120 元/m²', '-0.1%', '13.6月'],
+      ['深圳', '65,580 元/m²', '-0.8%', '18.4月'],
+      ['成都', '18,240 元/m²', '+0.5%', '9.1月'],
+      ['郑州', '9,820 元/m²', '-1.2%', '26.8月'],
+    ]},
   },
   {
     name: '窄门餐眼 · 门店与品牌数据', en: 'Zhaimen · F&B Stores',
     type: 'api', kind: 'API · v1', size: '—', docs: '12M+ 门店',
     lastSync: '5月31日 16:40', cadence: 'daily', status: 'ok', quality: 'A',
     note: '全国餐饮 / 零售门店开关店追踪。支持品牌 / 城市 / 商圈多维查询。',
+    preview: { type: 'table', cols: ['品牌', '在营门店', '近30天净开', '人均消费'], rows: [
+      ['蜜雪冰城', '43,280', '+312', '14元'],
+      ['瑞幸咖啡', '20,150', '+285', '16元'],
+      ['麦当劳', '6,820', '+48', '38元'],
+      ['海底捞', '1,382', '-12', '125元'],
+      ['喜茶', '3,246', '+96', '29元'],
+    ]},
   },
 
   // ── 财经媒体 & 资讯 ─────────────────────────────────────────────────────
@@ -5698,36 +5811,72 @@ const SOURCES = [
     type: 'web', kind: 'WEB · 实时', size: '—', docs: '3000+ 条/日',
     lastSync: '5月31日 23:59', cadence: 'realtime', status: 'ok', quality: 'A',
     note: '国内领先财经快讯平台。政策解读 / 公司公告 / 市场异动即时推送。',
+    preview: { type: 'headlines', items: [
+      { time: '23:42', title: '央行：将综合运用多种货币政策工具，适时降准降息', tag: '政策' },
+      { time: '22:15', title: '财政部：1-4月全国一般公共预算收入 82,293 亿元', tag: '财政' },
+      { time: '20:38', title: 'MSCI：将中国A股纳入比例维持20%，暂不调整', tag: '外资' },
+      { time: '18:02', title: '商务部：对原产于美国的农产品加征对等关税措施', tag: '贸易' },
+    ]},
   },
   {
     name: '财新传媒 · 深度报道', en: 'Caixin · Investigative Finance',
     type: 'web', kind: 'WEB · RSS', size: '6.2 MB', docs: '580+ 篇/月',
     lastSync: '5月31日 20:30', cadence: 'daily', status: 'ok', quality: 'A',
     note: '深度财经调查报道。含 PMI 独家数据（财新 PMI）/ 宏观政策分析。',
+    preview: { type: 'headlines', items: [
+      { time: '05-31', title: '财新 5月 PMI 预览：制造业 51.2，服务业 53.4', tag: 'PMI' },
+      { time: '05-30', title: '独家：某头部城商行不良率升至 2.3%，已启动风险处置', tag: '金融' },
+      { time: '05-29', title: '中国汽车出口面临欧盟关税第二轮审查，波及三大整车厂', tag: '产业' },
+      { time: '05-28', title: '地方债重组方案落地，六省存量债务置换比例超 40%', tag: '债务' },
+    ]},
   },
   {
     name: '36 氪 · 创投与科技报道', en: '36Kr · Tech & VC News',
     type: 'web', kind: 'WEB · RSS', size: '8.6 MB', docs: '412+ 篇/月',
     lastSync: '5月31日 06:30', cadence: 'daily', status: 'ok', quality: 'A',
     note: '科技创业 / 融资快讯 / 行业深度。RSS 全文可抓，日均 15 篇。',
+    preview: { type: 'headlines', items: [
+      { time: '05-31', title: '字节跳动内部确认：豆包大模型日活突破 8000 万', tag: 'AI' },
+      { time: '05-30', title: '独家：阿里云 2024 年营收首超 1000 亿，云计算增速回升', tag: '云计算' },
+      { time: '05-30', title: '具身智能赛道疯狂融资，上半年已累计超 200 亿元', tag: '机器人' },
+      { time: '05-29', title: 'Kimi 发布 k1.5 长思维链模型，数学推理跻身全球前三', tag: 'AI' },
+    ]},
   },
   {
     name: '第一财经 · 经济报道', en: 'CBN · Economic News',
     type: 'web', kind: 'WEB · RSS', size: '—', docs: '800+ 篇/月',
     lastSync: '5月31日 22:00', cadence: 'realtime', status: 'ok', quality: 'A',
     note: '第一财经全频道 RSS。宏观 / 产业 / 金融 / 国际经济。实时更新。',
+    preview: { type: 'headlines', items: [
+      { time: '05-31', title: '国常会：进一步扩大内需，推动消费品以旧换新政策扩围', tag: '内需' },
+      { time: '05-31', title: '上半年"新三样"出口突破 5000 亿，创历史同期新高', tag: '出口' },
+      { time: '05-30', title: '专项债新增额度下达 3.8 万亿，基建发力预期升温', tag: '财政' },
+      { time: '05-29', title: '工业产值连续 4 个月超预期，工程机械需求显著回暖', tag: '工业' },
+    ]},
   },
   {
     name: '虎嗅 · 深度产业报道', en: 'Huxiu · Industry Analysis',
     type: 'web', kind: 'WEB · RSS', size: '3.4 MB', docs: '320+ 篇/月',
     lastSync: '5月31日 19:00', cadence: 'daily', status: 'ok', quality: 'B',
     note: '科技 / 消费 / 商业模式深度分析。RSS 可用，含作者背景信息。',
+    preview: { type: 'headlines', items: [
+      { time: '05-31', title: '淘天双11 GMV 同比下滑 15%：老路的终点', tag: '电商' },
+      { time: '05-30', title: '华为鸿蒙生态三年：应用生态距离苹果还有多远？', tag: '手机' },
+      { time: '05-29', title: '小红书赴美 IPO 估值或低至 70 亿美元，流量焦虑难解', tag: '社媒' },
+      { time: '05-28', title: '理想汽车的焦虑：增程天花板与纯电泥潭', tag: '汽车' },
+    ]},
   },
   {
     name: '晚点 LatePost · 科技深报', en: 'LatePost · Tech Deep Dive',
     type: 'web', kind: 'WEB · 抓取', size: '1.2 MB', docs: '40+ 篇/月',
     lastSync: '5月28日 14:00', cadence: 'weekly', status: 'ok', quality: 'A',
     note: '国内顶级科技报道。互联网大厂独家消息与战略分析。更新频率约每周 2 篇。',
+    preview: { type: 'headlines', items: [
+      { time: '05-28', title: '腾讯内部确认：将重组 PCG 事业群，短视频与内容合并运营', tag: '腾讯' },
+      { time: '05-24', title: '阿里巴巴 2025 战略：放弃非核心业务，云+电商双核驱动', tag: '阿里' },
+      { time: '05-20', title: '百度 AI 战略转折：文心放弃 ToC，全力押注企业服务', tag: '百度' },
+      { time: '05-16', title: '字节"出海"的下一步：TikTok Shop 欧洲扩张计划曝光', tag: '字节' },
+    ]},
   },
 
   // ── 社交媒体 & 搜索指数 ─────────────────────────────────────────────────
@@ -5736,24 +5885,48 @@ const SOURCES = [
     type: 'api', kind: 'API · v4', size: '—', docs: '1B+ 关键词',
     lastSync: '5月31日 08:00', cadence: 'daily', status: 'ok', quality: 'A',
     note: '关键词日均搜索量 / 用户画像 / 需求图谱。支持地域与人群维度拆分。',
+    preview: { type: 'table', cols: ['关键词', '搜索指数', '7日变动', '主要人群'], rows: [
+      ['人工智能', '98,420', '+12.3%', '18-35岁·男性'],
+      ['新能源汽车', '72,185', '+8.7%', '25-40岁·均衡'],
+      ['固态电池', '48,230', '+52.1%', '25-45岁·男性'],
+      ['大模型', '63,580', '+18.4%', '20-35岁·高学历'],
+    ]},
   },
   {
     name: '微博热搜 · 实时榜单', en: 'Weibo Hot Search',
     type: 'api', kind: 'API · 第三方', size: '—', docs: 'Top 50 实时',
     lastSync: '5月31日 23:30', cadence: 'realtime', status: 'ok', quality: 'B',
     note: '每 30 分钟更新。含热度指数 / 标签类型（娱乐 / 社会 / 财经）。',
+    preview: { type: 'headlines', items: [
+      { time: '#1', title: '央行宣布降准0.5个百分点', tag: '财经' },
+      { time: '#2', title: '2024年高考报名人数创新高', tag: '社会' },
+      { time: '#3', title: '比亚迪发布第五代DM技术', tag: '科技' },
+      { time: '#5', title: '人民币汇率盘中升破7.10', tag: '财经' },
+    ]},
   },
   {
     name: '微信指数 · 内容热度', en: 'WeChat Index · Content Heat',
     type: 'api', kind: 'API · 第三方', size: '—', docs: '500M+ 词条',
     lastSync: '5月31日 08:00', cadence: 'daily', status: 'ok', quality: 'B',
     note: '基于公众号 / 朋友圈 / 搜索的综合热度指数。覆盖 7 / 30 / 90 天趋势。',
+    preview: { type: 'table', cols: ['词条', '今日指数', '7日趋势', '90日趋势'], rows: [
+      ['AI大模型', '52,184,620', '▲ 上升', '▲ 大幅上升'],
+      ['新能源', '38,402,110', '▲ 上升', '→ 平稳'],
+      ['楼市', '28,103,850', '▼ 下降', '▼ 下降'],
+      ['出海', '19,842,440', '▲ 上升', '▲ 上升'],
+    ]},
   },
   {
     name: '小红书 · 讨论与热点抓取', en: 'Xiaohongshu · Community Crawl',
     type: 'web', kind: 'WEB · 抓取', size: '4.8 MB', docs: '340+ 条',
     lastSync: '5月30日 22:40', cadence: 'weekly', status: 'warn', quality: 'B',
     note: '按关键词抓取种草内容 / 用户评论。已去重过滤广告。建议扩展关键词池。',
+    preview: { type: 'headlines', items: [
+      { time: '5-31', title: '【种草】超详细！华为 Pura 70 Ultra 一个月使用评测', tag: '数码' },
+      { time: '5-30', title: '小米 SU7 Ultra 提车日记：等了 4 个月终于拿到了', tag: '汽车' },
+      { time: '5-29', title: '2025 必看理财指南：如何配置活期+稳健基金', tag: '理财' },
+      { time: '5-28', title: '五月消费白皮书：90 后最爱的 10 个品牌', tag: '消费' },
+    ]},
   },
 
   // ── 电商 & 消费 ─────────────────────────────────────────────────────────
@@ -5762,18 +5935,36 @@ const SOURCES = [
     type: 'api', kind: 'API · 开放平台', size: '—', docs: '1B+ SKU',
     lastSync: '5月31日 03:00', cadence: 'daily', status: 'ok', quality: 'A',
     note: '天猫 / 淘宝品类销量榜 / 搜索热词 / 价格趋势。官方开放平台 API。',
+    preview: { type: 'table', cols: ['品类', '近7日销量', '环比', '搜索热词'], rows: [
+      ['智能手机', '520万件', '+8.2%', 'iPhone 16 / 华为'],
+      ['新能源配件', '240万件', '+31.5%', '车载冰箱 / 行车记录仪'],
+      ['医美护肤', '680万件', '+12.0%', 'A醇精华 / 防晒'],
+      ['家用健身器材', '98万件', '+5.6%', '哑铃 / 跑步机'],
+    ]},
   },
   {
     name: '京东 · 商品价格实时监控', en: 'JD.com · Price Monitor',
     type: 'api', kind: 'API · 联盟', size: '—', docs: '500M+ SKU',
     lastSync: '5月31日 15:00', cadence: 'realtime', status: 'ok', quality: 'A',
     note: '全站实时价格 / 促销信息 / 销量排名。经京东联盟 API 接入，无频率限制。',
+    preview: { type: 'table', cols: ['商品', '现价', '30日均价', '促销'], rows: [
+      ['Apple iPhone 15 Pro 256G', '¥7,999', '¥8,299', '618立减300'],
+      ['华为 Mate 60 Pro 512G', '¥8,299', '¥8,499', '无活动'],
+      ['小米 SU7 标准版 (预订)', '¥215,900', '¥215,900', '新车'],
+      ['戴森 V15 吸尘器', '¥4,590', '¥4,890', '618立减300'],
+    ]},
   },
   {
     name: '商务部 · 商品流通数据', en: 'MOFCOM · Retail & Trade',
     type: 'web', kind: 'WEB · 官方', size: '—', docs: '560+ 指标',
     lastSync: '5月28日 09:00', cadence: 'weekly', status: 'ok', quality: 'A',
     note: '社会消费品零售总额 / 重点城市商品流通价格 / 生活必需品监测。',
+    preview: { type: 'metrics', items: [
+      { label: '社零总额 (4月)', value: '38,726', unit: '亿元', change: '+5.5% YoY', dir: 'up' },
+      { label: '网上零售额 (1-4月)', value: '50,948', unit: '亿元', change: '+11.5% YoY', dir: 'up' },
+      { label: '餐饮收入 (4月)', value: '4,782', unit: '亿元', change: '+12.4% YoY', dir: 'up' },
+      { label: '汽车零售 (4月)', value: '4,260', unit: '亿元', change: '+7.1% YoY', dir: 'up' },
+    ]},
   },
 
   // ── 内部数据源 ───────────────────────────────────────────────────────────
@@ -5782,42 +5973,83 @@ const SOURCES = [
     type: 'db', kind: 'PostgreSQL', size: '1.4 GB', docs: '~240k 行',
     lastSync: '5月31日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
     note: '只读连接。涵盖近 24 个月所有渠道 / 品类 / 城市维度销售数据。',
+    preview: { type: 'metrics', items: [
+      { label: 'MTD GMV (5月)', value: '2,840', unit: '万元', change: '+14.2% MoM', dir: 'up' },
+      { label: '月订单量', value: '18,240', unit: '单', change: '+8.5% MoM', dir: 'up' },
+      { label: '客单价', value: '1,558', unit: '元', change: '+5.2% YoY', dir: 'up' },
+      { label: '退货率', value: '4.2', unit: '%', change: '-0.8pp MoM', dir: 'up' },
+    ]},
   },
   {
     name: 'BigQuery · 用户行为日志', en: 'BigQuery · Event Log',
     type: 'db', kind: 'BigQuery', size: '83 GB', docs: '~84M 事件',
     lastSync: '5月31日 14:08', cadence: 'realtime', status: 'ok', quality: 'A',
     note: 'DAU / 留存 / 转化漏斗 / A/B 实验结果。分区表，按日查询成本约 $0.02。',
+    preview: { type: 'metrics', items: [
+      { label: 'DAU (昨日)', value: '84,230', unit: '', change: '+3.2% WoW', dir: 'up' },
+      { label: '7日留存率', value: '38.4', unit: '%', change: '+1.2pp', dir: 'up' },
+      { label: '30日留存率', value: '21.8', unit: '%', change: '+0.5pp', dir: 'up' },
+      { label: '漏斗转化率', value: '6.8', unit: '%', change: '+0.3pp', dir: 'up' },
+    ]},
   },
   {
     name: '团队 Notion 知识库', en: 'Team Notion Workspace',
     type: 'api', kind: 'NOTION · workspace', size: '—', docs: '1240+ 页',
     lastSync: '5月31日 13:55', cadence: 'realtime', status: 'ok', quality: 'B',
     note: '索引滞后约 15 分钟。含战略文档 / 产品 PRD / 竞品分析。',
+    preview: { type: 'headlines', items: [
+      { time: '5月31日', title: '2025 H2 战略规划 · 核心 OKR 草稿 v3', tag: '战略' },
+      { time: '5月29日', title: '竞品 AI 功能对比：Notion AI / Perplexity / Atlas', tag: '竞品' },
+      { time: '5月27日', title: '产品 PRD：报告生成引擎 v2 功能规格', tag: 'PRD' },
+      { time: '5月24日', title: '用户调研总结：10 位 B 端用户深度访谈摘要', tag: '调研' },
+    ]},
   },
   {
     name: '内部 CRM 客户数据库', en: 'Internal CRM Database',
     type: 'db', kind: 'MySQL', size: '280 MB', docs: '~18k 客户',
     lastSync: '5月31日 10:00', cadence: 'daily', status: 'ok', quality: 'A',
     note: '客户档案 / 合同金额 / 续约率。已脱敏处理，仅聚合维度可引用。',
+    preview: { type: 'metrics', items: [
+      { label: '活跃客户数', value: '12,840', unit: '家', change: '+420 MoM', dir: 'up' },
+      { label: '年化续约率', value: '86.2', unit: '%', change: '+1.4pp YoY', dir: 'up' },
+      { label: '平均合同额', value: '24.8', unit: '万元', change: '+8.2% YoY', dir: 'up' },
+      { label: 'NPS 评分', value: '62', unit: '', change: '+5pt QoQ', dir: 'up' },
+    ]},
   },
   {
     name: '客户访谈纪要 (Q1-Q2)', en: 'Customer Interview Transcripts',
     type: 'files', kind: 'FILES · 24 项', size: '4.6 MB', docs: 24,
     lastSync: '5月22日 11:22', cadence: 'manual', status: 'ok', quality: 'A',
     note: '已经过隐私脱敏。含深度访谈录音转写稿与结构化摘要。仅 Atlas 内部可见。',
+    preview: { type: 'headlines', items: [
+      { time: '05-18', title: '[访谈] 某头部券商研究院 VP：AI 报告生成的信任门槛', tag: '金融' },
+      { time: '05-12', title: '[访谈] 快消品牌战略总监：每周报告需求与痛点调查', tag: '消费' },
+      { time: '05-07', title: '[访谈] 创投机构 Partner：行研报告自动化的期望与顾虑', tag: '创投' },
+      { time: '04-28', title: '[访谈] 咨询公司项目经理：从人工到 AI 辅助的迁移路径', tag: '咨询' },
+    ]},
   },
   {
     name: 'J.D. Power 中国汽车研究', en: 'J.D. Power China Auto',
     type: 'files', kind: 'FILES · PDF', size: '24 MB', docs: 6,
     lastSync: '5月02日 09:10', cadence: 'manual', status: 'stale', quality: 'A',
     note: '上次更新已超 14 天，建议刷新。含 APEAL / IQS / VDS 三份年度研究报告。',
+    preview: { type: 'table', cols: ['报告', '年份', '样本量', '核心发现'], rows: [
+      ['中国汽车 APEAL 研究', '2024', '22,832 车主', '新能源品牌满意度大幅提升'],
+      ['中国汽车 IQS 研究', '2024', '45,430 车主', 'PP100 质量问题创历史最低'],
+      ['中国汽车 VDS 研究', '2023', '18,245 车主', '智能座舱故障占比 34%'],
+    ]},
   },
   {
     name: '艾瑞咨询 · 行业研究报告', en: 'iResearch · Industry Reports',
     type: 'files', kind: 'FILES · PDF', size: '68 MB', docs: 22,
     lastSync: '5月26日 15:00', cadence: 'manual', status: 'ok', quality: 'A',
     note: '互联网 / 电商 / 移动端用户行为年度与季度报告。已整理为可检索文档。',
+    preview: { type: 'headlines', items: [
+      { time: '2025 Q1', title: '中国 AI 应用市场报告：月活用户破 4 亿，B 端渗透加速', tag: 'AI' },
+      { time: '2025 Q1', title: '中国短视频 & 直播电商白皮书：GMV 突破 6 万亿', tag: '电商' },
+      { time: '2024 年报', title: '中国移动互联网全景报告：用户规模趋于饱和，下沉攻坚', tag: '互联网' },
+      { time: '2024 年报', title: '中国出行行业研究：网约车日均订单 4200 万单', tag: '出行' },
+    ]},
   },
 ];
 
@@ -6238,6 +6470,82 @@ function Sources({ t }) {
   );
 }
 
+function SourcePreview({ t, preview }) {
+  if (!preview) return null;
+  const hdrStyle = {
+    padding: '6px 12px', borderBottom: `1px solid ${t.rule}`,
+    fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute,
+  };
+  if (preview.type === 'headlines') {
+    return (
+      <div style={{ border: `1px solid ${t.rule}`, marginTop: 8 }}>
+        <div style={hdrStyle}>PREVIEW · LATEST ITEMS</div>
+        {preview.items.map((item, i) => (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 12px',
+            borderBottom: i < preview.items.length - 1 ? `1px solid ${t.rule}` : 'none',
+          }}>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0, marginTop: 2, minWidth: 52 }}>{item.time}</span>
+            <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink, lineHeight: 1.5, flex: 1 }}>{item.title}</span>
+            {item.tag && <span style={{ fontFamily: t.fontMono, fontSize: 9, padding: '2px 6px', border: `1px solid ${t.rule}`, color: t.mute, flexShrink: 0, letterSpacing: 0.8 }}>{item.tag}</span>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (preview.type === 'metrics') {
+    return (
+      <div style={{ border: `1px solid ${t.rule}`, marginTop: 8 }}>
+        <div style={hdrStyle}>PREVIEW · KEY METRICS</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))' }}>
+          {preview.items.map((item, i) => (
+            <div key={i} style={{ padding: '10px 14px', borderRight: `1px solid ${t.rule}`, borderBottom: `1px solid ${t.rule}` }}>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.8, marginBottom: 5 }}>{item.label}</div>
+              <div style={{ fontFamily: t.fontMono, fontSize: 16, fontWeight: 700, color: t.ink, lineHeight: 1 }}>
+                {item.value}
+                {item.unit && <span style={{ fontSize: 10, fontWeight: 400, marginLeft: 3, color: t.inkSoft }}>{item.unit}</span>}
+              </div>
+              {item.change && (
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, marginTop: 4, color: item.dir === 'up' ? '#2a8c5c' : item.dir === 'down' ? '#9b1c14' : t.mute }}>
+                  {item.change}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (preview.type === 'table') {
+    return (
+      <div style={{ border: `1px solid ${t.rule}`, marginTop: 8, overflowX: 'auto' }}>
+        <div style={hdrStyle}>PREVIEW · SAMPLE DATA</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: `1.5px solid ${t.ink}` }}>
+              {preview.cols.map((c, i) => (
+                <th key={i} style={{ padding: '7px 12px', textAlign: 'left', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, color: t.mute, fontWeight: 700, whiteSpace: 'nowrap' }}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {preview.rows.map((row, ri) => (
+              <tr key={ri} style={{ borderBottom: `1px solid ${t.rule}` }}
+                onMouseEnter={e => e.currentTarget.style.background = t.faint}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                {row.map((cell, ci) => (
+                  <td key={ci} style={{ padding: '8px 12px', fontFamily: ci === 0 ? t.fontCN : t.fontMono, fontSize: ci === 0 ? 12 : 11, color: t.ink, whiteSpace: 'nowrap' }}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  return null;
+}
+
 function SourceRow({ src, t, index, usageCount = 0, onDisconnect }) {
   const [open, setOpen] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
@@ -6245,6 +6553,7 @@ function SourceRow({ src, t, index, usageCount = 0, onDisconnect }) {
   const [showRefs, setShowRefs] = React.useState(false);
   const [showAccess, setShowAccess] = React.useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
+  const [showPreview, setShowPreview] = React.useState(false);
   const [srcData, setSrcData] = React.useState(src);
 
   const status = STATUS_META[srcData.status] || STATUS_META.off;
@@ -6305,6 +6614,13 @@ function SourceRow({ src, t, index, usageCount = 0, onDisconnect }) {
                 style={syncDone ? { color: '#10b981', borderColor: '#10b981' } : {}}>
                 {syncing ? '⟳ 同步中…' : syncDone ? '✓ 同步完成' : '⟳ Sync now'}
               </Btn>
+              {srcData.preview && (
+                <Btn t={t} size="sm"
+                  style={showPreview ? { background: t.ink, color: t.paper } : {}}
+                  onClick={e => { e.stopPropagation(); setShowPreview(v => !v); }}>
+                  {showPreview ? '▴ 收起预览' : '◉ 数据预览'}
+                </Btn>
+              )}
               <Btn t={t} size="sm" onClick={e => { e.stopPropagation(); setShowRefs(true); }}>
                 {usageCount > 0 ? `已引用 ${usageCount} 篇报告` : '暂无引用记录'}
               </Btn>
@@ -6324,6 +6640,7 @@ function SourceRow({ src, t, index, usageCount = 0, onDisconnect }) {
               <Btn t={t} size="sm" accent onClick={e => { e.stopPropagation(); onDisconnect && onDisconnect(); }}>确认断开</Btn>
             </div>
           )}
+          {showPreview && <SourcePreview t={t} preview={srcData.preview}/>}
         </div>
       )}
 
