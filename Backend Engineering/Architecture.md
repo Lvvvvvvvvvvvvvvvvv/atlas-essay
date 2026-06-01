@@ -137,12 +137,12 @@ create table api_keys (
 
 | # | 模块 | 状态 | 文档 |
 |---|------|------|------|
-| 1 | 用户账户（Auth） | **进行中** | [01-Auth.md](./01-Auth.md) |
-| 2 | 报告云同步 | 待启动 | [02-CloudSync.md](./02-CloudSync.md) |
-| 3 | API Key 服务端管理 | 待启动 | [03-APIKey.md](./03-APIKey.md) |
-| 4 | 任务持久化（QStash） | 待启动 | [04-Tasks.md](./04-Tasks.md) |
+| 1 | 用户账户（Auth） | ✅ 完成 | [01-Auth.md](./01-Auth.md) |
+| 2 | 报告云同步 | ✅ 完成 | [02-CloudSync.md](./02-CloudSync.md) |
+| 3 | API Key 服务端管理 | ✅ 完成 | [03-APIKey.md](./03-APIKey.md) |
+| 4 | 任务持久化（QStash） | ✅ 完成 | [04-Tasks.md](./04-Tasks.md) |
 | 5 | 节点式工作流 | 待启动 | [05-Workflow.md](./05-Workflow.md) |
-| 6 | Research 增强（Tavily） | 待启动 | [06-Research.md](./06-Research.md) |
+| 6 | Research 增强（Tavily） | ✅ 完成 | [06-Research.md](./06-Research.md) |
 
 ---
 

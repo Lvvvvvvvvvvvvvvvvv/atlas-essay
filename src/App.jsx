@@ -3254,6 +3254,14 @@ function useToolbarStore() {
     try { localStorage.setItem('atlas_url_contexts', JSON.stringify(updated)); } catch {}
   };
 
+  // Tavily search results added to context (already have content, no Jina fetch needed)
+  const [searchContexts, setSearchContexts] = React.useState([]);
+  const addSearchContext = (item) => {
+    setSearchContexts(prev => prev.find(s => s.url === item.url) ? prev : [...prev, item]);
+  };
+  const removeSearchContext = (url) => setSearchContexts(prev => prev.filter(s => s.url !== url));
+  const clearSearchContexts = () => setSearchContexts([]);
+
   const setActiveTemplate = (tpl) => setActiveTemplateRaw(tpl);
   const clearActiveTemplate = () => setActiveTemplateRaw(null);
 
@@ -3261,6 +3269,7 @@ function useToolbarStore() {
     selectedSources, toggleSource,
     attachments, addAttachment, removeAttachment,
     urlContexts, addUrlContext, removeUrlContext,
+    searchContexts, addSearchContext, removeSearchContext, clearSearchContexts,
     toneId, setToneId, allTones, currentTone, addTone, removeTone,
     lengthId, setLengthId, customLength, setCustomLength, effectiveLength,
     languageId, setLanguageId, allLanguages, currentLanguage, addLanguage, removeLanguage,
@@ -3377,8 +3386,17 @@ function SourcesPopover({ t, store, onNavigateSources }) {
 // ── UrlContextPopover ─────────────────────────────────────────────────────
 function UrlContextPopover({ t, store }) {
   const [open, setOpen] = React.useState(false);
+  const [tab, setTab] = React.useState('url'); // 'url' | 'search'
   const [draft, setDraft] = React.useState('');
-  const count = store.urlContexts.length;
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [searchResults, setSearchResults] = React.useState([]);
+  const [searching, setSearching] = React.useState(false);
+  const [searchError, setSearchError] = React.useState('');
+  const { getToken } = useAuth();
+
+  const urlCount = store.urlContexts.length;
+  const searchCount = store.searchContexts.length;
+  const totalCount = urlCount + searchCount;
 
   const handleAdd = () => {
     const trimmed = draft.trim();
@@ -3388,55 +3406,169 @@ function UrlContextPopover({ t, store }) {
     setDraft('');
   };
 
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    setSearchError('');
+    setSearchResults([]);
+    try {
+      const token = await getToken();
+      const resp = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ query: searchQuery.trim(), maxResults: 6 }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `搜索失败 ${resp.status}`);
+      setSearchResults(data.results || []);
+    } catch (e) {
+      setSearchError(e.message);
+    } finally {
+      setSearching(false);
+    }
+  };
+
   const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } };
 
+  const tabStyle = (active) => ({
+    flex: 1, padding: '5px 0', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1,
+    background: active ? t.ink : 'transparent', color: active ? t.paper : t.mute,
+    border: 'none', cursor: 'pointer', textTransform: 'uppercase',
+  });
+
   return (
-    <ToolPopover t={t} label={`↗ 网页${count > 0 ? ` (${count})` : ''}`}
-      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={340}>
-      <div style={{ padding: '10px 12px', borderBottom: `1px solid ${t.rule}` }}>
-        <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute, marginBottom: 8 }}>
-          URL CONTEXT · 生成前自动抓取正文
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleAdd()}
-            placeholder="https://example.com/article"
-            style={{ flex: 1, border: `1px solid ${t.rule}`, padding: '5px 8px', fontFamily: t.fontBody, fontSize: 12, color: t.ink, background: t.paper, outline: 'none', minWidth: 0 }}
-          />
-          <button onClick={handleAdd} disabled={!draft.trim()} style={{
-            padding: '5px 10px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8,
-            border: `1px solid ${draft.trim() ? t.ink : t.rule}`,
-            background: draft.trim() ? t.ink : 'transparent',
-            color: draft.trim() ? t.paper : t.mute,
-            cursor: draft.trim() ? 'pointer' : 'default',
-          }}>ADD</button>
-        </div>
+    <ToolPopover t={t} label={`↗ 网页${totalCount > 0 ? ` (${totalCount})` : ''}`}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={360}>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${t.rule}` }}>
+        <button onClick={() => setTab('url')} style={tabStyle(tab === 'url')}>URL 贴入</button>
+        <button onClick={() => setTab('search')} style={tabStyle(tab === 'search')}>⊕ Tavily 搜索</button>
       </div>
-      {count === 0 ? (
-        <div style={{ padding: '14px 12px', fontFamily: t.fontCN, fontSize: 12, color: t.mute, textAlign: 'center' }}>
-          粘贴网页 URL，生成时自动抓取正文注入上下文
-        </div>
-      ) : (
-        <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-          {store.urlContexts.map((url, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: `1px solid ${t.rule}` }}>
-              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, flexShrink: 0 }}>↗</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: t.fontBody, fontSize: 11, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={url}>{hostOf(url)}</div>
-                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</div>
-              </div>
-              <button onClick={() => store.removeUrlContext(url)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
+
+      {tab === 'url' && (
+        <>
+          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${t.rule}` }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute, marginBottom: 8 }}>
+              URL CONTEXT · 生成前自动抓取正文
             </div>
-          ))}
-        </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                placeholder="https://example.com/article"
+                style={{ flex: 1, border: `1px solid ${t.rule}`, padding: '5px 8px', fontFamily: t.fontBody, fontSize: 12, color: t.ink, background: t.paper, outline: 'none', minWidth: 0 }}
+              />
+              <button onClick={handleAdd} disabled={!draft.trim()} style={{
+                padding: '5px 10px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8,
+                border: `1px solid ${draft.trim() ? t.ink : t.rule}`,
+                background: draft.trim() ? t.ink : 'transparent',
+                color: draft.trim() ? t.paper : t.mute,
+                cursor: draft.trim() ? 'pointer' : 'default',
+              }}>ADD</button>
+            </div>
+          </div>
+          {urlCount === 0 ? (
+            <div style={{ padding: '14px 12px', fontFamily: t.fontCN, fontSize: 12, color: t.mute, textAlign: 'center' }}>
+              粘贴网页 URL，生成时自动抓取正文注入上下文
+            </div>
+          ) : (
+            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+              {store.urlContexts.map((url, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: `1px solid ${t.rule}` }}>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, flexShrink: 0 }}>↗</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: t.fontBody, fontSize: 11, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={url}>{hostOf(url)}</div>
+                    <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</div>
+                  </div>
+                  <button onClick={() => store.removeUrlContext(url)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ padding: '6px 12px', background: t.faint, borderTop: `1px solid ${t.rule}` }}>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
+              通过 Jina Reader API 抓取 · 每条截取前 2000 字
+            </span>
+          </div>
+        </>
       )}
-      <div style={{ padding: '6px 12px', background: t.faint, borderTop: `1px solid ${t.rule}` }}>
-        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
-          通过 Jina Reader API 抓取 · 每条截取前 2000 字
-        </span>
-      </div>
+
+      {tab === 'search' && (
+        <>
+          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${t.rule}` }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute, marginBottom: 8 }}>
+              TAVILY SEARCH · 实时联网搜索，结果直接注入上下文
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                placeholder="输入搜索关键词…"
+                style={{ flex: 1, border: `1px solid ${t.rule}`, padding: '5px 8px', fontFamily: t.fontBody, fontSize: 12, color: t.ink, background: t.paper, outline: 'none', minWidth: 0 }}
+              />
+              <button onClick={handleSearch} disabled={!searchQuery.trim() || searching} style={{
+                padding: '5px 10px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8,
+                border: `1px solid ${searchQuery.trim() && !searching ? t.ink : t.rule}`,
+                background: searchQuery.trim() && !searching ? t.ink : 'transparent',
+                color: searchQuery.trim() && !searching ? t.paper : t.mute,
+                cursor: searchQuery.trim() && !searching ? 'pointer' : 'default',
+              }}>{searching ? '…' : 'SEARCH'}</button>
+            </div>
+            {searchError && <div style={{ marginTop: 6, fontFamily: t.fontMono, fontSize: 9, color: '#c44' }}>{searchError}</div>}
+          </div>
+
+          {/* Already added search contexts */}
+          {searchCount > 0 && (
+            <div style={{ borderBottom: `1px solid ${t.rule}` }}>
+              <div style={{ padding: '4px 12px', fontFamily: t.fontMono, fontSize: 9, color: t.mute, background: t.faint }}>已添加 ({searchCount})</div>
+              {store.searchContexts.map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: `1px solid ${t.rule}` }}>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, flexShrink: 0 }}>⊕</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: t.fontBody, fontSize: 11, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || hostOf(item.url)}</div>
+                    <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hostOf(item.url)}</div>
+                  </div>
+                  <button onClick={() => store.removeSearchContext(item.url)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Search results */}
+          {searchResults.length > 0 && (
+            <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+              {searchResults.map((r, i) => {
+                const alreadyAdded = store.searchContexts.some(s => s.url === r.url);
+                return (
+                  <div key={i} style={{ padding: '8px 12px', borderBottom: `1px solid ${t.rule}`, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: t.fontBody, fontSize: 12, color: t.ink, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hostOf(r.url)}</div>
+                      <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.content}</div>
+                    </div>
+                    <button onClick={() => !alreadyAdded && store.addSearchContext(r)} style={{
+                      flexShrink: 0, marginTop: 2, padding: '3px 8px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8,
+                      border: `1px solid ${alreadyAdded ? t.rule : t.ink}`,
+                      background: alreadyAdded ? t.faint : t.ink,
+                      color: alreadyAdded ? t.mute : t.paper,
+                      cursor: alreadyAdded ? 'default' : 'pointer',
+                    }}>{alreadyAdded ? '✓' : '+ ADD'}</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {!searching && searchResults.length === 0 && searchCount === 0 && (
+            <div style={{ padding: '14px 12px', fontFamily: t.fontCN, fontSize: 12, color: t.mute, textAlign: 'center' }}>
+              输入关键词搜索，将结果添加为参考资料
+            </div>
+          )}
+        </>
+      )}
     </ToolPopover>
   );
 }
@@ -4158,7 +4290,7 @@ async function streamOutline({ model, prompt, language, onChunk, onDone, onError
 }
 
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError, onStatus }) {
-  const { tone, language, style, length, selectedSources, attachments, urlContexts, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
+  const { tone, language, style, length, selectedSources, attachments, urlContexts, searchContexts, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
   const langInstr = language?.instr || '使用简体中文写作';
   const styleInstr = style?.instr || BUILTIN_STYLES[0].instr;
@@ -4177,7 +4309,7 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
   }
   onStatus?.({ phase: 'connecting' });
 
-  // Zone 3: Build <context> block (date + fetched URL content)
+  // Zone 3: Build <context> block (date + fetched URL content + Tavily search results)
   const now = new Date();
   const DAY_CN_CTX = ['日','一','二','三','四','五','六'];
   const dateStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日（周${DAY_CN_CTX[now.getDay()]}）`;
@@ -4189,8 +4321,14 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
       ).join('\n\n---\n\n')
     : '';
 
+  const searchContextBlock = searchContexts?.length > 0
+    ? '\n\n' + searchContexts.map((r, i) =>
+        `【搜索结果 ${i+1}】${r.title}（${r.url}）\n${r.content}`
+      ).join('\n\n---\n\n')
+    : '';
+
   const contextBlock = `<context>
-生成日期：${dateStr}${urlContextBlock}
+生成日期：${dateStr}${urlContextBlock}${searchContextBlock}
 </context>`;
 
   const sourceNote = (() => {
@@ -8805,6 +8943,7 @@ function App() {
               selectedSources: toolbarStore.selectedSources,
               attachments: toolbarStore.attachments,
               urlContexts: toolbarStore.urlContexts,
+              searchContexts: toolbarStore.searchContexts,
               temperature: modelStore.temperature,
               systemPromptExtra: modelStore.systemPromptExtra,
               topP: modelStore.topP,
