@@ -1363,6 +1363,7 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
 }
 
 function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode }) {
+  const { user, signOut } = useAuth();
   const [open, setOpen] = React.useState(false);
   const [section, setSection] = React.useState(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -1486,6 +1487,16 @@ function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, 
             )}
             <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
             <MRow label="设置" sub="模型 · 导出 · 权限" arrow onClick={() => { setOpen(false); setSection(null); setSettingsOpen(true); }}/>
+            <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
+            <div onClick={() => { setOpen(false); signOut(); }}
+              style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 16px', cursor:'pointer', userSelect:'none' }}
+              onMouseEnter={e => e.currentTarget.style.background = t.faint}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <div>
+                <div style={{ fontFamily:t.fontCN, fontSize:12, color:t.mute }}>退出登录</div>
+                <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, marginTop:1, letterSpacing:0.5 }}>{user?.email || ''}</div>
+              </div>
+            </div>
           </div>
           <div style={{ borderTop:`1px solid ${t.rule}`, padding:'6px 16px', fontFamily:t.fontMono, fontSize:8, color:t.mute, letterSpacing:0.8 }}>ATLAS ESSAYS · VOL.04 · © 2026</div>
         </div>
