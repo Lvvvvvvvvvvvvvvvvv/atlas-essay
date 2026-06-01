@@ -2,7 +2,10 @@ import { withAuth } from '../_lib/auth.js';
 import { supabaseAdmin } from '../_lib/supabase.js';
 import { Client } from '@upstash/qstash';
 
-const qstash = new Client({ token: process.env.QSTASH_TOKEN || '' });
+const qstash = new Client({
+  token: process.env.QSTASH_TOKEN || '',
+  baseUrl: process.env.QSTASH_URL || undefined,
+});
 const WORKER_URL = `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://atlas-essay.vercel.app'}/api/tasks/worker`;
 
 export default withAuth(async (req, res, user) => {
