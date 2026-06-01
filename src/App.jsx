@@ -1208,6 +1208,75 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
               </React.Fragment>
             )}
 
+            {tab === 'model' && modelStore && (() => {
+              const [svrKeys, setSvrKeys] = React.useState([]);
+              const [keyForm, setKeyForm] = React.useState({ provider: 'anthropic', apiKey: '', apiUrl: '', label: '' });
+              const [keyStatus, setKeyStatus] = React.useState('idle');
+              const getToken = async () => {
+                try { const { supabase } = await import('./lib/supabase.js'); const { data: { session } } = await supabase.auth.getSession(); return session?.access_token || null; } catch { return null; }
+              };
+              React.useEffect(() => {
+                (async () => {
+                  const token = await getToken();
+                  if (!token) return;
+                  const res = await fetch('/api/keys', { headers: { Authorization: `Bearer ${token}` } });
+                  if (res.ok) setSvrKeys(await res.json());
+                })();
+              }, []);
+              const saveKey = async () => {
+                if (!keyForm.apiKey) return;
+                setKeyStatus('saving');
+                const token = await getToken();
+                const res = await fetch('/api/keys', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(keyForm) });
+                if (res.ok) { const d = await res.json(); setSvrKeys(prev => [...prev, { id: d.id, provider: keyForm.provider, api_url: keyForm.apiUrl, label: keyForm.label || keyForm.provider }]); setKeyForm(f => ({ ...f, apiKey: '' })); setKeyStatus('saved'); setTimeout(() => setKeyStatus('idle'), 2000); }
+                else setKeyStatus('error');
+              };
+              const deleteKey = async (id) => {
+                const token = await getToken();
+                await fetch(`/api/keys/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+                setSvrKeys(prev => prev.filter(k => k.id !== id));
+              };
+              return (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={secHdr}>服务端 API Key · 安全存储</div>
+                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 10, lineHeight: 1.6 }}>Key 加密存于服务器，浏览器不可见 · 生成时自动走服务端路由</div>
+                  {svrKeys.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+                      {svrKeys.map(k => (
+                        <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: `1px solid ${t.rule}`, background: t.faint }}>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink }}>{k.label}</span>
+                            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 8 }}>{k.api_url || k.provider}</span>
+                          </div>
+                          <span style={{ fontFamily: t.fontMono, fontSize: 9, color: '#2a8c5c' }}>● 已保存</span>
+                          <button onClick={() => deleteKey(k.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: t.fontMono, fontSize: 11, color: t.mute, padding: '0 2px' }}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {['anthropic','openai','custom'].map(p => (
+                        <button key={p} onClick={() => setKeyForm(f => ({ ...f, provider: p }))}
+                          style={{ padding: '3px 10px', fontFamily: t.fontMono, fontSize: 8, letterSpacing: 0.8, border: `1px solid ${keyForm.provider === p ? t.accent : t.rule}`, background: keyForm.provider === p ? t.accent : 'transparent', color: keyForm.provider === p ? t.paper : t.mute, cursor: 'pointer' }}>
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                    {keyForm.provider === 'custom' && (
+                      <input placeholder="API URL（如 https://api.example.com/v1）" value={keyForm.apiUrl} onChange={e => setKeyForm(f => ({ ...f, apiUrl: e.target.value }))} style={inp}/>
+                    )}
+                    <input type="password" placeholder="粘贴 API Key" value={keyForm.apiKey} onChange={e => setKeyForm(f => ({ ...f, apiKey: e.target.value }))} style={inp}/>
+                    <input placeholder="备注名称（可选）" value={keyForm.label} onChange={e => setKeyForm(f => ({ ...f, label: e.target.value }))} style={inp}/>
+                    <button onClick={saveKey} disabled={!keyForm.apiKey || keyStatus === 'saving'}
+                      style={{ padding: '7px 0', border: `1px solid ${t.ink}`, background: t.ink, color: t.paper, fontFamily: t.fontMono, fontSize: 9, cursor: keyForm.apiKey ? 'pointer' : 'not-allowed', opacity: keyForm.apiKey ? 1 : 0.4, letterSpacing: 1 }}>
+                      {keyStatus === 'saving' ? '保存中…' : keyStatus === 'saved' ? '✓ 已保存' : '加密保存 Key'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             {tab === 'prompt' && (
               <React.Fragment>
                 <div>
@@ -4192,27 +4261,46 @@ ${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}
   const apiKey = model.apiKey || '';
   const apiUrl = (model.apiUrl || 'https://api.xiaomimimo.com/v1').replace(/\/$/, '');
 
+  // Check if a server-side key is available — route through /api/generate if so
+  const useServerKey = !apiKey && !!model.provider;
+  let sessionToken = null;
+  if (useServerKey) {
+    try {
+      const { supabase } = await import('./lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      sessionToken = session?.access_token || null;
+    } catch {}
+  }
+
+  const reqBody = {
+    model: model.id,
+    provider: model.provider,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+    stream: true,
+    max_tokens: (maxTokensOverride && maxTokensOverride > 0) ? Math.min(maxTokensOverride, 131072) : maxTokens,
+    temperature: (temperature !== undefined && !isNaN(Number(temperature))) ? Number(temperature) : 0.7,
+    ...(topP != null ? { top_p: Number(topP) } : {}),
+    ...(frequencyPenalty != null ? { frequency_penalty: Number(frequencyPenalty) } : {}),
+    ...(presencePenalty != null ? { presence_penalty: Number(presencePenalty) } : {}),
+  };
+
   try {
-    const resp = await fetch(`${apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: model.id,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent },
-        ],
-        stream: true,
-        max_tokens: (maxTokensOverride && maxTokensOverride > 0) ? Math.min(maxTokensOverride, 131072) : maxTokens,
-        temperature: (temperature !== undefined && !isNaN(Number(temperature))) ? Number(temperature) : 0.7,
-        ...(topP != null ? { top_p: Number(topP) } : {}),
-        ...(frequencyPenalty != null ? { frequency_penalty: Number(frequencyPenalty) } : {}),
-        ...(presencePenalty != null ? { presence_penalty: Number(presencePenalty) } : {}),
-      }),
-    });
+    const resp = await fetch(
+      useServerKey && sessionToken ? '/api/generate' : `${apiUrl}/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(useServerKey && sessionToken
+            ? { Authorization: `Bearer ${sessionToken}` }
+            : { Authorization: `Bearer ${apiKey}` }),
+        },
+        body: JSON.stringify(reqBody),
+      }
+    );
 
     if (!resp.ok) {
       const errText = await resp.text();
