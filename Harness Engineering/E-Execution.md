@@ -11,7 +11,7 @@
 | 方案 | 状态 | 完成版本 |
 |------|------|---------|
 | 生成模式预设（方案 A） | **已完成** | v2.5.0 |
-| 按模型自动优化（方案 B） | 待启动 | — |
+| 按模型自动优化（方案 B） | **已完成** | v2.6.0 |
 
 ---
 
@@ -69,7 +69,53 @@
 
 ---
 
+---
+
+## 实现记录（v2.6.0）
+
+**完成日期**：2026-06-01
+
+### 核心改动
+
+**`MODEL_PARAM_PRESETS` 常量：**
+
+每个内置模型在三种生成模式下的厂商推荐参数：
+
+| 模型 | 模式 | temperature | top_p | frequency_penalty |
+|------|------|------------|-------|------------------|
+| Opus 4.7 | 严谨/均衡/探索 | 0.20/0.40/0.70 | 0.85/0.90/0.95 | 0.20/0.10/0.00 |
+| Sonnet 4.6 | 严谨/均衡/探索 | 0.25/0.45/0.75 | 0.85/0.90/0.95 | 0.20/0.10/0.00 |
+| Haiku 4.5 | 严谨/均衡/探索 | 0.20/0.40/0.65 | 0.85/0.90/0.95 | 0.25/0.15/0.00 |
+| MiMo V2.5 Pro | 严谨/均衡/探索 | 0.15/0.30/0.55 | 0.80/0.85/0.90 | 0.25/0.15/0.05 |
+
+**切换模型自动应用预设：**
+- `selectModel(id)` 切换模型时，若当前模式为内置模式（非自定义），自动查找 `MODEL_PARAM_PRESETS[newModelId][currentMode]` 并更新三个参数
+- 无需用户手动重新选择模式
+
+**切换模式使用模型专属参数：**
+- `setGenerationMode(id)` 优先用 `getModelPreset(selectedId, modeId)` 获取当前模型的对应参数，找不到则回退到 `GENERATION_MODES` 通用默认值
+
+**GenerationModePopover 参数值更新：**
+- 每个模式显示的 `temp / top_p / fp` 值已更新为当前选中模型的实际预设值（而非全局默认）
+
+**per-model 参数模板：**
+- `useModelStore` 新增 `modelParamTemplates` 状态（`{ [modelId]: [{id, name, temperature, topP, frequencyPenalty}] }`），localStorage 持久化（key: `atlas_model_param_templates`）
+- `addModelTemplate(modelId, name, temp, tp, fp)` / `removeModelTemplate(modelId, tplId)` CRUD
+- `setGenerationMode` 支持 `tpl_xxx` 格式 ID，自动应用对应模板参数
+- `GenerationModePopover`：当前模型有模板时，内置模式下方新增「自定义模板」分区，可点击切换
+- **Settings 模型标签页**：「参数模板」区块，显示当前模型的已保存模板列表（点击切换、删除），「＋ 保存当前参数为模板」按钮含名称输入
+
+### 核心代码位置
+
+- `src/App.jsx` — `MODEL_PARAM_PRESETS` 常量（四个模型三种模式的参数映射）
+- `src/App.jsx` — `getModelPreset(modelId, modeId)` 辅助函数
+- `src/App.jsx` — `useModelStore()` 新增 `modelParamTemplates` / `addModelTemplate` / `removeModelTemplate`，更新 `selectModel` / `setGenerationMode`
+- `src/App.jsx` — `GenerationModePopover` 新增模型专属参数显示 + 用户模板分区
+- `src/App.jsx` — `SettingsModal` 新增「参数模板」区块（模板列表 + 保存表单）
+
+---
+
 ## 实现难度
 
 - 方案 A（生成模式预设）：已完成
-- 方案 B（按模型自动优化）：中（需维护各模型推荐参数映射表）
+- 方案 B（按模型自动优化）：已完成

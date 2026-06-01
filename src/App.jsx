@@ -849,6 +849,8 @@ function SettingsModal({ t, modelStore, toolbarStore, onClose }) {
 
   const [confirmingClear, setConfirmingClear] = React.useState(false);
   const [clearToast, setClearToast] = React.useState('');
+  const [showTplForm, setShowTplForm] = React.useState(false);
+  const [tplName, setTplName] = React.useState('');
 
   const PERM_TABLE = [
     { feature: '生成报告',          key: 'generate',      admin: true,  editor: true,  viewer: false },
@@ -1070,6 +1072,56 @@ function SettingsModal({ t, modelStore, toolbarStore, onClose }) {
                   <div>
                     <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 3 }}>当前模型：{modelStore.selected?.name || '—'} · System Prompt 设置在「提示词」标签页</div>
                   </div>
+                </div>
+                <div>
+                  <div style={secHdr}>参数模板 · {modelStore.selected?.name || '—'}</div>
+                  {(() => {
+                    const modelId = modelStore.selected?.id;
+                    const tpls = (modelStore.modelParamTemplates || {})[modelId] || [];
+                    return (
+                      <React.Fragment>
+                        {tpls.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 10 }}>
+                            {tpls.map(tpl => (
+                              <div key={tpl.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: `1px solid ${modelStore.generationMode === tpl.id ? t.ink : t.rule}`, background: modelStore.generationMode === tpl.id ? t.faint : 'transparent' }}>
+                                <div onClick={() => modelStore.setGenerationMode(tpl.id)} style={{ flex: 1, cursor: 'pointer', minWidth: 0 }}>
+                                  <div style={{ fontFamily: t.fontCN, fontSize: 12, fontWeight: 600, color: t.ink }}>{tpl.name}</div>
+                                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>
+                                    temp {Number(tpl.temperature).toFixed(2)} · top_p {Number(tpl.topP).toFixed(2)} · fp {(tpl.frequencyPenalty >= 0 ? '+' : '') + Number(tpl.frequencyPenalty).toFixed(2)}
+                                  </div>
+                                </div>
+                                {modelStore.generationMode === tpl.id && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, flexShrink: 0 }}>使用中</span>}
+                                <button type="button" onClick={() => modelStore.removeModelTemplate(modelId, tpl.id)}
+                                  style={{ border: `1px solid #dc2626`, background: 'transparent', cursor: 'pointer', color: '#dc2626', fontFamily: t.fontMono, fontSize: 9, padding: '3px 8px', letterSpacing: 0.5, flexShrink: 0 }}>删除</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!showTplForm ? (
+                          <button type="button" onClick={() => setShowTplForm(true)}
+                            style={{ width: '100%', padding: '9px 0', border: `1px dashed ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, color: t.mute, cursor: 'pointer', textTransform: 'uppercase' }}>
+                            ＋ 保存当前参数为模板
+                          </button>
+                        ) : (
+                          <div style={{ border: `1px solid ${t.rule}`, padding: '12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1 }}>
+                              保存当前参数：temp {Number(modelStore.temperature).toFixed(2)} · top_p {Number(modelStore.topP).toFixed(2)} · fp {(modelStore.frequencyPenalty >= 0 ? '+' : '') + Number(modelStore.frequencyPenalty).toFixed(2)}
+                            </div>
+                            <input value={tplName} onChange={e => setTplName(e.target.value)} placeholder="模板名称，如「产品分析专用」"
+                              onKeyDown={e => { if (e.key === 'Enter' && tplName.trim()) { modelStore.addModelTemplate(modelId, tplName.trim(), modelStore.temperature, modelStore.topP, modelStore.frequencyPenalty); setShowTplForm(false); setTplName(''); }}}
+                              style={inp} autoFocus/>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button type="button" onClick={() => { setShowTplForm(false); setTplName(''); }}
+                                style={{ flex: 1, padding: '7px 0', border: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontMono, fontSize: 9, color: t.mute, cursor: 'pointer', textTransform: 'uppercase' }}>取消</button>
+                              <button type="button" disabled={!tplName.trim()}
+                                onClick={() => { modelStore.addModelTemplate(modelId, tplName.trim(), modelStore.temperature, modelStore.topP, modelStore.frequencyPenalty); setShowTplForm(false); setTplName(''); }}
+                                style={{ flex: 2, padding: '7px 0', border: `1px solid ${t.ink}`, background: t.ink, color: t.paper, fontFamily: t.fontMono, fontSize: 9, cursor: 'pointer', textTransform: 'uppercase', opacity: !tplName.trim() ? 0.4 : 1 }}>保存模板</button>
+                            </div>
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })()}
                 </div>
                 <div>
                   <div style={secHdr}>模型管理</div>
@@ -2440,6 +2492,9 @@ function useModelStore() {
   const [hiddenBuiltins, setHiddenBuiltins] = React.useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('atlas_hidden_builtins') || '[]')); } catch { return new Set(); }
   });
+  const [modelParamTemplates, setModelParamTemplatesState] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_model_param_templates') || '{}'); } catch { return {}; }
+  });
   const hideBuiltin = (id) => {
     const next = new Set([...hiddenBuiltins, id]);
     setHiddenBuiltins(next);
@@ -2458,6 +2513,16 @@ function useModelStore() {
   const selectModel = (id) => {
     setSelectedId(id);
     try { localStorage.setItem('atlas_selected_model', id); } catch {}
+    // Auto-apply model-specific preset for current non-custom mode
+    const curMode = generationMode;
+    if (curMode !== 'custom' && !curMode.startsWith('tpl_')) {
+      const preset = getModelPreset(id, curMode);
+      if (preset) {
+        setTemperatureState(preset.temperature); try { localStorage.setItem('atlas_temperature', String(preset.temperature)); } catch {}
+        setTopPState(preset.topP); try { localStorage.setItem('atlas_top_p', String(preset.topP)); } catch {}
+        setFreqPenaltyState(preset.frequencyPenalty); try { localStorage.setItem('atlas_freq_penalty', String(preset.frequencyPenalty)); } catch {}
+      }
+    }
   };
   const setBuiltinKey = (id, key, url) => {
     const updatedKeys = { ...builtinKeys, [id]: key };
@@ -2479,6 +2544,21 @@ function useModelStore() {
     setCustomModels(updated);
     try { localStorage.setItem('atlas_custom_models', JSON.stringify(updated)); } catch {}
   };
+  const addModelTemplate = (modelId, name, temp, tp, fp) => {
+    const id = 'tpl_' + Date.now();
+    const tpl = { id, name, temperature: temp, topP: tp, frequencyPenalty: fp };
+    const updated = { ...modelParamTemplates, [modelId]: [...(modelParamTemplates[modelId] || []), tpl] };
+    setModelParamTemplatesState(updated);
+    try { localStorage.setItem('atlas_model_param_templates', JSON.stringify(updated)); } catch {}
+  };
+  const removeModelTemplate = (modelId, tplId) => {
+    const updated = { ...modelParamTemplates, [modelId]: (modelParamTemplates[modelId] || []).filter(t => t.id !== tplId) };
+    setModelParamTemplatesState(updated);
+    try { localStorage.setItem('atlas_model_param_templates', JSON.stringify(updated)); } catch {}
+    if (generationMode === tplId) {
+      setGenerationModeState('custom'); try { localStorage.setItem('atlas_generation_mode', 'custom'); } catch {}
+    }
+  };
   const setTemperature = (v) => {
     setTemperatureState(v); try { localStorage.setItem('atlas_temperature', String(v)); } catch {}
     setGenerationModeState('custom'); try { localStorage.setItem('atlas_generation_mode', 'custom'); } catch {}
@@ -2498,14 +2578,25 @@ function useModelStore() {
     try { v !== null ? localStorage.setItem('atlas_max_tokens_override', String(v)) : localStorage.removeItem('atlas_max_tokens_override'); } catch {}
   };
   const setGenerationMode = (id) => {
+    if (id.startsWith('tpl_')) {
+      const modelId = allModels.find(m => m.id === selectedId)?.id;
+      const tpl = (modelParamTemplates[modelId] || []).find(t => t.id === id);
+      if (!tpl) return;
+      setGenerationModeState(id); try { localStorage.setItem('atlas_generation_mode', id); } catch {}
+      setTemperatureState(tpl.temperature); try { localStorage.setItem('atlas_temperature', String(tpl.temperature)); } catch {}
+      setTopPState(tpl.topP); try { localStorage.setItem('atlas_top_p', String(tpl.topP)); } catch {}
+      setFreqPenaltyState(tpl.frequencyPenalty); try { localStorage.setItem('atlas_freq_penalty', String(tpl.frequencyPenalty)); } catch {}
+      return;
+    }
     const mode = GENERATION_MODES.find(m => m.id === id);
     if (!mode) return;
+    const preset = getModelPreset(selectedId, id) || mode;
     setGenerationModeState(id); try { localStorage.setItem('atlas_generation_mode', id); } catch {}
-    setTemperatureState(mode.temperature); try { localStorage.setItem('atlas_temperature', String(mode.temperature)); } catch {}
-    setTopPState(mode.topP); try { localStorage.setItem('atlas_top_p', String(mode.topP)); } catch {}
-    setFreqPenaltyState(mode.frequencyPenalty); try { localStorage.setItem('atlas_freq_penalty', String(mode.frequencyPenalty)); } catch {}
+    setTemperatureState(preset.temperature); try { localStorage.setItem('atlas_temperature', String(preset.temperature)); } catch {}
+    setTopPState(preset.topP); try { localStorage.setItem('atlas_top_p', String(preset.topP)); } catch {}
+    setFreqPenaltyState(preset.frequencyPenalty); try { localStorage.setItem('atlas_freq_penalty', String(preset.frequencyPenalty)); } catch {}
   };
-  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, hideBuiltin, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra, topP, setTopP, frequencyPenalty, setFrequencyPenalty, presencePenalty, setPresencePenalty, maxTokensOverride, setMaxTokensOverride, generationMode, setGenerationMode };
+  return { allModels, selected, selectModel, effort, setEffort, fastMode, setFastMode, addModel, removeModel, hideBuiltin, setBuiltinKey, builtinKeys, temperature, setTemperature, systemPromptExtra, setSystemPromptExtra, topP, setTopP, frequencyPenalty, setFrequencyPenalty, presencePenalty, setPresencePenalty, maxTokensOverride, setMaxTokensOverride, generationMode, setGenerationMode, modelParamTemplates, addModelTemplate, removeModelTemplate };
 }
 
 function ModelSelector({ t, store }) {
@@ -2936,6 +3027,18 @@ const GENERATION_MODES = [
   { id: 'balanced', cn: '均衡', en: 'Balanced', desc: '通用报告首选，质量与流畅度均衡',       temperature: 0.45, topP: 0.90, frequencyPenalty: 0.10 },
   { id: 'creative', cn: '探索', en: 'Creative', desc: '头脑风暴 / 探索性分析，表达更多样',   temperature: 0.75, topP: 0.95, frequencyPenalty: 0.00 },
 ];
+
+// Per-model vendor-recommended params for each generation mode
+const MODEL_PARAM_PRESETS = {
+  'claude-opus-4-7':           { precise: { temperature:0.20, topP:0.85, frequencyPenalty:0.20 }, balanced: { temperature:0.40, topP:0.90, frequencyPenalty:0.10 }, creative: { temperature:0.70, topP:0.95, frequencyPenalty:0.00 } },
+  'claude-sonnet-4-6':         { precise: { temperature:0.25, topP:0.85, frequencyPenalty:0.20 }, balanced: { temperature:0.45, topP:0.90, frequencyPenalty:0.10 }, creative: { temperature:0.75, topP:0.95, frequencyPenalty:0.00 } },
+  'claude-haiku-4-5-20251001': { precise: { temperature:0.20, topP:0.85, frequencyPenalty:0.25 }, balanced: { temperature:0.40, topP:0.90, frequencyPenalty:0.15 }, creative: { temperature:0.65, topP:0.95, frequencyPenalty:0.00 } },
+  'mimo-v2.5-pro':             { precise: { temperature:0.15, topP:0.80, frequencyPenalty:0.25 }, balanced: { temperature:0.30, topP:0.85, frequencyPenalty:0.15 }, creative: { temperature:0.55, topP:0.90, frequencyPenalty:0.05 } },
+};
+function getModelPreset(modelId, modeId) {
+  const presets = MODEL_PARAM_PRESETS[modelId];
+  return (presets && presets[modeId]) ? presets[modeId] : null;
+}
 
 // ── Toolbar store ─────────────────────────────────────────────────────────
 function useToolbarStore() {
@@ -3530,12 +3633,17 @@ function LengthPopover({ t, store }) {
 // ── GenerationModePopover ─────────────────────────────────────────────────
 function GenerationModePopover({ t, modelStore }) {
   const [open, setOpen] = React.useState(false);
-  const currentMode = GENERATION_MODES.find(m => m.id === modelStore.generationMode);
-  const label = currentMode ? `◈ ${currentMode.cn}` : '◈ 自定义';
+  const modelId = modelStore.selected?.id;
+  const userTemplates = (modelStore.modelParamTemplates || {})[modelId] || [];
+  const activeMode = modelStore.generationMode;
+  const currentBuiltin = GENERATION_MODES.find(m => m.id === activeMode);
+  const currentTpl = userTemplates.find(t => t.id === activeMode);
+  const labelText = currentBuiltin ? currentBuiltin.cn : currentTpl ? currentTpl.name : '自定义';
+  const label = `◈ ${labelText}`;
 
   return (
     <ToolPopover t={t} label={label}
-      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={280}>
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={290}>
       <div style={{ padding: '8px 12px 4px', borderBottom: `1px solid ${t.rule}` }}>
         <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute }}>
           GENERATION MODE · 生成模式
@@ -3543,7 +3651,8 @@ function GenerationModePopover({ t, modelStore }) {
       </div>
       <div>
         {GENERATION_MODES.map(m => {
-          const active = modelStore.generationMode === m.id;
+          const active = activeMode === m.id;
+          const preset = getModelPreset(modelId, m.id) || m;
           return (
             <div key={m.id} onClick={() => { modelStore.setGenerationMode(m.id); setOpen(false); }} style={{
               padding: '10px 14px', cursor: 'pointer', borderBottom: `1px solid ${t.rule}`,
@@ -3557,12 +3666,12 @@ function GenerationModePopover({ t, modelStore }) {
               </div>
               <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, lineHeight: 1.5 }}>{m.desc}</div>
               <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 4, opacity: 0.7 }}>
-                temp {m.temperature} · top_p {m.topP} · fp +{m.frequencyPenalty.toFixed(2)}
+                temp {preset.temperature} · top_p {preset.topP} · fp +{preset.frequencyPenalty.toFixed(2)}
               </div>
             </div>
           );
         })}
-        {modelStore.generationMode === 'custom' && (
+        {activeMode === 'custom' && (
           <div style={{ padding: '10px 14px', borderBottom: `1px solid ${t.rule}`, borderLeft: `3px solid ${t.accent}`, background: t.faint }}>
             <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 3 }}>自定义</div>
             <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
@@ -3570,9 +3679,34 @@ function GenerationModePopover({ t, modelStore }) {
             </div>
           </div>
         )}
+        {userTemplates.length > 0 && (
+          <div style={{ borderTop: `1px solid ${t.rule}` }}>
+            <div style={{ padding: '5px 14px 3px', fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 1, textTransform: 'uppercase' }}>
+              {modelStore.selected?.name} · 自定义模板
+            </div>
+            {userTemplates.map(tpl => {
+              const active = activeMode === tpl.id;
+              return (
+                <div key={tpl.id} onClick={() => { modelStore.setGenerationMode(tpl.id); setOpen(false); }} style={{
+                  padding: '8px 14px', cursor: 'pointer', borderBottom: `1px solid ${t.rule}`,
+                  background: active ? t.faint : 'transparent',
+                  borderLeft: active ? `3px solid ${t.accent}` : '3px solid transparent',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <span style={{ fontFamily: t.fontCN, fontSize: 12, fontWeight: active ? 700 : 400, color: t.ink, flex: 1 }}>{tpl.name}</span>
+                    {active && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent }}>✓ 当前</span>}
+                  </div>
+                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, opacity: 0.7 }}>
+                    temp {Number(tpl.temperature).toFixed(2)} · top_p {Number(tpl.topP).toFixed(2)} · fp {(tpl.frequencyPenalty >= 0 ? '+' : '') + Number(tpl.frequencyPenalty).toFixed(2)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       <div style={{ padding: '6px 12px', background: t.faint, borderTop: `1px solid ${t.rule}` }}>
-        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>手动调参后自动切换为「自定义」</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>手动调参后自动切换为「自定义」· 模板在设置中管理</span>
       </div>
     </ToolPopover>
   );
