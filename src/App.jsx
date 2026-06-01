@@ -4027,7 +4027,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
         if (!savedRef.current && onSaveReportRef.current && finalText && isLiveMode) {
           savedRef.current = true;
           const sections = parseMarkdownReport(finalText);
-          const cleanForCount = finalText.replace(/^\[TITLE:[^\]]*\]\s*/m,'').replace(/\[REFS\][\s\S]*?\[\/REFS\]/g,'');
+          const cleanForCount = finalText.replace(/^\[TITLE:[^\]]*\]\s*/m,'').replace(/\[REFS\][\s\S]*?(?:\[\/REFS\]|$)/g,'');
           const wordCount = cleanForCount.replace(/\s+/g,' ').trim().length;
           const refsArr = extractRefsFromText(finalText);
           const refs = refsArr.length || [...new Set((finalText.match(/§\d+/g) || []))].length;
@@ -5149,15 +5149,20 @@ function renderMd(text, t) {
 const renderFootnotes = renderMd;
 
 function extractRefsFromText(rawText) {
-  const refsBlock = rawText.match(/\[REFS\]([\s\S]*?)\[\/REFS\]/);
+  // Match [REFS]...[/REFS] or [REFS]... to end-of-string (handles truncated output)
+  const refsBlock = rawText.match(/\[REFS\]([\s\S]*?)(?:\[\/REFS\]|$)/);
   if (!refsBlock) return [];
-  const lines = refsBlock[1].trim().split('\n').filter(l => l.trim());
+  const content = refsBlock[1].trim();
+  if (!content) return [];
+  // Split on [N] boundaries so single-line and multi-line formats both work
+  const parts = content.split(/(?=\[\d+\])/).filter(s => s.trim());
   const refs = [];
-  for (const line of lines) {
-    const rm = line.match(/^\[(\d+)\]\s*(.+)/);
+  for (const part of parts) {
+    const rm = part.trim().match(/^\[(\d+)\]\s*([\s\S]+)/);
     if (!rm) continue;
-    const parts = rm[2].split('—').map(s => s.trim());
-    refs.push({ n: '['+rm[1]+']', src: parts[0]||'来源', title: parts[1]||parts[0]||'参考资料', url: parts[2]||'', date: parts[3]||'' });
+    const body = rm[2].replace(/\s+/g, ' ').trim();
+    const segments = body.split(/\s*—\s*/);
+    refs.push({ n: '['+rm[1]+']', src: segments[0]||'来源', title: segments[1]||segments[0]||'参考资料', url: segments[2]||'', date: segments[3]||'' });
   }
   return refs;
 }
@@ -5171,7 +5176,7 @@ function parseMarkdownReport(rawText) {
   const NUMS = ['01','02','03','04','05','06','07','08','09','10'];
   const cleanText = rawText
     .replace(/^\[TITLE:[^\]]*\]\s*/m, '')
-    .replace(/\[REFS\][\s\S]*?\[\/REFS\]/g, '');
+    .replace(/\[REFS\][\s\S]*?(?:\[\/REFS\]|$)/g, '');
 
   // Tokenize line by line
   const tokens = [];
