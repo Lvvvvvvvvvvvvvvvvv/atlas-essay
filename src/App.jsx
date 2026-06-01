@@ -701,7 +701,7 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks,
           VOL.04 · № {issueNum}
         </span>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{dateStr} · {timeStr}</span>
-        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore}/>
+        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode}/>
       </div>
     </div>
   );
@@ -1360,7 +1360,7 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
   );
 }
 
-function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore }) {
+function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode }) {
   const [open, setOpen] = React.useState(false);
   const [section, setSection] = React.useState(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
