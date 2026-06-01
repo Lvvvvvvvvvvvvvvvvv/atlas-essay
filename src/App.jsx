@@ -2939,9 +2939,7 @@ const GENERATION_MODES = [
 
 // ── Toolbar store ─────────────────────────────────────────────────────────
 function useToolbarStore() {
-  const [selectedSources, setSelectedSources] = React.useState(
-    () => new Set(['乘联会 · 销量月报', 'IT 桔子 · 一级市场数据库', '36 氪报道精选'])
-  );
+  const [selectedSources, setSelectedSources] = React.useState(() => new Set());
   const [attachments, setAttachments] = React.useState([]);
   const [toneId, setToneId] = React.useState('analytical');
   const [customTones, setCustomTones] = React.useState(
