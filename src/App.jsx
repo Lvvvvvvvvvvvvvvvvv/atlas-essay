@@ -8403,9 +8403,45 @@ function HelpItem({ t, q, a }) {
 const SAVED_REPORTS_KEY = 'atlas_saved_reports';
 
 function useSavedReports() {
+  const { user } = useAuth();
   const [reports, setReports] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem(SAVED_REPORTS_KEY) || '[]'); } catch { return []; }
   });
+
+  // Helper: get current Supabase session token for API calls
+  const getToken = React.useCallback(async () => {
+    try {
+      const { supabase } = await import('./lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.access_token || null;
+    } catch { return null; }
+  }, []);
+
+  // On login: fetch cloud reports and merge with localStorage
+  React.useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const token = await getToken();
+      if (!token) return;
+      try {
+        const res = await fetch('/api/reports', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const cloud = await res.json();
+        setReports(prev => {
+          const localIds = new Set(prev.map(r => r.id));
+          const merged = [
+            ...prev,
+            ...cloud
+              .filter(r => !localIds.has(r.id))
+              .map(r => ({ ...r, savedAt: r.created_at, meta: r.meta || {} })),
+          ].sort((a, b) => new Date(b.savedAt || b.created_at) - new Date(a.savedAt || a.created_at));
+          try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(merged)); } catch {}
+          return merged;
+        });
+      } catch {}
+    })();
+  }, [user, getToken]);
+
   React.useEffect(() => {
     const handler = () => {
       try { setReports(JSON.parse(localStorage.getItem(SAVED_REPORTS_KEY) || '[]')); } catch {}
@@ -8413,27 +8449,71 @@ function useSavedReports() {
     window.addEventListener('atlas-reports-updated', handler);
     return () => window.removeEventListener('atlas-reports-updated', handler);
   }, []);
+
   const save = React.useCallback((report) => {
     setReports(prev => {
       const next = [report, ...prev.filter(r => r.id !== report.id)];
       try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
       return next;
     });
-  }, []);
+    // Async cloud sync — fire and forget
+    (async () => {
+      const token = await getToken();
+      if (!token) return;
+      try {
+        await fetch('/api/reports', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: report.id, prompt: report.prompt, title: report.title,
+            content: report.content, meta: report.meta || {},
+          }),
+        });
+      } catch {}
+    })();
+  }, [getToken]);
+
   const toggleFav = React.useCallback((id) => {
     setReports(prev => {
       const next = prev.map(r => r.id === id ? { ...r, favorited: !r.favorited } : r);
       try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
+      // Sync favorited state to cloud meta
+      const updated = next.find(r => r.id === id);
+      if (updated) (async () => {
+        const token = await getToken();
+        if (!token) return;
+        try {
+          await fetch(`/api/reports/${id}`, {
+            method: 'PATCH',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ meta: { ...(updated.meta || {}), favorited: updated.favorited } }),
+          });
+        } catch {}
+      })();
       return next;
     });
-  }, []);
+  }, [getToken]);
+
   const setRating = React.useCallback((id, rating) => {
     setReports(prev => {
       const next = prev.map(r => r.id === id ? { ...r, rating: r.rating === rating ? null : rating } : r);
       try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
+      const updated = next.find(r => r.id === id);
+      if (updated) (async () => {
+        const token = await getToken();
+        if (!token) return;
+        try {
+          await fetch(`/api/reports/${id}`, {
+            method: 'PATCH',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ meta: { ...(updated.meta || {}), rating: updated.rating } }),
+          });
+        } catch {}
+      })();
       return next;
     });
-  }, []);
+  }, [getToken]);
+
   const removeReports = React.useCallback((ids) => {
     const idSet = new Set(ids);
     setReports(prev => {
@@ -8441,7 +8521,16 @@ function useSavedReports() {
       try { localStorage.setItem(SAVED_REPORTS_KEY, JSON.stringify(next)); } catch {}
       return next;
     });
-  }, []);
+    // Delete from cloud
+    (async () => {
+      const token = await getToken();
+      if (!token) return;
+      await Promise.allSettled([...idSet].map(id =>
+        fetch(`/api/reports/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      ));
+    })();
+  }, [getToken]);
+
   return { reports, save, toggleFav, setRating, removeReports };
 }
 
