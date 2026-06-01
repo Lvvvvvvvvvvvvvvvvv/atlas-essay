@@ -28,6 +28,11 @@ export default function LoginModal({ t }) {
       if (!res.error) { setStatus('sent'); return; }
     } else if (mode === 'signup') {
       res = await signUp(email, pw);
+      if (!res.error) {
+        // No session means email confirmation is required
+        if (!res.data?.session) { setStatus('sent'); return; }
+        return; // session exists → auth state change will handle redirect
+      }
     } else {
       res = await signIn(email, pw);
     }
@@ -67,7 +72,9 @@ export default function LoginModal({ t }) {
         {status === 'sent' ? (
           <div style={{ fontFamily: t.fontCN, fontSize: 14, color: t.ink, lineHeight: 1.8 }}>
             ✓ 邮件已发送<br/>
-            <span style={{ fontSize: 12, color: t.mute }}>请查收 {email} 的登录链接</span>
+            <span style={{ fontSize: 12, color: t.mute }}>
+              {mode === 'signup' ? `请查收 ${email} 的确认邮件，点击链接后即可登录` : `请查收 ${email} 的登录链接`}
+            </span>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
