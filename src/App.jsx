@@ -3945,7 +3945,7 @@ function validateReport(text, { effectiveLength, templateSections } = {}) {
     warnings.push('报告未以标题开头，格式可能异常');
   }
 
-  // 2. Section count (## headings)
+  // 2. Section count
   const minSections = (templateSections?.length) ||
     ((effectiveLength || 2500) < 1000 ? 3 : (effectiveLength || 2500) < 2000 ? 5 : (effectiveLength || 2500) < 3000 ? 6 : 8);
   const sectionCount = (trimmed.match(/^## /gm) || []).length;
@@ -3953,17 +3953,26 @@ function validateReport(text, { effectiveLength, templateSections } = {}) {
     warnings.push(`章节数不足（检测到 ${sectionCount} 章，建议 ≥ ${minSections}）`);
   }
 
-  // 3. Word / char count (CJK + ASCII words)
+  // 3. Char count vs target
   const minChars = Math.round((effectiveLength || 2500) * 0.7);
   const charCount = trimmed.replace(/\s+/g, '').length;
   if (charCount > 0 && charCount < minChars) {
     warnings.push(`字数偏少（${charCount.toLocaleString()} 字，建议 ≥ ${minChars.toLocaleString()}）`);
   }
 
-  // 4. Unclosed code block
+  // 4. Unclosed code fence
   const fenceCount = (text.match(/^```/gm) || []).length;
   if (fenceCount % 2 !== 0) {
     warnings.push('存在未闭合的代码块');
+  }
+
+  // 5. Truncation: tail 150 chars must contain a sentence-ending marker
+  const tail = text.trimEnd().slice(-150);
+  const hasNormalEnd = /[。！？….!?]/.test(tail)
+    || /\[\/REFS\]/.test(tail)
+    || /^#{1,3}\s.+$/m.test(tail);
+  if (!hasNormalEnd) {
+    warnings.unshift('输出可能被截断，建议在设置中增大 Max Tokens 后重新生成');
   }
 
   return warnings;
