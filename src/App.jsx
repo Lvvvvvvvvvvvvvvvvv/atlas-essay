@@ -2322,7 +2322,7 @@ function useAINews() {
   return { items, loading };
 }
 
-function Home({ t, prompt, setPrompt, onStart, onBackground, bgTaskStatus, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
+function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
   const editorial = density === 'editorial';
   const headSize = editorial ? 'xxl' : 'xl';
   const customTpls = useCustomTemplates();
@@ -2395,7 +2395,7 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, bgTaskStatus, densi
         </div>
 
         {/* Prompt input */}
-        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} onBackground={onBackground} bgTaskStatus={bgTaskStatus} modelStore={modelStore} toolbarStore={toolbarStore} onNavigateSources={onNavigateSources}/>
+        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} onBackground={onBackground} onWorkflow={onWorkflow} bgTaskStatus={bgTaskStatus} modelStore={modelStore} toolbarStore={toolbarStore} onNavigateSources={onNavigateSources}/>
 
         {/* AI news ticker */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', border: `1px solid ${t.ink}`, background: t.cardOn, minWidth: 0 }}>
@@ -4007,7 +4007,7 @@ function TemplateLockBadge({ t, store }) {
   );
 }
 
-function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, bgTaskStatus, modelStore, toolbarStore, onNavigateSources }) {
+function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, modelStore, toolbarStore, onNavigateSources }) {
   const charCount = prompt.length;
   const placeholder = '比如，"梳理一下 2025 年 Q1 咖啡赛道的融资动态…"';
   const taRef = React.useRef(null);
@@ -4094,6 +4094,11 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, bgTaskSta
         <Btn t={t} primary accent size="md" onClick={onStart} disabled={!prompt.trim()}>
           Start writing ↗
         </Btn>
+        {onWorkflow && (
+          <Btn t={t} size="md" onClick={onWorkflow} disabled={!prompt.trim()} title="节点式工作流：资料搜集 → 大纲 → 分节写作 → 存档">
+            ◈ 工作流
+          </Btn>
+        )}
         {onBackground && (
           <Btn t={t} size="md" onClick={onBackground}
             disabled={!prompt.trim() || bgTaskStatus === 'queued' || bgTaskStatus === 'running'}
@@ -4595,6 +4600,423 @@ function OutlineStep({ t, prompt, modelStore, toolbarConfig, onConfirm, onSkip }
             <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>生成大纲中…</span>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Workflow ─────────────────────────────────────────────────────────────
+
+async function streamSection({ section, topic, researchCtx, allSections, model, toolbarConfig, onChunk, onDone, onError }) {
+  const langInstr = toolbarConfig?.language?.instr || '使用简体中文写作';
+  const otherSections = allSections.filter(s => s.id !== section.id).map(s => `• ${s.title}`).join('\n');
+  const researchBlock = researchCtx?.length > 0
+    ? '\n\n参考资料：\n' + researchCtx.map((r, i) => `【${i+1}】${r.title}（${r.url}）\n${r.content}`).join('\n\n')
+    : '';
+
+  const systemPrompt = `你是专业报告写作助手。${langInstr}。你正在撰写一篇关于「${topic}」的完整报告中的一个章节。
+报告其他章节：
+${otherSections}
+
+只写分配给你的这一章节，不要写其他章节。不要写章节编号，以 ## 开头写章节标题。正文充实，800-1200字。`;
+
+  const userMsg = `请撰写以下章节：
+标题：${section.title}
+写作要求：${section.req || '详细分析此章节话题'}${researchBlock}`;
+
+  const apiKey = model?.apiKey || '';
+  const apiUrl = (model?.apiUrl || '').replace(/\/$/, '');
+
+  if (!apiKey) {
+    // Use server-side key via /api/generate
+    try {
+      const { supabase: sb } = await import('./lib/supabase.js');
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token;
+      const resp = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: 2000, temperature: 0.5 }),
+      });
+      if (!resp.ok) { const e = await resp.text(); throw new Error(`API ${resp.status}: ${e.slice(0, 200)}`); }
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') { onDone?.(); return; }
+          try { const d = JSON.parse(raw); const c = d.choices?.[0]?.delta?.content; if (c) onChunk?.(c); } catch {}
+        }
+      }
+      onDone?.();
+    } catch (e) { onError?.(String(e)); }
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${apiUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: model.id, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: 2000, temperature: 0.5 }),
+    });
+    if (!resp.ok) { const e = await resp.text(); throw new Error(`API ${resp.status}: ${e.slice(0, 200)}`); }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (raw === '[DONE]') { onDone?.(); return; }
+        try { const d = JSON.parse(raw); const c = d.choices?.[0]?.delta?.content; if (c) onChunk?.(c); } catch {}
+      }
+    }
+    onDone?.();
+  } catch (e) { onError?.(String(e)); }
+}
+
+// ── WorkflowView ──────────────────────────────────────────────────────────
+function WorkflowView({ t, topic, modelStore, toolbarConfig, onSaveReport, onBack }) {
+  const PHASES = ['research', 'outline', 'draft', 'final'];
+  const [phase, setPhase] = React.useState('research');
+
+  // Research
+  const [researchStatus, setResearchStatus] = React.useState('loading'); // loading|done|error
+  const [researchResults, setResearchResults] = React.useState([]);
+  const [selectedUrls, setSelectedUrls] = React.useState(new Set());
+  const [researchError, setResearchError] = React.useState('');
+
+  // Outline
+  const [outlineStatus, setOutlineStatus] = React.useState('idle');
+  const [outlineRaw, setOutlineRaw] = React.useState('');
+  const [sections, setSections] = React.useState([]);
+
+  // Draft
+  const [draftStatus, setDraftStatus] = React.useState('idle'); // idle|running|done
+  const [sectionDrafts, setSectionDrafts] = React.useState({}); // {id: {status, content}}
+
+  const updateSection = (i, field, val) => setSections(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
+
+  const selectedResults = researchResults.filter(r => selectedUrls.has(r.url));
+
+  // ── Phase 1: Research ─────────────────────────────────────────────────
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { supabase: sb } = await import('./lib/supabase.js');
+        const { data: { session } } = await sb.auth.getSession();
+        const token = session?.access_token;
+        const resp = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ query: topic.slice(0, 200), maxResults: 6 }),
+        });
+        if (!resp.ok) throw new Error(`搜索失败 ${resp.status}`);
+        const data = await resp.json();
+        if (cancelled) return;
+        const results = data.results || [];
+        setResearchResults(results);
+        setSelectedUrls(new Set(results.map(r => r.url)));
+        setResearchStatus('done');
+      } catch (e) {
+        if (!cancelled) { setResearchError(e.message); setResearchStatus('error'); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [topic]);
+
+  // ── Phase 2: Outline ──────────────────────────────────────────────────
+  const runOutline = React.useCallback(() => {
+    setOutlineStatus('running');
+    setOutlineRaw('');
+    setSections([]);
+    const rawRef = { current: '' };
+    streamOutline({
+      model: modelStore.selected,
+      prompt: topic,
+      language: toolbarConfig?.language,
+      onChunk: (c) => { rawRef.current += c; setOutlineRaw(rawRef.current); setSections(parseOutlineFromText(rawRef.current)); setOutlineStatus('streaming'); },
+      onDone: () => { setSections(parseOutlineFromText(rawRef.current)); setOutlineStatus('done'); },
+      onError: (e) => setOutlineStatus('error_' + e),
+    });
+  }, [topic, modelStore, toolbarConfig]);
+
+  React.useEffect(() => { if (phase === 'outline' && outlineStatus === 'idle') runOutline(); }, [phase]);
+
+  // ── Phase 3: Draft ────────────────────────────────────────────────────
+  const runDraft = React.useCallback(async () => {
+    if (draftStatus === 'running') return;
+    setDraftStatus('running');
+    const initDrafts = {};
+    sections.forEach(s => { initDrafts[s.id] = { status: 'running', content: '' }; });
+    setSectionDrafts(initDrafts);
+
+    await Promise.all(sections.map(async (section) => {
+      const contentRef = { current: '' };
+      await new Promise(resolve => {
+        streamSection({
+          section, topic, researchCtx: selectedResults,
+          allSections: sections, model: modelStore.selected,
+          toolbarConfig,
+          onChunk: (c) => {
+            contentRef.current += c;
+            setSectionDrafts(prev => ({ ...prev, [section.id]: { status: 'running', content: contentRef.current } }));
+          },
+          onDone: () => {
+            setSectionDrafts(prev => ({ ...prev, [section.id]: { status: 'done', content: contentRef.current } }));
+            resolve();
+          },
+          onError: (e) => {
+            setSectionDrafts(prev => ({ ...prev, [section.id]: { status: 'error', content: e } }));
+            resolve();
+          },
+        });
+      });
+    }));
+    setDraftStatus('done');
+  }, [sections, selectedResults, topic, modelStore, toolbarConfig, draftStatus]);
+
+  React.useEffect(() => { if (phase === 'draft' && draftStatus === 'idle') runDraft(); }, [phase]);
+
+  // ── Phase 4: Final save ───────────────────────────────────────────────
+  const handleSave = () => {
+    const fullContent = sections.map(s => sectionDrafts[s.id]?.content || '').join('\n\n');
+    const titleLine = fullContent.split('\n').find(l => l.startsWith('#'))?.replace(/^#+\s*/, '') || topic.slice(0, 60);
+    const report = {
+      id: crypto.randomUUID(),
+      prompt: topic,
+      meta: { title: { cn: titleLine, en: titleLine }, source: 'workflow' },
+      sections: [{ id: 'main', heading: titleLine, body: fullContent }],
+      refs: [],
+    };
+    onSaveReport?.(report);
+    onBack?.('report');
+  };
+
+  // ── Sidebar ───────────────────────────────────────────────────────────
+  const nodeLabel = { research: '资料搜集', outline: '大纲确认', draft: '章节写作', final: '完成存档' };
+  const nodeIcon = { research: '⊕', outline: '◆', draft: '▶', final: '✓' };
+  const phaseIdx = PHASES.indexOf(phase);
+
+  const nodeStatus = (p) => {
+    const idx = PHASES.indexOf(p);
+    if (idx < phaseIdx) return 'done';
+    if (idx === phaseIdx) return 'active';
+    return 'idle';
+  };
+
+  const sidebarNodeStyle = (p) => {
+    const s = nodeStatus(p);
+    return {
+      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+      cursor: s === 'done' ? 'pointer' : 'default',
+      borderLeft: `3px solid ${s === 'active' ? t.accent : s === 'done' ? t.ink : t.rule}`,
+      background: s === 'active' ? t.faint : 'transparent',
+    };
+  };
+
+  const allDraftsDone = sections.length > 0 && sections.every(s => sectionDrafts[s.id]?.status === 'done');
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: t.paper }}>
+      {/* Header */}
+      <div style={{ padding: '10px 24px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: t.fontMono, fontSize: 10, color: t.mute, padding: '2px 0', letterSpacing: 0.8 }}>← 返回</button>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute }}>WORKFLOW MODE</span>
+        <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{topic.slice(0, 80)}</span>
+      </div>
+
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+        {/* Sidebar */}
+        <div style={{ width: 180, borderRight: `1px solid ${t.rule}`, flexShrink: 0, paddingTop: 24, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {PHASES.map((p, i) => (
+            <div key={p} onClick={() => nodeStatus(p) === 'done' && setPhase(p)} style={sidebarNodeStyle(p)}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 11, color: nodeStatus(p) === 'idle' ? t.mute : t.ink, width: 16, textAlign: 'center' }}>{nodeIcon[p]}</span>
+              <div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute }}>0{i+1}</div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: nodeStatus(p) === 'idle' ? t.mute : t.ink }}>{nodeLabel[p]}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Main */}
+        <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '28px 36px' }}>
+
+          {/* ── RESEARCH ─────────────────────────────────── */}
+          {phase === 'research' && (
+            <div style={{ maxWidth: 700 }}>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute, marginBottom: 16 }}>01 · RESEARCH</div>
+              {researchStatus === 'loading' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.mute }}>
+                  <span style={{ display: 'inline-block', width: 8, height: 16, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>正在搜索相关资料…</span>
+                </div>
+              )}
+              {researchStatus === 'error' && (
+                <div style={{ padding: '12px 16px', border: `1.5px solid #e5251d`, fontFamily: t.fontCN, fontSize: 13, color: '#e5251d', marginBottom: 16 }}>
+                  ✕ 搜索失败：{researchError}<br/>
+                  <span style={{ fontSize: 11 }}>请确认 Tavily API Key 已在 Vercel 配置。可直接跳过进行大纲。</span>
+                </div>
+              )}
+              {(researchStatus === 'done' || researchStatus === 'error') && researchResults.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  {researchResults.map((r, i) => {
+                    const checked = selectedUrls.has(r.url);
+                    return (
+                      <div key={i} onClick={() => setSelectedUrls(prev => { const n = new Set(prev); checked ? n.delete(r.url) : n.add(r.url); return n; })}
+                        style={{ display: 'flex', gap: 12, padding: '12px 14px', marginBottom: 8, border: `1px solid ${checked ? t.ink : t.rule}`, cursor: 'pointer', background: checked ? t.faint : 'transparent' }}>
+                        <span style={{ fontFamily: t.fontMono, fontSize: 11, color: checked ? t.accent : t.mute, flexShrink: 0, marginTop: 1 }}>{checked ? '✓' : '○'}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: t.fontBody, fontSize: 13, color: t.ink, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
+                          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.url}</div>
+                          <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, lineHeight: 1.55, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.content}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {researchStatus === 'done' && researchResults.length === 0 && (
+                <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.mute, marginBottom: 20 }}>未找到相关资料，将基于模型知识生成。</div>
+              )}
+              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                {researchStatus !== 'loading' && (
+                  <Btn t={t} primary accent size="md" onClick={() => { setPhase('outline'); }}>
+                    继续 → 生成大纲
+                  </Btn>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── OUTLINE ──────────────────────────────────── */}
+          {phase === 'outline' && (
+            <div style={{ maxWidth: 700 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute }}>02 · OUTLINE</span>
+                {outlineStatus === 'done' && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{sections.length} 章节 · 可编辑</span>}
+                <span style={{ flex: 1 }}/>
+                <Btn t={t} size="sm" onClick={runOutline}>↺ 重新生成</Btn>
+              </div>
+              {(outlineStatus === 'running' || outlineStatus === 'streaming') && sections.length === 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: t.mute }}>
+                  <span style={{ display: 'inline-block', width: 8, height: 16, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 11 }}>正在生成大纲…</span>
+                </div>
+              )}
+              {sections.map((sec, i) => (
+                <div key={sec.id || i} style={{ marginBottom: 12, border: `1px solid ${t.rule}`, padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>{['一','二','三','四','五','六'][i] || i+1}</span>
+                    <input value={sec.title} onChange={e => updateSection(i, 'title', e.target.value)} disabled={outlineStatus !== 'done'}
+                      style={{ flex: 1, border: 'none', borderBottom: outlineStatus === 'done' ? `1px solid ${t.rule}` : 'none', background: 'transparent', fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 15, color: t.ink, outline: 'none', padding: '2px 0' }}/>
+                  </div>
+                  <textarea value={sec.req} onChange={e => updateSection(i, 'req', e.target.value)} disabled={outlineStatus !== 'done'} rows={2}
+                    style={{ width: '100%', border: 'none', borderTop: `1px solid ${t.rule}`, background: 'transparent', fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, lineHeight: 1.65, outline: 'none', resize: 'none', padding: '8px 0 0', boxSizing: 'border-box' }}/>
+                </div>
+              ))}
+              {outlineStatus === 'done' && sections.length > 0 && (
+                <Btn t={t} primary accent size="md" style={{ marginTop: 8 }} onClick={() => setPhase('draft')}>
+                  开始写作 →
+                </Btn>
+              )}
+            </div>
+          )}
+
+          {/* ── DRAFT ────────────────────────────────────── */}
+          {phase === 'draft' && (
+            <div style={{ maxWidth: 760 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute }}>03 · DRAFT</span>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
+                  {draftStatus === 'running' && `生成中… ${sections.filter(s => sectionDrafts[s.id]?.status === 'done').length}/${sections.length}`}
+                  {draftStatus === 'done' && '全部完成'}
+                </span>
+                <span style={{ flex: 1 }}/>
+                {draftStatus === 'done' && <Btn t={t} size="sm" onClick={() => { setDraftStatus('idle'); runDraft(); }}>↺ 全部重新生成</Btn>}
+              </div>
+              {sections.map((sec, i) => {
+                const d = sectionDrafts[sec.id] || { status: 'idle', content: '' };
+                return (
+                  <div key={sec.id || i} style={{ marginBottom: 20, border: `1px solid ${d.status === 'done' ? t.ink : d.status === 'error' ? '#e5251d' : t.rule}` }}>
+                    <div style={{ padding: '8px 14px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 10, background: t.faint }}>
+                      <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{['一','二','三','四','五','六'][i] || i+1}</span>
+                      <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 13, color: t.ink, flex: 1 }}>{sec.title}</span>
+                      <span style={{ fontFamily: t.fontMono, fontSize: 9, color: d.status === 'done' ? t.accent : t.mute }}>
+                        {d.status === 'running' ? '写作中…' : d.status === 'done' ? `✓ ${d.content.replace(/\s/g,'').length}字` : d.status === 'error' ? '✕ 失败' : '等待'}
+                      </span>
+                      {d.status === 'done' && (
+                        <button onClick={() => {
+                          setSectionDrafts(prev => ({ ...prev, [sec.id]: { status: 'running', content: '' } }));
+                          const contentRef = { current: '' };
+                          streamSection({ section: sec, topic, researchCtx: selectedResults, allSections: sections, model: modelStore.selected, toolbarConfig,
+                            onChunk: c => { contentRef.current += c; setSectionDrafts(prev => ({ ...prev, [sec.id]: { status: 'running', content: contentRef.current } })); },
+                            onDone: () => setSectionDrafts(prev => ({ ...prev, [sec.id]: { status: 'done', content: contentRef.current } })),
+                            onError: e => setSectionDrafts(prev => ({ ...prev, [sec.id]: { status: 'error', content: e } })),
+                          });
+                        }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: t.fontMono, fontSize: 9, color: t.mute, padding: 0 }}>↺</button>
+                      )}
+                    </div>
+                    <div style={{ padding: '14px 16px', fontFamily: t.fontCN, fontSize: 13, color: t.ink, lineHeight: 1.8, whiteSpace: 'pre-wrap', maxHeight: 320, overflowY: 'auto' }}>
+                      {d.status === 'idle' && <span style={{ color: t.mute }}>等待生成…</span>}
+                      {d.status === 'error' && <span style={{ color: '#e5251d' }}>✕ {d.content}</span>}
+                      {(d.status === 'running' || d.status === 'done') && (
+                        <>
+                          {d.content}
+                          {d.status === 'running' && <span style={{ display: 'inline-block', width: 8, height: 14, background: t.accent, marginLeft: 2, animation: 'essay-blink 1s steps(2) infinite', verticalAlign: 'middle' }}/>}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {allDraftsDone && (
+                <Btn t={t} primary accent size="md" style={{ marginTop: 8 }} onClick={() => setPhase('final')}>
+                  存档报告 →
+                </Btn>
+              )}
+            </div>
+          )}
+
+          {/* ── FINAL ────────────────────────────────────── */}
+          {phase === 'final' && (
+            <div style={{ maxWidth: 700 }}>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute, marginBottom: 20 }}>04 · FINAL</div>
+              <div style={{ padding: '20px 24px', border: `1px solid ${t.ink}`, marginBottom: 20 }}>
+                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 18, color: t.ink, marginBottom: 8 }}>{topic.slice(0, 80)}</div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 16 }}>
+                  {sections.length} 个章节 · 约 {sections.reduce((n, s) => n + (sectionDrafts[s.id]?.content?.replace(/\s/g,'')?.length || 0), 0).toLocaleString()} 字
+                </div>
+                {sections.map((sec, i) => (
+                  <div key={sec.id || i} style={{ marginBottom: 6, padding: '6px 0', borderTop: i > 0 ? `1px solid ${t.rule}` : 'none' }}>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginRight: 8 }}>0{i+1}</span>
+                    <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{sec.title}</span>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 8 }}>{(sectionDrafts[sec.id]?.content?.replace(/\s/g,'')?.length || 0).toLocaleString()}字</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <Btn t={t} size="md" onClick={() => setPhase('draft')}>← 回到草稿</Btn>
+                <Btn t={t} primary accent size="md" onClick={handleSave}>✓ 存入报告库</Btn>
+              </div>
+            </div>
+          )}
+
+        </div>
       </div>
     </div>
   );
@@ -8872,6 +9294,11 @@ function App() {
   }, [prompt, modelStore]);
 
 
+  const goWorkflow = () => {
+    if (!prompt.trim()) return;
+    setRoute('workflow');
+  };
+
   const handleOutlineConfirm = (sections) => {
     toolbarStore.setActiveTemplate({ en: 'AI 大纲', sections });
     setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false);
@@ -8919,7 +9346,7 @@ function App() {
       <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
         {route === 'home' && (
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
-            onStart={goRun} onBackground={goBackground} bgTaskStatus={bgTaskStatus}
+            onStart={goRun} onBackground={goBackground} onWorkflow={goWorkflow} bgTaskStatus={bgTaskStatus}
             density={tweaks.density} modelStore={modelStore}
             toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}/>
         )}
@@ -8984,6 +9411,13 @@ function App() {
               else setActiveReportId(null);
               setRoute('report');
             }}/>
+        )}
+        {route === 'workflow' && (
+          <WorkflowView t={t} topic={prompt}
+            modelStore={modelStore}
+            toolbarConfig={{ language: toolbarStore.currentLanguage }}
+            onSaveReport={handleSaveReport}
+            onBack={(dest) => { setRoute(dest || 'home'); }}/>
         )}
         {route === 'sources' && <Sources t={t}/>}
         {showExport && (
