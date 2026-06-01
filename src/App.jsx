@@ -3392,7 +3392,6 @@ function UrlContextPopover({ t, store }) {
   const [searchResults, setSearchResults] = React.useState([]);
   const [searching, setSearching] = React.useState(false);
   const [searchError, setSearchError] = React.useState('');
-  const { getToken } = useAuth();
 
   const urlCount = store.urlContexts.length;
   const searchCount = store.searchContexts.length;
@@ -3412,7 +3411,9 @@ function UrlContextPopover({ t, store }) {
     setSearchError('');
     setSearchResults([]);
     try {
-      const token = await getToken();
+      const { supabase: sb } = await import('./lib/supabase.js');
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token;
       const resp = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
