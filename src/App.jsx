@@ -4700,11 +4700,18 @@ async function streamSection({ section, topic, researchCtx, allSections, model, 
     ? '\n\n参考资料：\n' + researchCtx.map((r, i) => `【${i+1}】${r.title}（${r.url}）\n${r.content}`).join('\n\n')
     : '';
 
+  const totalLength = toolbarConfig?.length || 2500;
+  const sectionCount = allSections.length || 1;
+  const perSection = Math.round(totalLength / sectionCount);
+  const perMin = Math.round(perSection * 0.85);
+  const perMax = Math.round(perSection * 1.15);
+  const lengthInstr = `本章节字数：严格控制在 ${perMin}–${perMax} 字（不得超出，不得偏少超过 15%）`;
+
   const systemPrompt = `你是专业报告写作助手。${langInstr}。你正在撰写一篇关于「${topic}」的完整报告中的一个章节。
 报告其他章节：
 ${otherSections}
 
-只写分配给你的这一章节，不要写其他章节。不要写章节编号，以 ## 开头写章节标题。正文充实，800-1200字。`;
+只写分配给你的这一章节，不要写其他章节。不要写章节编号，以 ## 开头写章节标题。${lengthInstr}。`;
 
   const userMsg = `请撰写以下章节：
 标题：${section.title}
@@ -4712,6 +4719,7 @@ ${otherSections}
 
   const apiKey = model?.apiKey || '';
   const apiUrl = (model?.apiUrl || '').replace(/\/$/, '');
+  const sectionMaxTokens = Math.min(Math.max(Math.ceil(perMax * 2.5) + 500, 800), 8000);
 
   if (!apiKey) {
     // Use server-side key via /api/generate
@@ -4722,7 +4730,7 @@ ${otherSections}
       const resp = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: 2000, temperature: 0.5 }),
+        body: JSON.stringify({ messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: sectionMaxTokens, temperature: 0.5 }),
       });
       if (!resp.ok) { const e = await resp.text(); throw new Error(`API ${resp.status}: ${e.slice(0, 200)}`); }
       const reader = resp.body.getReader();
@@ -4750,7 +4758,7 @@ ${otherSections}
     const resp = await fetch(`${apiUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: model.id, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: 2000, temperature: 0.5 }),
+      body: JSON.stringify({ model: model.id, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: sectionMaxTokens, temperature: 0.5 }),
     });
     if (!resp.ok) { const e = await resp.text(); throw new Error(`API ${resp.status}: ${e.slice(0, 200)}`); }
     const reader = resp.body.getReader();
