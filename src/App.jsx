@@ -4007,6 +4007,61 @@ function TemplateLockBadge({ t, store }) {
   );
 }
 
+function MoreActionsMenu({ t, disabled, onWorkflow, onBackground, bgTaskStatus }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const bgLabel = bgTaskStatus === 'queued' ? '排队中…' : bgTaskStatus === 'running' ? '生成中…' : bgTaskStatus === 'done' ? '✓ 后台完成' : bgTaskStatus === 'failed' ? '✕ 后台失败' : '后台生成';
+  const bgDisabled = disabled || bgTaskStatus === 'queued' || bgTaskStatus === 'running';
+
+  const itemStyle = (isDisabled) => ({
+    display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px',
+    fontFamily: t.fontMono, fontSize: 10, letterSpacing: 0.8,
+    background: 'none', border: 'none', cursor: isDisabled ? 'default' : 'pointer',
+    color: isDisabled ? t.mute : t.ink,
+    borderBottom: `1px solid ${t.rule}`,
+  });
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button onClick={() => !disabled && setOpen(o => !o)} style={{
+        padding: '5px 10px', fontFamily: t.fontMono, fontSize: 12, letterSpacing: 0.5,
+        border: `1px solid ${open ? t.ink : t.rule}`,
+        background: open ? t.ink : 'transparent',
+        color: open ? t.paper : disabled ? t.mute : t.ink,
+        cursor: disabled ? 'default' : 'pointer',
+      }}>▾</button>
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', right: 0,
+          background: t.paper, border: `1px solid ${t.ink}`, minWidth: 160, zIndex: 200,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+        }}>
+          {onWorkflow && (
+            <button style={itemStyle(disabled)} onClick={() => { if (!disabled) { onWorkflow(); setOpen(false); } }}
+              title="节点式工作流：资料搜集 → 大纲 → 分节写作 → 存档">
+              ◈ 工作流模式
+            </button>
+          )}
+          {onBackground && (
+            <button style={{ ...itemStyle(bgDisabled), borderBottom: 'none' }}
+              onClick={() => { if (!bgDisabled) { onBackground(); setOpen(false); } }}
+              title="关 Tab 也能继续生成，完成后在报告库查看">
+              ◈ {bgLabel}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, modelStore, toolbarStore, onNavigateSources }) {
   const charCount = prompt.length;
   const placeholder = '比如，"梳理一下 2025 年 Q1 咖啡赛道的融资动态…"';
@@ -4094,17 +4149,9 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
         <Btn t={t} primary accent size="md" onClick={onStart} disabled={!prompt.trim()}>
           Start writing ↗
         </Btn>
-        {onWorkflow && (
-          <Btn t={t} size="md" onClick={onWorkflow} disabled={!prompt.trim()} title="节点式工作流：资料搜集 → 大纲 → 分节写作 → 存档">
-            ◈ 工作流
-          </Btn>
-        )}
-        {onBackground && (
-          <Btn t={t} size="md" onClick={onBackground}
-            disabled={!prompt.trim() || bgTaskStatus === 'queued' || bgTaskStatus === 'running'}
-            title="关 Tab 也能继续生成，完成后在报告库查看">
-            {bgTaskStatus === 'queued' ? '排队中…' : bgTaskStatus === 'running' ? '◈ 生成中…' : bgTaskStatus === 'done' ? '✓ 完成' : bgTaskStatus === 'failed' ? '✕ 失败' : '◈ 后台'}
-          </Btn>
+        {(onWorkflow || onBackground) && (
+          <MoreActionsMenu t={t} disabled={!prompt.trim()}
+            onWorkflow={onWorkflow} onBackground={onBackground} bgTaskStatus={bgTaskStatus}/>
         )}
       </div>
     </div>
@@ -4793,14 +4840,36 @@ function WorkflowView({ t, topic, modelStore, toolbarConfig, onSaveReport, onBac
 
   // ── Phase 4: Final save ───────────────────────────────────────────────
   const handleSave = () => {
-    const fullContent = sections.map(s => sectionDrafts[s.id]?.content || '').join('\n\n');
-    const titleLine = fullContent.split('\n').find(l => l.startsWith('#'))?.replace(/^#+\s*/, '') || topic.slice(0, 60);
+    const fullText = sections.map(s => sectionDrafts[s.id]?.content || '').join('\n\n');
+    const parsedSections = parseMarkdownReport(fullText);
+    const wordCount = fullText.replace(/\s+/g, ' ').trim().length;
+    const titleLine = fullText.split('\n').find(l => l.startsWith('#'))?.replace(/^#+\s*/, '') || topic.slice(0, 60);
+    const readMins = Math.max(1, Math.ceil(wordCount / 300));
+    const now = new Date();
+    const DAY_CN = ['日','一','二','三','四','五','六'];
     const report = {
-      id: crypto.randomUUID(),
+      id: now.getTime().toString(),
       prompt: topic,
-      meta: { title: { cn: titleLine, en: titleLine }, source: 'workflow' },
-      sections: [{ id: 'main', heading: titleLine, body: fullContent }],
+      text: fullText,
+      sections: parsedSections,
       refs: [],
+      selectedSources: [],
+      attachments: [],
+      meta: {
+        titleEn: titleLine, titleCn: '',
+        title: { en: titleLine, cn: '' },
+        subtitle: topic.slice(0, 80),
+        date: `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`,
+        words: wordCount.toLocaleString(),
+        sources: 0,
+        reading: `${readMins} min`,
+        category: 'AI · 工作流',
+        issue: 'AI',
+        model: modelStore.selected?.name || 'AI',
+        tone: '',
+        tokens: 0,
+      },
+      favorited: false,
     };
     onSaveReport?.(report);
     onBack?.('report');
@@ -4940,15 +5009,26 @@ function WorkflowView({ t, topic, modelStore, toolbarConfig, onSaveReport, onBac
           {/* ── DRAFT ────────────────────────────────────── */}
           {phase === 'draft' && (
             <div style={{ maxWidth: 760 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute }}>03 · DRAFT</span>
-                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
-                  {draftStatus === 'running' && `生成中… ${sections.filter(s => sectionDrafts[s.id]?.status === 'done').length}/${sections.length}`}
-                  {draftStatus === 'done' && '全部完成'}
-                </span>
-                <span style={{ flex: 1 }}/>
-                {draftStatus === 'done' && <Btn t={t} size="sm" onClick={() => { setDraftStatus('idle'); runDraft(); }}>↺ 全部重新生成</Btn>}
-              </div>
+              {(() => {
+                const totalChars = sections.reduce((n, s) => n + (sectionDrafts[s.id]?.content?.replace(/\s/g,'')?.length || 0), 0);
+                const doneSections = sections.filter(s => sectionDrafts[s.id]?.status === 'done').length;
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.5, color: t.mute }}>03 · DRAFT</span>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>
+                      {draftStatus === 'running' && `生成中… ${doneSections}/${sections.length} 章节`}
+                      {draftStatus === 'done' && `全部完成 · ${sections.length} 章节`}
+                    </span>
+                    {totalChars > 0 && (
+                      <span style={{ fontFamily: t.fontMono, fontSize: 11, color: t.accent, fontWeight: 600 }}>
+                        共 {totalChars.toLocaleString()} 字
+                      </span>
+                    )}
+                    <span style={{ flex: 1 }}/>
+                    {draftStatus === 'done' && <Btn t={t} size="sm" onClick={() => { setDraftStatus('idle'); runDraft(); }}>↺ 全部重新生成</Btn>}
+                  </div>
+                );
+              })()}
               {sections.map((sec, i) => {
                 const d = sectionDrafts[sec.id] || { status: 'idle', content: '' };
                 return (
@@ -4956,8 +5036,8 @@ function WorkflowView({ t, topic, modelStore, toolbarConfig, onSaveReport, onBac
                     <div style={{ padding: '8px 14px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 10, background: t.faint }}>
                       <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{['一','二','三','四','五','六'][i] || i+1}</span>
                       <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 13, color: t.ink, flex: 1 }}>{sec.title}</span>
-                      <span style={{ fontFamily: t.fontMono, fontSize: 9, color: d.status === 'done' ? t.accent : t.mute }}>
-                        {d.status === 'running' ? '写作中…' : d.status === 'done' ? `✓ ${d.content.replace(/\s/g,'').length}字` : d.status === 'error' ? '✕ 失败' : '等待'}
+                      <span style={{ fontFamily: t.fontMono, fontSize: 9, color: d.status === 'done' ? t.accent : d.status === 'error' ? '#e5251d' : t.mute }}>
+                        {d.status === 'running' ? '写作中…' : d.status === 'done' ? `${d.content.replace(/\s/g,'').length.toLocaleString()} 字` : d.status === 'error' ? '✕ 失败' : '等待'}
                       </span>
                       {d.status === 'done' && (
                         <button onClick={() => {
