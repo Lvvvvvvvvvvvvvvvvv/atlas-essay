@@ -11,20 +11,23 @@ export function AuthProvider({ children }) {
 
   // Load team + role for a given user id
   const loadTeam = React.useCallback(async (userId) => {
-    const { data } = await supabase
+    const { data: membership } = await supabase
       .from('team_members')
-      .select('role, teams(id, name)')
+      .select('role, team_id')
       .eq('user_id', userId)
       .limit(1)
       .single();
 
-    if (data) {
-      setTeam(data.teams);
-      setRole(data.role);
-    } else {
-      setTeam(null);
-      setRole(null);
-    }
+    if (!membership) { setTeam(null); setRole(null); return; }
+
+    const { data: teamData } = await supabase
+      .from('teams')
+      .select('id, name')
+      .eq('id', membership.team_id)
+      .single();
+
+    setTeam(teamData || null);
+    setRole(membership.role);
   }, []);
 
   React.useEffect(() => {
