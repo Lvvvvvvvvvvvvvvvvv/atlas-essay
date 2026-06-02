@@ -4691,6 +4691,149 @@ function OutlineStep({ t, prompt, modelStore, toolbarConfig, onConfirm, onSkip }
   );
 }
 
+// ── ParallelDraft ─────────────────────────────────────────────────────────
+
+function ParallelDraft({ t, topic, sections, modelStore, toolbarConfig, onSaveReport, onDone, onBack }) {
+  const contentRefs = React.useRef(Object.fromEntries(sections.map(s => [s.id, ''])));
+  const [sectionContents, setSectionContents] = React.useState(
+    () => Object.fromEntries(sections.map(s => [s.id, '']))
+  );
+  const [sectionStatus, setSectionStatus] = React.useState(
+    () => Object.fromEntries(sections.map(s => [s.id, 'pending']))
+  );
+  const completedRef = React.useRef(0);
+  const [doneCount, setDoneCount] = React.useState(0);
+  const savedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    sections.forEach(section => {
+      setSectionStatus(prev => ({ ...prev, [section.id]: 'streaming' }));
+      streamSection({
+        section, topic, researchCtx: [], allSections: sections,
+        model: modelStore.selected, toolbarConfig,
+        onChunk: (chunk) => {
+          contentRefs.current[section.id] += chunk;
+          setSectionContents(prev => ({ ...prev, [section.id]: contentRefs.current[section.id] }));
+        },
+        onDone: () => {
+          setSectionStatus(prev => ({ ...prev, [section.id]: 'done' }));
+          completedRef.current++;
+          setDoneCount(completedRef.current);
+        },
+        onError: () => {
+          setSectionStatus(prev => ({ ...prev, [section.id]: 'error' }));
+          completedRef.current++;
+          setDoneCount(completedRef.current);
+        },
+      });
+    });
+  }, []);
+
+  const allDone = doneCount >= sections.length;
+
+  React.useEffect(() => {
+    if (!allDone || savedRef.current) return;
+    savedRef.current = true;
+    const fullText = sections.map(s => contentRefs.current[s.id] || '').join('\n\n');
+    const parsedSections = parseMarkdownReport(fullText);
+    const wordCount = fullText.replace(/\s+/g, ' ').trim().length;
+    const titleLine = fullText.split('\n').find(l => l.startsWith('#'))?.replace(/^#+\s*/, '') || topic.slice(0, 60);
+    const readMins = Math.max(1, Math.ceil(wordCount / 300));
+    const now = new Date();
+    const DAY_CN = ['日','一','二','三','四','五','六'];
+    onSaveReport?.({
+      id: now.getTime().toString(), prompt: topic, text: fullText,
+      sections: parsedSections, refs: [], selectedSources: [], attachments: [],
+      meta: {
+        titleEn: titleLine, titleCn: '', title: { en: titleLine, cn: '' },
+        subtitle: topic.slice(0, 80),
+        date: `${now.getMonth()+1}月${now.getDate()}日 · 周${DAY_CN[now.getDay()]}`,
+        words: wordCount.toLocaleString(), sources: 0, reading: `${readMins} min`,
+        category: 'AI · 并行生成', issue: 'AI',
+        model: modelStore.selected?.name || 'AI', tone: '', tokens: 0,
+      },
+      favorited: false,
+    });
+    onDone?.();
+  }, [allDone]);
+
+  const SEC_NUMS = ['一','二','三','四','五','六','七','八'];
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: t.paper, color: t.ink }}>
+      {/* Header */}
+      <div style={{ padding: '12px 36px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+        <Tag t={t} accent>◆ 并行生成 · {modelStore.selected?.name}</Tag>
+        <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
+          {allDone ? `✓ 全部完成` : `${doneCount} / ${sections.length} 章节完成`}
+        </span>
+        <span style={{ flex: 1 }}/>
+        {!allDone && (
+          <Btn t={t} size="sm" onClick={onBack}>← 返回大纲</Btn>
+        )}
+        {allDone && (
+          <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>正在保存…</span>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 2, background: t.rule, flexShrink: 0 }}>
+        <div style={{
+          height: '100%', background: t.accent,
+          width: `${sections.length > 0 ? (doneCount / sections.length) * 100 : 0}%`,
+          transition: 'width 0.4s ease',
+        }}/>
+      </div>
+
+      {/* Section cards */}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '28px 36px', display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 860 }}>
+        {sections.map((sec, i) => {
+          const status = sectionStatus[sec.id] || 'pending';
+          const content = sectionContents[sec.id] || '';
+          const wordCount = content.replace(/\s/g, '').length;
+          const statusColor = status === 'done' ? '#1f6f44' : status === 'error' ? '#e5251d' : status === 'streaming' ? t.accent : t.mute;
+          const statusLabel = status === 'done' ? '✓ 完成' : status === 'error' ? '✕ 错误' : status === 'streaming' ? '生成中…' : '等待中';
+
+          return (
+            <div key={sec.id} style={{ border: `1px solid ${status === 'done' ? t.rule : status === 'streaming' ? t.accent : t.rule}`, padding: '16px 20px', transition: 'border-color 0.3s' }}>
+              {/* Section header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>{SEC_NUMS[i] || i+1}</span>
+                <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 14, color: t.ink, flex: 1 }}>{sec.title}</span>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: statusColor, flexShrink: 0 }}>{statusLabel}</span>
+                {status === 'done' && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{wordCount} 字</span>}
+              </div>
+
+              {/* Content preview */}
+              {status === 'pending' && (
+                <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, opacity: 0.5 }}>等待中…</div>
+              )}
+              {status === 'streaming' && content.length === 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ display: 'inline-block', width: 8, height: 14, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>connecting…</span>
+                </div>
+              )}
+              {content.length > 0 && (
+                <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, lineHeight: 1.7, maxHeight: status === 'done' ? 160 : 120, overflow: 'hidden', position: 'relative' }}>
+                  {content.replace(/^##[^\n]*\n?/, '').slice(0, 600)}
+                  {status === 'streaming' && <span style={{ display: 'inline-block', width: 8, height: 13, background: t.accent, marginLeft: 2, animation: 'essay-blink 1s steps(2) infinite', verticalAlign: 'middle' }}/>}
+                  {(content.replace(/^##[^\n]*\n?/, '').length > 600 || status === 'done') && (
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 32, background: `linear-gradient(transparent, ${t.paper})` }}/>
+                  )}
+                </div>
+              )}
+              {status === 'error' && (
+                <div style={{ fontFamily: t.fontMono, fontSize: 10, color: '#e5251d' }}>生成失败，其他章节不受影响</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Workflow ─────────────────────────────────────────────────────────────
 
 async function streamSection({ section, topic, researchCtx, allSections, model, toolbarConfig, onChunk, onDone, onError }) {
@@ -9553,6 +9696,7 @@ function App() {
   const [showExport, setShowExport] = React.useState(false);
   const [runKey, setRunKey] = React.useState(0);
   const [runDone, setRunDone] = React.useState(false);
+  const [parallelSections, setParallelSections] = React.useState(null);
   const [outlineMode, setOutlineModeState] = React.useState(
     () => localStorage.getItem('atlas_outline_mode') === 'true'
   );
@@ -9563,9 +9707,10 @@ function App() {
 
   const goRun = () => {
     setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false);
+    setParallelSections(null);
     const hasTemplate = !!toolbarStore.activeTemplate;
-    const isLive = !!modelStore.selected?.apiKey;
-    setRoute(outlineMode && !hasTemplate && isLive ? 'outline' : 'running');
+    const hasModel = !!modelStore.selected;
+    setRoute(outlineMode && !hasTemplate && hasModel ? 'outline' : 'running');
   };
 
   const [bgTaskStatus, setBgTaskStatus] = React.useState(null); // null | 'queued' | 'running' | 'done' | 'failed'
@@ -9624,9 +9769,10 @@ function App() {
   };
 
   const handleOutlineConfirm = (sections) => {
-    toolbarStore.setActiveTemplate({ en: 'AI 大纲', sections });
-    setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false);
-    setRoute('running');
+    const withIds = sections.map((s, i) => ({ ...s, id: `outline_${i}` }));
+    setParallelSections(withIds);
+    setActiveReportId(null);
+    setRoute('parallel');
   };
 
   const handleSaveReport = React.useCallback((report) => {
@@ -9681,6 +9827,21 @@ function App() {
             }}
             onConfirm={handleOutlineConfirm}
             onSkip={() => { setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false); setRoute('running'); }}/>
+        )}
+        {route === 'parallel' && parallelSections && (
+          <ParallelDraft t={t} topic={prompt} sections={parallelSections}
+            modelStore={modelStore}
+            toolbarConfig={{
+              tone: toolbarStore.currentTone,
+              language: toolbarStore.currentLanguage,
+              style: toolbarStore.currentStyle,
+              length: toolbarStore.effectiveLength,
+              urlContexts: toolbarStore.urlContexts,
+              searchContexts: toolbarStore.searchContexts,
+            }}
+            onSaveReport={handleSaveReport}
+            onDone={() => setRoute('report')}
+            onBack={() => setRoute('outline')}/>
         )}
         {route === 'running' && (
           <Running key={runKey} t={t} prompt={prompt}
