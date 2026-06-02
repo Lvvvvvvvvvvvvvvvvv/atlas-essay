@@ -794,6 +794,53 @@ function usePermission() {
 }
 
 // ── Settings Modal ────────────────────────────────────────────────────────
+function LanguageManager({ t, inp, secHdr, toolbarStore }) {
+  const [customLangs, setCustomLangs] = React.useState(
+    () => { try { return JSON.parse(localStorage.getItem('atlas_custom_languages') || '[]'); } catch { return []; } }
+  );
+  const allLangs = [...BUILTIN_LANGUAGES, ...customLangs];
+  const activeLangId = toolbarStore?.languageId;
+
+  const handleRemove = (id) => {
+    const updated = customLangs.filter(l => l.id !== id);
+    setCustomLangs(updated);
+    try { localStorage.setItem('atlas_custom_languages', JSON.stringify(updated)); } catch {}
+    toolbarStore?.removeLanguage(id);
+  };
+
+  const handleAdd = (label) => {
+    const id = 'custom_lang_' + Date.now();
+    const newLang = { id, label, instr: `使用${label}写作`, custom: true };
+    const updated = [...customLangs, newLang];
+    setCustomLangs(updated);
+    try { localStorage.setItem('atlas_custom_languages', JSON.stringify(updated)); } catch {}
+    toolbarStore?.addLanguage(label);
+  };
+
+  return (
+    <div>
+      <div style={secHdr}>语言管理</div>
+      <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, marginBottom: 10 }}>内置语言无法删除，可在 Toolbar 切换。自定义语言可在此添加或删除。</div>
+      {allLangs.map(lang => (
+        <div key={lang.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: `1px solid ${t.rule}`, marginBottom: 4, background: activeLangId === lang.id ? t.faint : 'transparent' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 600, color: t.ink }}>{lang.label}</div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>{lang.instr}</div>
+          </div>
+          {activeLangId === lang.id && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent }}>当前</span>}
+          {lang.custom ? (
+            <button type="button" onClick={() => handleRemove(lang.id)}
+              style={{ border: `1px solid #dc2626`, background: 'transparent', cursor: 'pointer', color: '#dc2626', fontFamily: t.fontMono, fontSize: 9, padding: '3px 8px' }}>删除</button>
+          ) : (
+            <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute }}>内置</span>
+          )}
+        </div>
+      ))}
+      <AddLanguageInline t={t} inp={inp} onAdd={handleAdd}/>
+    </div>
+  );
+}
+
 function AddLanguageInline({ t, inp, onAdd }) {
   const [adding, setAdding] = React.useState(false);
   const [draft, setDraft] = React.useState('');
@@ -1301,24 +1348,7 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
                     style={{ ...inp, minHeight: 80, resize: 'vertical', lineHeight: 1.55 }}/>
                   <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 3 }}>追加内容将嵌入 &lt;custom&gt; 标签，附加在基础指令末尾</div>
                 </div>
-                <div>
-                  <div style={secHdr}>语言管理</div>
-                  <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, marginBottom: 10 }}>内置语言无法删除，可在 Toolbar 切换。自定义语言可在此添加或删除。</div>
-                  {(toolbarStore?.allLanguages || BUILTIN_LANGUAGES).map(lang => (
-                    <div key={lang.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: `1px solid ${t.rule}`, marginBottom: 4, background: toolbarStore?.languageId === lang.id ? t.faint : 'transparent' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 600, color: t.ink }}>{lang.label}</div>
-                        <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>{lang.instr}</div>
-                      </div>
-                      {toolbarStore?.languageId === lang.id && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent }}>当前</span>}
-                      {lang.custom && (
-                        <button type="button" onClick={() => toolbarStore?.removeLanguage(lang.id)}
-                          style={{ border: `1px solid #dc2626`, background: 'transparent', cursor: 'pointer', color: '#dc2626', fontFamily: t.fontMono, fontSize: 9, padding: '3px 8px' }}>删除</button>
-                      )}
-                    </div>
-                  ))}
-                  <AddLanguageInline t={t} inp={inp} onAdd={label => toolbarStore?.addLanguage(label)}/>
-                </div>
+                <LanguageManager t={t} inp={inp} secHdr={secHdr} toolbarStore={toolbarStore}/>
               </React.Fragment>
             )}
 
