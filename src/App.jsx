@@ -4407,8 +4407,11 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
   const styleInstr = style?.instr || BUILTIN_STYLES[0].instr;
   const targetLength = length || 2500;
 
-  const minSections = templateSections?.length || (targetLength < 1000 ? 3 : targetLength < 2000 ? 5 : targetLength < 3000 ? 6 : 8);
-  const minWordsPerSection = targetLength < 1000 ? 150 : targetLength < 2000 ? 200 : targetLength < 3000 ? 300 : 350;
+  const minSections = templateSections?.length || (
+    targetLength < 300 ? 1 : targetLength < 700 ? 2 : targetLength < 1200 ? 3 :
+    targetLength < 2000 ? 5 : targetLength < 3000 ? 6 : 8
+  );
+  const minWordsPerSection = Math.round(targetLength / minSections * 0.75);
 
   // Zone 3: Fetch URL contents via Jina Reader API
   let fetchedUrls = [];
@@ -4461,7 +4464,7 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
   const displayLength = targetLength;
   const lengthInstr = targetLength < 100
     ? `目标字数：约 ${displayLength} 字`
-    : `目标字数：${displayLength} 字（严格控制在 ${Math.round(targetLength * 0.9)}–${Math.round(targetLength * 1.1)} 字以内）`;
+    : `目标字数：${displayLength} 字（必须达到 ${Math.round(targetLength * 0.88)} 字以上，上限 ${Math.round(targetLength * 1.12)} 字，不得少于下限）`;
 
   const systemPrompt = `${BASE_SYSTEM_PROMPT}
 
@@ -5942,8 +5945,9 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }
 function CopyLinkBtn({ t, reportData }) {
   const [copied, setCopied] = React.useState(false);
   const handleCopy = async () => {
+    const id = reportData?.id;
+    if (!id) return;
     const base = window.location.href.split('?')[0].split('#')[0];
-    const id = reportData?.meta?.issue || 'shared';
     const url = `${base}?r=${encodeURIComponent(id)}`;
     try { await navigator.clipboard.writeText(url); } catch { }
     setCopied(true);
@@ -8939,8 +8943,7 @@ function ExportModal({ t, onClose, exportData }) {
 
       } else if (format === 'link') {
         const base = window.location.href.split('?')[0].split('#')[0];
-        const param = btoa(encodeURIComponent(JSON.stringify({ id: d.id || 'shared', title: d.title, ts: Date.now() }))).slice(0, 32);
-        const url = `${base}?r=${param}`;
+        const url = `${base}?r=${encodeURIComponent(d.id || '')}`;
         await navigator.clipboard.writeText(url);
         setCopiedUrl(url);
         setDone('✓ 链接已复制到剪贴板');
@@ -9984,6 +9987,20 @@ function App() {
   const savedReports = useSavedReports();
   const [activeReportId, setActiveReportId] = React.useState(null);
 
+  // Deep-link: read ?r=<reportId> from URL on startup, navigate once reports load
+  const [deepLinkId] = React.useState(() => new URLSearchParams(window.location.search).get('r') || null);
+  const deepLinkHandled = React.useRef(false);
+  React.useEffect(() => {
+    if (!deepLinkId || deepLinkHandled.current) return;
+    const found = savedReports.reports.find(r => r.id === deepLinkId);
+    if (found) {
+      deepLinkHandled.current = true;
+      setActiveReportId(found.id);
+      setRoute('report');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [deepLinkId, savedReports.reports]);
+
   const [route, setRoute] = React.useState('home');
   const [prompt, setPrompt] = React.useState(SAMPLE_FIRST_PROMPT);
   const [showExport, setShowExport] = React.useState(false);
@@ -10074,7 +10091,7 @@ function App() {
   }, [savedReports]);
 
   const activeReport = activeReportId ? savedReports.reports.find(r => r.id === activeReportId) : null;
-  const reportData = activeReport ? { meta: activeReport.meta, metrics: [], sections: activeReport.sections, refs: activeReport.refs || [], attachments: activeReport.attachments || [] } : null;
+  const reportData = activeReport ? { id: activeReport.id, meta: activeReport.meta, metrics: [], sections: activeReport.sections, refs: activeReport.refs || [], attachments: activeReport.attachments || [] } : null;
 
   const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
 
