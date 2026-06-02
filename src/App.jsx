@@ -3120,12 +3120,31 @@ const BASE_SYSTEM_PROMPT = `<role>
 </constraints>
 
 <visualization>
-凡正文涉及可量化对比数据时，必须在该段后插入图表块（每篇报告必须插入 1–3 个，不可省略）：
-[CHART:{"type":"bar","title":"图表标题","unit":"单位（亿元/%等）","source":"数据来源机构 · 年份","data":[{"label":"标签","value":数值}]}]
-- 图表数据必须与正文数字完全一致
-- 必填字段：title / unit / source（缺少任一视为不合格）
-- 类型选择：对比用 bar，趋势用 line，占比用 pie
-- 每个图表最多 6 个数据项
+凡正文涉及可量化对比数据时，必须在该段后插入图表块（每篇报告必须插入 1–3 个，不可省略）。
+图表格式：[CHART:{...JSON...}]，必填字段：type / title / source，根据数据特征选择最合适的类型：
+
+bar（横向条形，适合排名/对比）：
+[CHART:{"type":"bar","title":"标题","unit":"单位","source":"来源","data":[{"label":"A","value":42}]}]
+
+column（纵向柱状，适合时序/分类对比）：
+[CHART:{"type":"column","title":"标题","unit":"单位","source":"来源","data":[{"label":"Q1","value":120}]}]
+
+line（折线，适合连续趋势）：
+[CHART:{"type":"line","title":"标题","unit":"单位","source":"来源","data":[{"label":"2020","value":30}]}]
+
+donut（环形，适合占比/构成，各项之和应为100%或整体总量）：
+[CHART:{"type":"donut","title":"标题","unit":"%","source":"来源","data":[{"label":"A","value":45}]}]
+
+scatter（散点，适合两变量相关性，每项需 x 和 y 值）：
+[CHART:{"type":"scatter","title":"标题","xUnit":"x轴单位","yUnit":"y轴单位","source":"来源","data":[{"label":"品牌A","x":120,"y":34}]}]
+
+radar（雷达，适合多维能力评估，3–8 个维度，value 建议 0–100）：
+[CHART:{"type":"radar","title":"标题","source":"来源","data":[{"label":"维度A","value":78}]}]
+
+combo（组合图，同一时间轴上叠加柱形+折线两组数据）：
+[CHART:{"type":"combo","title":"标题","barUnit":"左轴单位","lineUnit":"右轴单位","source":"来源","data":[{"label":"Q1","bar":200,"line":18.5}]}]
+
+规则：数据与正文完全一致；每个图表最多 8 项；不可省略 source 字段
 </visualization>
 
 <quality_check>
@@ -6663,49 +6682,323 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
   );
 }
 
-// ── Inline data chart (bar) rendered from AI-parsed CHART blocks ─────────
-function DataChart({ t, data }) {
-  if (!data?.data?.length) return null;
-  const { title, unit = '', data: items } = data;
-  const maxVal = Math.max(...items.map(d => d.value), 0.001);
-  const barColors = [t.accent, t.inkSoft, t.ink, t.mute];
+// ── Chart system ─────────────────────────────────────────────────────────
 
+const CHART_PALETTE = ['#e5251d','#1d4ed8','#1f6f44','#c2540a','#7c3aed','#0891b2','#b45309','#be185d'];
+
+function ChartShell({ t, data, children }) {
   return (
-    <div style={{
-      margin: '6px 0', padding: '16px 20px',
-      border: `1.5px solid ${t.ink}`, background: t.cardOn,
-      display: 'flex', flexDirection: 'column', gap: 10,
-    }}>
-      {title && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, letterSpacing: 1.2 }}>▪ CHART</span>
-          <span style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 12, color: t.ink }}>{title}</span>
-          {unit && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>（{unit}）</span>}
+    <div style={{ margin: '6px 0', padding: '16px 20px', border: `1.5px solid ${t.ink}`, background: t.cardOn }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, letterSpacing: 1.2 }}>▪ {(data.type || 'CHART').toUpperCase()}</span>
+        {data.title && <span style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 12, color: t.ink }}>{data.title}</span>}
+        {data.unit && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>（{data.unit}）</span>}
+      </div>
+      {children}
+      {data.source && (
+        <div style={{ marginTop: 8, fontFamily: t.fontMono, fontSize: 8, color: t.mute, textAlign: 'right' }}>
+          Source · {data.source}
         </div>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {items.map((item, i) => {
-          const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
-          return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 56px', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontFamily: t.fontCN, fontSize: 11, color: t.inkSoft, textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
-              <div style={{ height: 16, background: t.faint, position: 'relative', overflow: 'hidden' }}>
-                <div style={{
-                  position: 'absolute', left: 0, top: 0, height: '100%',
-                  width: `${pct}%`, background: i === 0 ? t.accent : (i % 2 === 0 ? t.ink : t.inkSoft),
-                  opacity: i === 0 ? 1 : 0.65,
-                  transition: 'width 0.4s ease',
-                }}/>
-              </div>
-              <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, fontWeight: 700, textAlign: 'right' }}>
-                {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}{unit ? ` ${unit}` : ''}
-              </span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
+}
+
+// Horizontal bar chart
+function BarChartH({ t, data }) {
+  const items = data.data || [];
+  const maxVal = Math.max(...items.map(d => d.value), 0.001);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {items.map((item, i) => {
+        const pct = (item.value / maxVal) * 100;
+        const color = CHART_PALETTE[i % CHART_PALETTE.length];
+        return (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 64px', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: t.fontCN, fontSize: 11, color: t.inkSoft, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
+            <div style={{ height: 18, background: t.faint, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${pct}%`, background: color, transition: 'width 0.5s ease' }}/>
+              {pct > 22 && <span style={{ position: 'absolute', right: `${100 - pct + 2}%`, top: '50%', transform: 'translateY(-50%)', fontFamily: t.fontMono, fontSize: 8, color: '#fff', whiteSpace: 'nowrap' }}>{typeof item.value === 'number' ? item.value.toLocaleString() : item.value}</span>}
+            </div>
+            <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, fontWeight: 700, textAlign: 'right' }}>
+              {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}{data.unit ? ` ${data.unit}` : ''}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Vertical column chart
+function ColumnChart({ t, data }) {
+  const items = data.data || [];
+  if (!items.length) return null;
+  const maxVal = Math.max(...items.map(d => d.value), 0.001);
+  const VW = 500, VH = 210, pL = 44, pR = 16, pT = 20, pB = 48;
+  const cW = VW - pL - pR, cH = VH - pT - pB;
+  const n = items.length;
+  const slotW = cW / n;
+  const barW = Math.min(slotW * 0.62, 52);
+  const gridVals = [0.25, 0.5, 0.75, 1].map(f => ({ y: pT + cH * (1 - f), v: Math.round(maxVal * f) }));
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: 'block' }}>
+      {gridVals.map(({ y, v }) => (
+        <g key={y}>
+          <line x1={pL} y1={y} x2={VW - pR} y2={y} stroke={t.rule} strokeWidth={0.5}/>
+          <text x={pL - 4} y={y + 3.5} textAnchor="end" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{v.toLocaleString()}</text>
+        </g>
+      ))}
+      {items.map((item, i) => {
+        const bh = (item.value / maxVal) * cH;
+        const x = pL + i * slotW + (slotW - barW) / 2;
+        const y = pT + cH - bh;
+        const color = CHART_PALETTE[i % CHART_PALETTE.length];
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barW} height={bh} fill={color} opacity={0.88}/>
+            {bh > 14 && <text x={x + barW / 2} y={y - 4} textAnchor="middle" fill={t.ink} fontSize={8} fontFamily="IBM Plex Mono,monospace" fontWeight={700}>{item.value.toLocaleString()}</text>}
+            <text x={x + barW / 2} y={pT + cH + 14} textAnchor="middle" fill={t.inkSoft} fontSize={9} fontFamily={t.fontCN}>{item.label.length > 6 ? item.label.slice(0, 5) + '…' : item.label}</text>
+          </g>
+        );
+      })}
+      <line x1={pL} y1={pT + cH} x2={VW - pR} y2={pT + cH} stroke={t.ink} strokeWidth={1}/>
+      <line x1={pL} y1={pT} x2={pL} y2={pT + cH} stroke={t.ink} strokeWidth={0.5}/>
+    </svg>
+  );
+}
+
+// Line chart
+function LineChart({ t, data }) {
+  const items = data.data || [];
+  if (items.length < 2) return null;
+  const maxVal = Math.max(...items.map(d => d.value), 0.001);
+  const VW = 500, VH = 210, pL = 44, pR = 16, pT = 20, pB = 48;
+  const cW = VW - pL - pR, cH = VH - pT - pB;
+  const n = items.length;
+  const pts = items.map((item, i) => ({
+    x: pL + (i / (n - 1)) * cW,
+    y: pT + cH - (item.value / maxVal) * cH,
+    label: item.label, value: item.value,
+  }));
+  const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaD = `${pathD} L${pts[pts.length - 1].x.toFixed(1)},${(pT + cH).toFixed(1)} L${pts[0].x.toFixed(1)},${(pT + cH).toFixed(1)} Z`;
+  const uid = `lc_${Math.random().toString(36).slice(2, 7)}`;
+  const gridVals = [0.25, 0.5, 0.75, 1].map(f => ({ y: pT + cH * (1 - f), v: Math.round(maxVal * f) }));
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id={uid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={t.accent} stopOpacity="0.15"/>
+          <stop offset="100%" stopColor={t.accent} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      {gridVals.map(({ y, v }) => (
+        <g key={y}>
+          <line x1={pL} y1={y} x2={VW - pR} y2={y} stroke={t.rule} strokeWidth={0.5} strokeDasharray="3,3"/>
+          <text x={pL - 4} y={y + 3.5} textAnchor="end" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{v.toLocaleString()}</text>
+        </g>
+      ))}
+      <path d={areaD} fill={`url(#${uid})`}/>
+      <path d={pathD} fill="none" stroke={t.accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/>
+      {pts.map((p, i) => (
+        <g key={i}>
+          <circle cx={p.x} cy={p.y} r={3.5} fill={t.accent} stroke={t.paper} strokeWidth={1.5}/>
+          <text x={p.x} y={p.y - 8} textAnchor="middle" fill={t.ink} fontSize={8} fontFamily="IBM Plex Mono,monospace" fontWeight={700}>{p.value.toLocaleString()}</text>
+          <text x={p.x} y={pT + cH + 14} textAnchor="middle" fill={t.inkSoft} fontSize={9} fontFamily={t.fontCN}>{p.label.length > 5 ? p.label.slice(0, 5) + '…' : p.label}</text>
+        </g>
+      ))}
+      <line x1={pL} y1={pT + cH} x2={VW - pR} y2={pT + cH} stroke={t.ink} strokeWidth={1}/>
+      <line x1={pL} y1={pT} x2={pL} y2={pT + cH} stroke={t.ink} strokeWidth={0.5}/>
+    </svg>
+  );
+}
+
+// Donut chart
+function DonutChart({ t, data }) {
+  const items = data.data || [];
+  if (!items.length) return null;
+  const total = items.reduce((s, d) => s + d.value, 0) || 1;
+  const VW = 460, VH = 200, cx = 105, cy = 100, R = 80, r = 50;
+  let angle = -Math.PI / 2;
+  const segs = items.map((item, i) => {
+    const sweep = (item.value / total) * 2 * Math.PI;
+    const sa = angle, ea = angle + sweep;
+    angle = ea;
+    const large = sweep > Math.PI ? 1 : 0;
+    const cos1 = Math.cos(sa), sin1 = Math.sin(sa), cos2 = Math.cos(ea), sin2 = Math.sin(ea);
+    const path = `M${(cx + R * cos1).toFixed(2)},${(cy + R * sin1).toFixed(2)} A${R},${R},0,${large},1,${(cx + R * cos2).toFixed(2)},${(cy + R * sin2).toFixed(2)} L${(cx + r * cos2).toFixed(2)},${(cy + r * sin2).toFixed(2)} A${r},${r},0,${large},0,${(cx + r * cos1).toFixed(2)},${(cy + r * sin1).toFixed(2)} Z`;
+    return { path, color: CHART_PALETTE[i % CHART_PALETTE.length], label: item.label, value: item.value, pct: Math.round((item.value / total) * 100) };
+  });
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: 'block' }}>
+      {segs.map((seg, i) => <path key={i} d={seg.path} fill={seg.color} opacity={0.9}/>)}
+      <text x={cx} y={cy - 7} textAnchor="middle" fill={t.ink} fontSize={16} fontFamily="IBM Plex Mono,monospace" fontWeight={700}>{total.toLocaleString()}</text>
+      <text x={cx} y={cy + 10} textAnchor="middle" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{data.unit || 'TOTAL'}</text>
+      {segs.map((seg, i) => (
+        <g key={i} transform={`translate(225,${10 + i * 23})`}>
+          <rect x={0} y={0} width={10} height={10} fill={seg.color} rx={2}/>
+          <text x={15} y={9} fill={t.inkSoft} fontSize={10} fontFamily={t.fontCN}>{seg.label}</text>
+          <text x={220} y={9} textAnchor="end" fill={t.ink} fontSize={9} fontFamily="IBM Plex Mono,monospace" fontWeight={700}>{seg.pct}%</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// Scatter plot
+function ScatterChart({ t, data }) {
+  const items = data.data || [];
+  if (!items.length) return null;
+  const xs = items.map(d => d.x ?? 0), ys = items.map(d => d.y ?? 0);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const rX = maxX - minX || 1, rY = maxY - minY || 1;
+  const VW = 500, VH = 230, pL = 52, pR = 20, pT = 20, pB = 52;
+  const cW = VW - pL - pR, cH = VH - pT - pB;
+  const toX = v => pL + ((v - minX) / rX) * cW;
+  const toY = v => pT + cH - ((v - minY) / rY) * cH;
+  const gridFs = [0, 0.25, 0.5, 0.75, 1];
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: 'block' }}>
+      {gridFs.map(f => (
+        <g key={f}>
+          <line x1={pL} y1={pT + cH * (1 - f)} x2={VW - pR} y2={pT + cH * (1 - f)} stroke={t.rule} strokeWidth={0.5} strokeDasharray="2,3"/>
+          <line x1={pL + cW * f} y1={pT} x2={pL + cW * f} y2={pT + cH} stroke={t.rule} strokeWidth={0.5} strokeDasharray="2,3"/>
+        </g>
+      ))}
+      <line x1={pL} y1={pT + cH} x2={VW - pR} y2={pT + cH} stroke={t.ink} strokeWidth={1}/>
+      <line x1={pL} y1={pT} x2={pL} y2={pT + cH} stroke={t.ink} strokeWidth={1}/>
+      <text x={pL} y={pT + cH + 14} textAnchor="middle" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{minX.toLocaleString()}</text>
+      <text x={VW - pR} y={pT + cH + 14} textAnchor="middle" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{maxX.toLocaleString()}</text>
+      <text x={pL - 4} y={pT} textAnchor="end" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{maxY.toLocaleString()}</text>
+      {data.xUnit && <text x={VW / 2} y={VH - 4} textAnchor="middle" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{data.xUnit}</text>}
+      {data.yUnit && <text x={10} y={pT + cH / 2} textAnchor="middle" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace" transform={`rotate(-90,10,${pT + cH / 2})`}>{data.yUnit}</text>}
+      {items.map((item, i) => {
+        const px = toX(item.x ?? 0), py = toY(item.y ?? 0);
+        const color = CHART_PALETTE[i % CHART_PALETTE.length];
+        return (
+          <g key={i}>
+            <circle cx={px.toFixed(2)} cy={py.toFixed(2)} r={5} fill={color} opacity={0.85} stroke={t.paper} strokeWidth={1.5}/>
+            {item.label && <text x={px.toFixed(2)} y={(py - 9).toFixed(2)} textAnchor="middle" fill={t.inkSoft} fontSize={8} fontFamily={t.fontCN}>{item.label}</text>}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// Radar chart
+function RadarChart({ t, data }) {
+  const items = data.data || [];
+  if (items.length < 3) return null;
+  const maxVal = data.maxValue || Math.max(...items.map(d => d.value), 0.001);
+  const n = items.length;
+  const VW = 360, VH = 300, cx = VW / 2, cy = VH / 2 + 4, R = 108;
+  const ang = i => -Math.PI / 2 + (i / n) * 2 * Math.PI;
+  const px = (i, r) => cx + r * Math.cos(ang(i));
+  const py = (i, r) => cy + r * Math.sin(ang(i));
+  const levels = [0.25, 0.5, 0.75, 1];
+  const dataPoly = items.map((item, i) => {
+    const r = (item.value / maxVal) * R;
+    return `${px(i, r).toFixed(2)},${py(i, r).toFixed(2)}`;
+  }).join(' ');
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: 'block' }}>
+      {levels.map(f => (
+        <polygon key={f} points={items.map((_, i) => `${px(i, R * f).toFixed(2)},${py(i, R * f).toFixed(2)}`).join(' ')}
+          fill="none" stroke={t.rule} strokeWidth={f === 1 ? 1 : 0.5}/>
+      ))}
+      {items.map((_, i) => (
+        <line key={i} x1={cx} y1={cy} x2={px(i, R).toFixed(2)} y2={py(i, R).toFixed(2)} stroke={t.rule} strokeWidth={0.5}/>
+      ))}
+      <polygon points={dataPoly} fill={t.accent} fillOpacity={0.12} stroke={t.accent} strokeWidth={2}/>
+      {items.map((item, i) => {
+        const r = (item.value / maxVal) * R;
+        return <circle key={i} cx={px(i, r).toFixed(2)} cy={py(i, r).toFixed(2)} r={3.5} fill={t.accent} stroke={t.paper} strokeWidth={1.5}/>;
+      })}
+      {items.map((item, i) => {
+        const lx = px(i, R + 20), ly = py(i, R + 20);
+        const anchor = lx < cx - 10 ? 'end' : lx > cx + 10 ? 'start' : 'middle';
+        return (
+          <text key={i} x={lx.toFixed(2)} y={ly.toFixed(2)} textAnchor={anchor} dominantBaseline="middle"
+            fill={t.inkSoft} fontSize={9} fontFamily={t.fontCN}>{item.label}</text>
+        );
+      })}
+      {items.map((item, i) => {
+        const r = (item.value / maxVal) * R;
+        return <text key={i} x={px(i, r).toFixed(2)} y={(py(i, r) - 9).toFixed(2)} textAnchor="middle"
+          fill={t.ink} fontSize={8} fontFamily="IBM Plex Mono,monospace" fontWeight={700}>{item.value}</text>;
+      })}
+      {/* Level labels on top axis */}
+      {levels.map(f => (
+        <text key={f} x={(cx + 3).toFixed(2)} y={(cy - R * f).toFixed(2)} fill={t.mute} fontSize={7} fontFamily="IBM Plex Mono,monospace">{Math.round(maxVal * f)}</text>
+      ))}
+    </svg>
+  );
+}
+
+// Combo chart (bar + line)
+function ComboChart({ t, data }) {
+  const items = data.data || [];
+  if (!items.length) return null;
+  const barVals = items.map(d => d.bar ?? 0);
+  const lineVals = items.map(d => d.line ?? 0);
+  const maxBar = Math.max(...barVals, 0.001), maxLine = Math.max(...lineVals, 0.001);
+  const VW = 500, VH = 210, pL = 48, pR = 48, pT = 20, pB = 48;
+  const cW = VW - pL - pR, cH = VH - pT - pB;
+  const n = items.length;
+  const slotW = cW / n;
+  const barW = Math.min(slotW * 0.5, 44);
+  const lx = i => pL + i * slotW + slotW / 2;
+  const ly = i => pT + cH - (lineVals[i] / maxLine) * cH;
+  const linePath = items.map((_, i) => `${i === 0 ? 'M' : 'L'}${lx(i).toFixed(1)},${ly(i).toFixed(1)}`).join(' ');
+  const gridVals = [0.25, 0.5, 0.75, 1].map(f => ({ y: pT + cH * (1 - f), vBar: Math.round(maxBar * f), vLine: +(maxLine * f).toFixed(1) }));
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: 'block' }}>
+      {gridVals.map(({ y, vBar, vLine }) => (
+        <g key={y}>
+          <line x1={pL} y1={y} x2={VW - pR} y2={y} stroke={t.rule} strokeWidth={0.5} strokeDasharray="3,3"/>
+          <text x={pL - 4} y={y + 3.5} textAnchor="end" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{vBar.toLocaleString()}</text>
+          <text x={VW - pR + 4} y={y + 3.5} textAnchor="start" fill={t.accent} fontSize={8} fontFamily="IBM Plex Mono,monospace">{vLine}</text>
+        </g>
+      ))}
+      {items.map((item, i) => {
+        const bh = (barVals[i] / maxBar) * cH;
+        const x = pL + i * slotW + (slotW - barW) / 2;
+        return (
+          <g key={i}>
+            <rect x={x} y={pT + cH - bh} width={barW} height={bh} fill={t.ink} opacity={0.72}/>
+            <text x={lx(i)} y={pT + cH + 14} textAnchor="middle" fill={t.inkSoft} fontSize={9} fontFamily={t.fontCN}>{item.label.length > 6 ? item.label.slice(0, 5) + '…' : item.label}</text>
+          </g>
+        );
+      })}
+      <path d={linePath} fill="none" stroke={t.accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"/>
+      {items.map((_, i) => <circle key={i} cx={lx(i).toFixed(2)} cy={ly(i).toFixed(2)} r={3.5} fill={t.accent} stroke={t.paper} strokeWidth={1.5}/>)}
+      <line x1={pL} y1={pT + cH} x2={VW - pR} y2={pT + cH} stroke={t.ink} strokeWidth={1}/>
+      <line x1={pL} y1={pT} x2={pL} y2={pT + cH} stroke={t.ink} strokeWidth={0.5}/>
+      <line x1={VW - pR} y1={pT} x2={VW - pR} y2={pT + cH} stroke={t.accent} strokeWidth={0.5}/>
+      {data.barUnit && <text x={pL} y={pT - 5} textAnchor="start" fill={t.mute} fontSize={7} fontFamily="IBM Plex Mono,monospace">{data.barUnit}</text>}
+      {data.lineUnit && <text x={VW - pR} y={pT - 5} textAnchor="end" fill={t.accent} fontSize={7} fontFamily="IBM Plex Mono,monospace">{data.lineUnit}</text>}
+    </svg>
+  );
+}
+
+function DataChart({ t, data }) {
+  if (!data) return null;
+  const hasData = (data.data?.length ?? 0) > 0;
+  if (!hasData) return null;
+  let inner;
+  switch (data.type) {
+    case 'column': inner = <ColumnChart t={t} data={data}/>; break;
+    case 'line':   inner = <LineChart   t={t} data={data}/>; break;
+    case 'donut':  inner = <DonutChart  t={t} data={data}/>; break;
+    case 'scatter':inner = <ScatterChart t={t} data={data}/>; break;
+    case 'radar':  inner = <RadarChart  t={t} data={data}/>; break;
+    case 'combo':  inner = <ComboChart  t={t} data={data}/>; break;
+    default:       inner = <BarChartH   t={t} data={data}/>; break;
+  }
+  return <ChartShell t={t} data={data}>{inner}</ChartShell>;
 }
 
 function EditableText({ editMode, value, onChange, multiline = true, style = {} }) {
