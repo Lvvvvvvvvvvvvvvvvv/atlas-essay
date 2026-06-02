@@ -13,8 +13,9 @@ export default async function handler(req, res) {
 
   const { provider, messages, model, temperature, top_p, frequency_penalty, presence_penalty, max_tokens } = req.body || {};
 
-  // Look up encrypted key for this user + provider
-  const { data: keyRow } = await supabaseAdmin
+  // 1. Try personal key first
+  let keyRow = null;
+  const { data: personalKey } = await supabaseAdmin
     .from('api_keys')
     .select('key_enc, api_url')
     .eq('user_id', user.id)
@@ -22,6 +23,29 @@ export default async function handler(req, res) {
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
+  keyRow = personalKey;
+
+  // 2. Fall back to team key if no personal key
+  if (!keyRow) {
+    const { data: membership } = await supabaseAdmin
+      .from('team_members')
+      .select('team_id, role')
+      .eq('user_id', user.id)
+      .limit(1)
+      .single();
+
+    if (membership && membership.role !== 'viewer') {
+      const { data: teamKey } = await supabaseAdmin
+        .from('api_keys')
+        .select('key_enc, api_url')
+        .eq('team_id', membership.team_id)
+        .eq('provider', provider || 'anthropic')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      keyRow = teamKey;
+    }
+  }
 
   if (!keyRow) return res.status(404).json({ error: 'No server-side API key found for this provider' });
 
@@ -67,3 +91,4 @@ export default async function handler(req, res) {
     if (!res.headersSent) res.status(502).json({ error: e.message });
   }
 }
+

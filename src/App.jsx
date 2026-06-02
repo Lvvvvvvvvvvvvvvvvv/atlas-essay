@@ -703,7 +703,7 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks,
           VOL.04 · № {issueNum}
         </span>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{dateStr} · {timeStr}</span>
-        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode}/>
+        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode} setRoute={setRoute}/>
       </div>
     </div>
   );
@@ -777,13 +777,16 @@ function UMenuReportModal({ visible, title, reports, selected, setSelected, onCo
 
 // ── Permission system ─────────────────────────────────────────────────────
 function usePermission() {
-  const role = (() => { try { return localStorage.getItem('atlas_role') || 'admin'; } catch { return 'admin'; } })();
+  const { role: authRole } = useAuth();
+  // If user has no team role (not in a team), treat as full admin
+  const role = authRole || 'admin';
   const DEFAULT_RULES = {
     admin:  ['generate','save','export','template','library','sources','source_manage','sync','model_config','appearance'],
     editor: ['generate','save','export','template','library','sources','appearance'],
     viewer: ['library'],
   };
   const can = (feature) => {
+    if (!authRole) return true; // no team = full access
     try {
       const cfg = JSON.parse(localStorage.getItem('atlas_perm_config') || 'null');
       if (cfg && cfg[role]) return !!cfg[role][feature];
@@ -1468,8 +1471,8 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
   );
 }
 
-function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode }) {
-  const { user, signOut } = useAuth();
+function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, setRoute }) {
+  const { user, team, role, signOut } = useAuth();
   const [open, setOpen] = React.useState(false);
   const [section, setSection] = React.useState(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -1590,6 +1593,14 @@ function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, 
                   {profileSaved && <span style={{ fontFamily:t.fontMono, fontSize:9, color:'#16a34a', letterSpacing:0.5 }}>已保存 ✓</span>}
                 </div>
               </div>
+            )}
+            <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
+            {team ? (
+              <MRow label={team.name} sub={`团队 · ${role === 'admin' ? '管理员' : role === 'editor' ? '编辑' : '只读'}`} arrow
+                onClick={() => { setOpen(false); setSection(null); setRoute?.('team'); }}/>
+            ) : (
+              <MRow label="创建团队" sub="与他人协作，共享密钥与知识库" arrow
+                onClick={() => { setOpen(false); setSection(null); setRoute?.('team'); }}/>
             )}
             <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
             <MRow label="设置" sub="模型 · 导出 · 权限" arrow onClick={() => { setOpen(false); setSection(null); setSettingsOpen(true); }}/>
@@ -4598,6 +4609,453 @@ ${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}
   } catch (err) {
     onError(err.message || String(err));
   }
+}
+
+// ── TeamPanel ────────────────────────────────────────────────────────────────
+
+function TeamPanel({ t, onBack }) {
+  const { team, role, refreshTeam } = useAuth();
+  const [activeTab, setActiveTab] = React.useState('members');
+  const [members, setMembers] = React.useState([]);
+  const [teamKeys, setTeamKeys] = React.useState([]);
+  const [knowledge, setKnowledge] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [status, setStatus] = React.useState('');
+
+  // Create team state
+  const [createName, setCreateName] = React.useState('');
+  const [creating, setCreating] = React.useState(false);
+
+  const getToken = React.useCallback(async () => {
+    const { supabase } = await import('./lib/supabase.js');
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
+  }, []);
+
+  const apiFetch = React.useCallback(async (path, opts = {}) => {
+    const token = await getToken();
+    const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Error');
+    return json;
+  }, [getToken]);
+
+  const showStatus = (msg, isErr = false) => {
+    if (isErr) setError(msg); else setStatus(msg);
+    setTimeout(() => { setError(''); setStatus(''); }, 3500);
+  };
+
+  const loadMembers  = React.useCallback(() => apiFetch('/api/teams/members').then(setMembers).catch(() => {}), [apiFetch]);
+  const loadKeys     = React.useCallback(() => apiFetch('/api/teams/keys').then(setTeamKeys).catch(() => {}), [apiFetch]);
+  const loadKnowledge = React.useCallback(() => apiFetch('/api/teams/knowledge').then(setKnowledge).catch(() => {}), [apiFetch]);
+
+  React.useEffect(() => {
+    if (!team) return;
+    if (activeTab === 'members') loadMembers();
+    else if (activeTab === 'keys') loadKeys();
+    else if (activeTab === 'knowledge') loadKnowledge();
+  }, [activeTab, team]);
+
+  const handleCreateTeam = async () => {
+    if (!createName.trim()) return;
+    setCreating(true);
+    try {
+      await apiFetch('/api/teams', { method: 'POST', body: JSON.stringify({ name: createName.trim() }) });
+      await refreshTeam?.();
+      showStatus('团队创建成功');
+    } catch (e) { showStatus(e.message, true); }
+    setCreating(false);
+  };
+
+  const isAdmin = role === 'admin';
+  const isEditorOrAdmin = role === 'admin' || role === 'editor';
+
+  const inp = { width: '100%', padding: '7px 10px', fontFamily: t.fontMono, fontSize: 12, border: `1px solid ${t.rule}`, background: t.paper, color: t.ink, outline: 'none', boxSizing: 'border-box' };
+  const btnBase = { padding: '6px 16px', fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10, letterSpacing: 1, cursor: 'pointer', border: 'none', textTransform: 'uppercase' };
+  const secHdr = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 10, marginTop: 20 };
+
+  const TABS = [
+    { k: 'members', label: '成员' },
+    { k: 'keys', label: '共享密钥' },
+    { k: 'knowledge', label: '知识库' },
+    ...(isAdmin ? [{ k: 'settings', label: '团队设置' }] : []),
+  ];
+
+  // ── No team: show create UI ──────────────────────────
+  if (!team) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: t.paper, color: t.ink }}>
+        <div style={{ padding: '12px 36px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 14 }}>
+          <button onClick={onBack} style={{ ...btnBase, background: 'transparent', color: t.mute, border: `1px solid ${t.rule}`, padding: '5px 12px' }}>← 返回</button>
+          <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 14, color: t.ink }}>创建团队</span>
+        </div>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+          <div style={{ maxWidth: 400, width: '100%' }}>
+            <div style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 22, color: t.ink, marginBottom: 8 }}>开始协作</div>
+            <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.mute, marginBottom: 32, lineHeight: 1.7 }}>创建团队后，可以共享模型密钥、提示词模板和知识库，邀请成员一起生成报告。</div>
+            <div style={secHdr}>团队名称</div>
+            <input value={createName} onChange={e => setCreateName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreateTeam()}
+              placeholder="例如：增长研究团队" style={{ ...inp, marginBottom: 16 }}/>
+            <button onClick={handleCreateTeam} disabled={creating || !createName.trim()}
+              style={{ ...btnBase, background: t.accent, color: '#fff', width: '100%', padding: '10px 0', opacity: creating || !createName.trim() ? 0.5 : 1 }}>
+              {creating ? '创建中…' : '创建团队'}
+            </button>
+            {error && <div style={{ marginTop: 12, fontFamily: t.fontMono, fontSize: 11, color: '#e5251d' }}>{error}</div>}
+            {status && <div style={{ marginTop: 12, fontFamily: t.fontMono, fontSize: 11, color: '#16a34a' }}>{status}</div>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Has team: show tabs ──────────────────────────────
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: t.paper, color: t.ink }}>
+      {/* Header */}
+      <div style={{ padding: '12px 36px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+        <button onClick={onBack} style={{ ...btnBase, background: 'transparent', color: t.mute, border: `1px solid ${t.rule}`, padding: '5px 12px' }}>← 返回</button>
+        <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 14, color: t.ink }}>{team.name}</span>
+        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, border: `1px solid ${t.accent}`, padding: '2px 8px', letterSpacing: 1 }}>
+          {role === 'admin' ? '管理员' : role === 'editor' ? '编辑' : '只读'}
+        </span>
+        <span style={{ flex: 1 }}/>
+        {status && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#16a34a' }}>{status}</span>}
+        {error && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#e5251d' }}>{error}</span>}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${t.rule}`, flexShrink: 0 }}>
+        {TABS.map(tab => (
+          <button key={tab.k} onClick={() => setActiveTab(tab.k)} style={{
+            padding: '10px 24px', fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1.2,
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: activeTab === tab.k ? t.ink : t.mute,
+            borderBottom: activeTab === tab.k ? `2px solid ${t.accent}` : '2px solid transparent',
+            marginBottom: -1,
+          }}>{tab.label.toUpperCase()}</button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '28px 36px', maxWidth: 760 }}>
+
+        {/* ── 成员 Tab ──────────────────────────────── */}
+        {activeTab === 'members' && <MembersTab t={t} members={members} role={role} team={team} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadMembers} showStatus={showStatus}/>}
+
+        {/* ── 共享密钥 Tab ──────────────────────────── */}
+        {activeTab === 'keys' && <KeysTab t={t} teamKeys={teamKeys} isAdmin={isAdmin} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadKeys} showStatus={showStatus}/>}
+
+        {/* ── 知识库 Tab ────────────────────────────── */}
+        {activeTab === 'knowledge' && <KnowledgeTab t={t} knowledge={knowledge} canEdit={isEditorOrAdmin} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadKnowledge} showStatus={showStatus}/>}
+
+        {/* ── 团队设置 Tab ──────────────────────────── */}
+        {activeTab === 'settings' && isAdmin && <TeamSettingsTab t={t} team={team} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={refreshTeam} showStatus={showStatus} onBack={onBack}/>}
+      </div>
+    </div>
+  );
+}
+
+function MembersTab({ t, members, role, team, inp, btnBase, secHdr, apiFetch, onRefresh, showStatus }) {
+  const [email, setEmail] = React.useState('');
+  const [inviteRole, setInviteRole] = React.useState('editor');
+  const [inviting, setInviting] = React.useState(false);
+  const isAdmin = role === 'admin';
+  const ROLE_LABELS = { admin: '管理员', editor: '编辑', viewer: '只读' };
+  const ROLE_COLORS = { admin: t.accent, editor: '#1d4ed8', viewer: t.mute };
+
+  const handleInvite = async () => {
+    if (!email.trim()) return;
+    setInviting(true);
+    try {
+      await apiFetch('/api/teams/members', { method: 'POST', body: JSON.stringify({ email: email.trim(), role: inviteRole }) });
+      setEmail('');
+      await onRefresh();
+      showStatus('成员已添加');
+    } catch (e) { showStatus(e.message, true); }
+    setInviting(false);
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    try {
+      await apiFetch(`/api/teams/members?userId=${userId}`, { method: 'PATCH', body: JSON.stringify({ role: newRole }) });
+      await onRefresh();
+      showStatus('角色已更新');
+    } catch (e) { showStatus(e.message, true); }
+  };
+
+  const handleRemove = async (userId) => {
+    if (!confirm('确认移除该成员？')) return;
+    try {
+      await apiFetch(`/api/teams/members?userId=${userId}`, { method: 'DELETE' });
+      await onRefresh();
+      showStatus('成员已移除');
+    } catch (e) { showStatus(e.message, true); }
+  };
+
+  return (
+    <div>
+      {isAdmin && (
+        <>
+          <div style={secHdr}>邀请成员</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="输入邮箱地址（对方需已注册）"
+              onKeyDown={e => e.key === 'Enter' && handleInvite()} style={{ ...inp, flex: 1 }}/>
+            <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
+              style={{ ...inp, width: 90, cursor: 'pointer' }}>
+              <option value="editor">编辑</option>
+              <option value="viewer">只读</option>
+              <option value="admin">管理员</option>
+            </select>
+            <button onClick={handleInvite} disabled={inviting || !email.trim()}
+              style={{ ...btnBase, background: t.ink, color: t.paper, opacity: inviting || !email.trim() ? 0.5 : 1 }}>
+              {inviting ? '…' : '添加'}
+            </button>
+          </div>
+        </>
+      )}
+      <div style={secHdr}>成员列表 · {members.length} 人</div>
+      {members.map(m => (
+        <div key={m.userId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: `1px solid ${t.rule}`, marginBottom: 6 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: ROLE_COLORS[m.role] || t.ink, color: '#fff', fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {(m.displayName || m.email || '?')[0].toUpperCase()}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 600, color: t.ink }}>{m.displayName || m.email}</div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{m.email}</div>
+          </div>
+          {isAdmin && m.userId !== members.find(x => x.role === 'admin')?.userId ? (
+            <select value={m.role} onChange={e => handleRoleChange(m.userId, e.target.value)}
+              style={{ ...inp, width: 80, padding: '4px 8px', cursor: 'pointer' }}>
+              <option value="admin">管理员</option>
+              <option value="editor">编辑</option>
+              <option value="viewer">只读</option>
+            </select>
+          ) : (
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: ROLE_COLORS[m.role], border: `1px solid ${ROLE_COLORS[m.role]}`, padding: '2px 8px' }}>{ROLE_LABELS[m.role]}</span>
+          )}
+          {isAdmin && (
+            <button onClick={() => handleRemove(m.userId)} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '4px 10px', fontSize: 9 }}>移除</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function KeysTab({ t, teamKeys, isAdmin, inp, btnBase, secHdr, apiFetch, onRefresh, showStatus }) {
+  const [form, setForm] = React.useState({ provider: 'anthropic', apiKey: '', apiUrl: '', label: '' });
+  const [adding, setAdding] = React.useState(false);
+  const [showForm, setShowForm] = React.useState(false);
+
+  const PROVIDERS = [{ v: 'anthropic', label: 'Anthropic (Claude)' }, { v: 'openai', label: 'OpenAI' }, { v: 'custom', label: '自定义' }];
+  const maskKey = (label) => label || '(未命名)';
+
+  const handleAdd = async () => {
+    if (!form.apiKey.trim()) return;
+    setAdding(true);
+    try {
+      await apiFetch('/api/teams/keys', { method: 'POST', body: JSON.stringify(form) });
+      setForm({ provider: 'anthropic', apiKey: '', apiUrl: '', label: '' });
+      setShowForm(false);
+      await onRefresh();
+      showStatus('密钥已添加');
+    } catch (e) { showStatus(e.message, true); }
+    setAdding(false);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('确认删除该共享密钥？')) return;
+    try {
+      await apiFetch(`/api/teams/keys?id=${id}`, { method: 'DELETE' });
+      await onRefresh();
+      showStatus('密钥已删除');
+    } catch (e) { showStatus(e.message, true); }
+  };
+
+  return (
+    <div>
+      <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, marginBottom: 16, lineHeight: 1.7, padding: '10px 14px', border: `1px solid ${t.rule}`, background: t.faint }}>
+        共享密钥由管理员统一管理，密钥原文不可查看。编辑成员生成报告时，若无个人密钥将自动使用团队密钥。
+      </div>
+      {isAdmin && (
+        <>
+          <button onClick={() => setShowForm(f => !f)} style={{ ...btnBase, background: t.ink, color: t.paper, marginBottom: 16 }}>
+            {showForm ? '取消' : '＋ 添加密钥'}
+          </button>
+          {showForm && (
+            <div style={{ padding: '16px', border: `1px solid ${t.rule}`, marginBottom: 20, background: t.faint }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>供应商</div>
+                  <select value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} style={{ ...inp }}>
+                    {PROVIDERS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>标签（可选）</div>
+                  <input value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="如：生产密钥" style={inp}/>
+                </div>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>API Key</div>
+                <input type="password" value={form.apiKey} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))} placeholder="sk-..." style={inp}/>
+              </div>
+              {form.provider === 'custom' && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>API URL</div>
+                  <input value={form.apiUrl} onChange={e => setForm(f => ({ ...f, apiUrl: e.target.value }))} placeholder="https://..." style={inp}/>
+                </div>
+              )}
+              <button onClick={handleAdd} disabled={adding || !form.apiKey.trim()}
+                style={{ ...btnBase, background: t.accent, color: '#fff', opacity: adding || !form.apiKey.trim() ? 0.5 : 1 }}>
+                {adding ? '保存中…' : '保存密钥'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+      <div style={secHdr}>已保存的共享密钥 · {teamKeys.length} 个</div>
+      {teamKeys.length === 0 && <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>暂无共享密钥</div>}
+      {teamKeys.map(k => (
+        <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: `1px solid ${t.rule}`, marginBottom: 6 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: t.fontMono, fontSize: 12, color: t.ink }}>{maskKey(k.label)}</div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{k.provider} · 已加密存储 · {new Date(k.created_at).toLocaleDateString('zh-CN')}</div>
+          </div>
+          {isAdmin && (
+            <button onClick={() => handleDelete(k.id)} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '4px 10px', fontSize: 9 }}>删除</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function KnowledgeTab({ t, knowledge, canEdit, inp, btnBase, secHdr, apiFetch, onRefresh, showStatus }) {
+  const [knType, setKnType] = React.useState('template');
+  const [form, setForm] = React.useState({ name: '', content: '' });
+  const [showForm, setShowForm] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+
+  const TYPE_LABELS = { template: '提示词模板', language: '自定义语言', prompt_extra: '追加指令' };
+  const filtered = knowledge.filter(k => k.type === knType);
+
+  const handleAdd = async () => {
+    if (!form.name.trim() || !form.content.trim()) return;
+    setSaving(true);
+    try {
+      await apiFetch('/api/teams/knowledge', { method: 'POST', body: JSON.stringify({ type: knType, name: form.name.trim(), content: { value: form.content.trim() } }) });
+      setForm({ name: '', content: '' });
+      setShowForm(false);
+      await onRefresh();
+      showStatus('已添加到知识库');
+    } catch (e) { showStatus(e.message, true); }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('确认删除该知识库条目？')) return;
+    try {
+      await apiFetch(`/api/teams/knowledge?id=${id}`, { method: 'DELETE' });
+      await onRefresh();
+      showStatus('已删除');
+    } catch (e) { showStatus(e.message, true); }
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: `1px solid ${t.rule}` }}>
+        {Object.entries(TYPE_LABELS).map(([k, label]) => (
+          <button key={k} onClick={() => setKnType(k)} style={{
+            padding: '7px 16px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1, background: 'transparent', border: 'none', cursor: 'pointer',
+            color: knType === k ? t.ink : t.mute,
+            borderBottom: knType === k ? `2px solid ${t.ink}` : '2px solid transparent', marginBottom: -1,
+          }}>{label}</button>
+        ))}
+      </div>
+      {canEdit && (
+        <>
+          <button onClick={() => setShowForm(f => !f)} style={{ ...btnBase, background: t.ink, color: t.paper, marginBottom: 16 }}>
+            {showForm ? '取消' : `＋ 添加${TYPE_LABELS[knType]}`}
+          </button>
+          {showForm && (
+            <div style={{ padding: 16, border: `1px solid ${t.rule}`, marginBottom: 20, background: t.faint }}>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>名称</div>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="条目名称" style={inp}/>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>内容</div>
+                <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} placeholder={knType === 'language' ? '使用[语言名]写作' : '输入内容…'} rows={4}
+                  style={{ ...inp, resize: 'vertical', lineHeight: 1.6 }}/>
+              </div>
+              <button onClick={handleAdd} disabled={saving || !form.name.trim() || !form.content.trim()}
+                style={{ ...btnBase, background: t.accent, color: '#fff', opacity: saving ? 0.5 : 1 }}>
+                {saving ? '保存中…' : '保存'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+      <div style={secHdr}>{TYPE_LABELS[knType]} · {filtered.length} 条</div>
+      {filtered.length === 0 && <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>暂无内容</div>}
+      {filtered.map(item => (
+        <div key={item.id} style={{ padding: '12px 14px', border: `1px solid ${t.rule}`, marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <div style={{ fontFamily: t.fontCN, fontWeight: 600, fontSize: 13, color: t.ink, flex: 1 }}>{item.name}</div>
+            {canEdit && <button onClick={() => handleDelete(item.id)} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '3px 10px', fontSize: 9 }}>删除</button>}
+          </div>
+          <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>{item.content?.value || ''}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TeamSettingsTab({ t, team, inp, btnBase, secHdr, apiFetch, onRefresh, showStatus, onBack }) {
+  const [name, setName] = React.useState(team?.name || '');
+  const [saving, setSaving] = React.useState(false);
+
+  const handleRename = async () => {
+    if (!name.trim() || name.trim() === team?.name) return;
+    setSaving(true);
+    try {
+      await apiFetch('/api/teams', { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) });
+      await onRefresh?.();
+      showStatus('团队名称已更新');
+    } catch (e) { showStatus(e.message, true); }
+    setSaving(false);
+  };
+
+  const handleDissolve = async () => {
+    if (!confirm(`确认解散团队「${team?.name}」？此操作不可恢复，所有共享数据将被删除。`)) return;
+    try {
+      await apiFetch('/api/teams', { method: 'DELETE' });
+      await onRefresh?.();
+      onBack?.();
+    } catch (e) { showStatus(e.message, true); }
+  };
+
+  return (
+    <div>
+      <div style={secHdr}>团队名称</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 32 }}>
+        <input value={name} onChange={e => setName(e.target.value)} style={{ ...inp, flex: 1 }}/>
+        <button onClick={handleRename} disabled={saving || !name.trim() || name.trim() === team?.name}
+          style={{ ...btnBase, background: t.ink, color: t.paper, opacity: saving ? 0.5 : 1 }}>
+          {saving ? '保存中…' : '更新'}
+        </button>
+      </div>
+      <div style={secHdr}>危险操作</div>
+      <div style={{ padding: '16px', border: `1.5px solid #e5251d`, background: '#fff5f5' }}>
+        <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, marginBottom: 8 }}>解散团队</div>
+        <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, marginBottom: 14 }}>解散后所有成员将失去访问权限，共享密钥和知识库将被永久删除。</div>
+        <button onClick={handleDissolve} style={{ ...btnBase, background: '#e5251d', color: '#fff' }}>解散团队</button>
+      </div>
+    </div>
+  );
 }
 
 // ── OutlineStep ─────────────────────────────────────────────────────────────
@@ -10129,6 +10587,9 @@ function App() {
             onStart={goRun} onBackground={goBackground} onWorkflow={goWorkflow} bgTaskStatus={bgTaskStatus}
             density={tweaks.density} modelStore={modelStore}
             toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}/>
+        )}
+        {route === 'team' && (
+          <TeamPanel t={t} onBack={() => setRoute('home')}/>
         )}
         {route === 'outline' && (
           <OutlineStep t={t} prompt={prompt} modelStore={modelStore}
