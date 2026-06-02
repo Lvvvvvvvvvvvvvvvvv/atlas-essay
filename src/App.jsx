@@ -4095,9 +4095,9 @@ function StartWritingBtn({ t, disabled, onStart, onWorkflow, onBackground, bgTas
       )}
       <button onClick={() => !disabled && onStart()} disabled={disabled} style={{
         padding: '7px 16px', fontFamily: t.fontMono, fontSize: 11, letterSpacing: 0.8,
-        border: `1px solid ${disabled ? t.rule : t.ink}`,
-        background: disabled ? 'transparent' : t.ink,
-        color: disabled ? t.mute : t.paper,
+        border: `1px solid ${disabled ? t.rule : t.accent}`,
+        background: disabled ? 'transparent' : t.accent,
+        color: disabled ? t.mute : '#fff',
         cursor: disabled ? 'default' : 'pointer',
       }}>
         Start writing ↗
