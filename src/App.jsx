@@ -2183,6 +2183,33 @@ function useCustomTemplates() {
   return { templates, save, remove };
 }
 
+function useTeamKnowledge() {
+  const { user, team } = useAuth();
+  const [items, setItems] = React.useState([]);
+
+  React.useEffect(() => {
+    if (!user || !team) { setItems([]); return; }
+    let cancelled = false;
+    import('./lib/supabase.js').then(({ supabase }) =>
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session?.access_token || cancelled) return;
+        return fetch('/api/teams/knowledge', {
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        }).then(r => r.json()).then(data => { if (!cancelled) setItems(Array.isArray(data) ? data : []); }).catch(() => {});
+      })
+    );
+    return () => { cancelled = true; };
+  }, [user, team]);
+
+  return {
+    templates: items.filter(i => i.type === 'template'),
+    languages: items.filter(i => i.type === 'language').map(i => ({
+      id: `team_${i.id}`, label: i.name, instr: i.content?.value || `使用${i.name}写作`, teamItem: true,
+    })),
+    promptExtras: items.filter(i => i.type === 'prompt_extra').map(i => i.content?.value || '').filter(Boolean),
+  };
+}
+
 function TemplateEditor({ t, onSave, onClose, initial = null }) {
   const ICONS = ['📊','📈','🔍','💡','📝','🗂','🏢','💰','🌐','⚡','🎯','📋'];
   const TAG_OPTS = ['RESEARCH','DATA','STRATEGY','ANALYSIS','REPORT','CUSTOM'];
@@ -2370,7 +2397,7 @@ function useAINews() {
   return { items, loading };
 }
 
-function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, density = 'editorial', modelStore, toolbarStore, onNavigateSources }) {
+function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, density = 'editorial', modelStore, toolbarStore, onNavigateSources, teamTemplates = [] }) {
   const editorial = density === 'editorial';
   const headSize = editorial ? 'xxl' : 'xl';
   const customTpls = useCustomTemplates();
@@ -2476,7 +2503,7 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskS
             <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute }}>从模板开始</span>
             <span style={{ flex: 1, height: 1, background: t.rule }}/>
             <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
-              {String(STARTERS.length + customTpls.templates.length).padStart(2,'0')} entries
+              {String(STARTERS.length + customTpls.templates.length + teamTemplates.length).padStart(2,'0')} entries
             </span>
           </div>
 
@@ -2560,6 +2587,37 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskS
                   </div>
                 )}
               </div>
+            ))}
+
+            {/* ── team templates ── */}
+            {teamTemplates.map((s) => (
+              <button key={s.id} type="button" onClick={() => {
+                if (s.content?.sections?.length) {
+                  setPrompt(s.content?.topicPrompt || s.name);
+                  toolbarStore?.setActiveTemplate({ id: s.id, en: s.name, cn: s.name, sections: s.content.sections });
+                } else {
+                  setPrompt(s.content?.prompt || s.name);
+                  toolbarStore?.clearActiveTemplate();
+                }
+              }}
+                style={{ borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}`, background:t.paper, padding:'18px 22px', textAlign:'left', display:'flex', flexDirection:'column', gap:6, cursor:'pointer', fontFamily:t.fontBody, color:t.ink, transition:'background 0.12s', border:'none', borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}` }}
+                onMouseEnter={e=>e.currentTarget.style.background=t.faint}
+                onMouseLeave={e=>e.currentTarget.style.background=t.paper}
+              >
+                <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:4 }}>
+                  <span style={{ fontFamily:t.fontSerif, fontStyle:'italic', fontWeight:600, fontSize:22, lineHeight:1, letterSpacing:-0.5 }}>🏢</span>
+                  <span style={{ fontFamily:t.fontMono, fontSize:7.5, letterSpacing:1, color:'#1d4ed8', border:`1px solid #1d4ed8`, padding:'1px 4px', lineHeight:1.5 }}>TEAM</span>
+                </div>
+                <div style={{ fontFamily:t.fontDisplay, fontWeight:700, fontSize:13, letterSpacing:0.5, textTransform:'uppercase' }}>{s.name}</div>
+                {s.content?.sections?.length > 0 && (
+                  <span style={{ fontFamily:t.fontMono, fontSize:8, color:t.accent, border:`1px solid ${t.accent}`, padding:'1px 5px', letterSpacing:0.5, alignSelf:'flex-start' }}>
+                    {s.content.sections.length} 章节
+                  </span>
+                )}
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:'auto' }}>
+                  <span style={{ flex:1 }}/><span style={{ fontFamily:t.fontMono, fontSize:11, color:t.ink }}>↗</span>
+                </div>
+              </button>
             ))}
 
             {/* ── + add new template ── */}
@@ -3236,7 +3294,8 @@ function useToolbarStore() {
   const effectiveLength = lengthId === 'custom'
     ? (parseInt(customLength) || 2500)
     : (LENGTH_PRESETS.find(p => p.id === lengthId)?.chars || 2500);
-  const allLanguages = [...BUILTIN_LANGUAGES, ...customLanguages];
+  const [teamLanguages, setTeamLanguages] = React.useState([]);
+  const allLanguages = [...BUILTIN_LANGUAGES, ...customLanguages, ...teamLanguages];
   const currentLanguage = allLanguages.find(l => l.id === languageId) || allLanguages[0];
   const currentStyle = BUILTIN_STYLES.find(s => s.id === styleId) || BUILTIN_STYLES[0];
 
@@ -3339,7 +3398,7 @@ function useToolbarStore() {
     searchContexts, addSearchContext, removeSearchContext, clearSearchContexts,
     toneId, setToneId, allTones, currentTone, addTone, removeTone,
     lengthId, setLengthId, customLength, setCustomLength, effectiveLength,
-    languageId, setLanguageId, allLanguages, currentLanguage, addLanguage, removeLanguage,
+    languageId, setLanguageId, allLanguages, currentLanguage, addLanguage, removeLanguage, setTeamLanguages,
     styleId, setStyleId, currentStyle,
     activeTemplate, setActiveTemplate, clearActiveTemplate,
   };
@@ -3783,9 +3842,11 @@ function LanguagePopover({ t, store }) {
                 <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
                 <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{lang.label}</span>
               </div>
-              {lang.custom && (
+              {lang.teamItem ? (
+                <span style={{ fontFamily: t.fontMono, fontSize: 7.5, color: '#1d4ed8', border: '1px solid #1d4ed8', padding: '1px 4px', letterSpacing: 0.5 }}>TEAM</span>
+              ) : lang.custom ? (
                 <button onClick={(e) => { e.stopPropagation(); store.removeLanguage(lang.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
-              )}
+              ) : null}
             </div>
           );
         })}
@@ -4614,7 +4675,7 @@ ${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}
 // ── TeamPanel ────────────────────────────────────────────────────────────────
 
 function TeamPanel({ t, onBack }) {
-  const { team, role, refreshTeam } = useAuth();
+  const { user, team, role, refreshTeam } = useAuth();
   const [activeTab, setActiveTab] = React.useState('members');
   const [members, setMembers] = React.useState([]);
   const [teamKeys, setTeamKeys] = React.useState([]);
@@ -4723,6 +4784,16 @@ function TeamPanel({ t, onBack }) {
         <span style={{ flex: 1 }}/>
         {status && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#16a34a' }}>{status}</span>}
         {error && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#e5251d' }}>{error}</span>}
+        {!isAdmin && (
+          <button onClick={async () => {
+            if (!confirm('确认退出团队？')) return;
+            try {
+              await apiFetch(`/api/teams/members?userId=${user?.id}`, { method: 'DELETE' });
+              await refreshTeam?.();
+              onBack?.();
+            } catch (e) { showStatus(e.message, true); }
+          }} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '5px 12px' }}>退出团队</button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -4742,7 +4813,7 @@ function TeamPanel({ t, onBack }) {
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '28px 36px', maxWidth: 760 }}>
 
         {/* ── 成员 Tab ──────────────────────────────── */}
-        {activeTab === 'members' && <MembersTab t={t} members={members} role={role} team={team} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadMembers} showStatus={showStatus}/>}
+        {activeTab === 'members' && <MembersTab t={t} members={members} role={role} team={team} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadMembers} showStatus={showStatus} currentUserId={user?.id}/>}
 
         {/* ── 共享密钥 Tab ──────────────────────────── */}
         {activeTab === 'keys' && <KeysTab t={t} teamKeys={teamKeys} isAdmin={isAdmin} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadKeys} showStatus={showStatus}/>}
@@ -4757,10 +4828,12 @@ function TeamPanel({ t, onBack }) {
   );
 }
 
-function MembersTab({ t, members, role, team, inp, btnBase, secHdr, apiFetch, onRefresh, showStatus }) {
+function MembersTab({ t, members, role, team, inp, btnBase, secHdr, apiFetch, onRefresh, showStatus, currentUserId }) {
   const [email, setEmail] = React.useState('');
   const [inviteRole, setInviteRole] = React.useState('editor');
   const [inviting, setInviting] = React.useState(false);
+  const [inviteLink, setInviteLink] = React.useState('');
+  const [generatingLink, setGeneratingLink] = React.useState(false);
   const isAdmin = role === 'admin';
   const ROLE_LABELS = { admin: '管理员', editor: '编辑', viewer: '只读' };
   const ROLE_COLORS = { admin: t.accent, editor: '#1d4ed8', viewer: t.mute };
@@ -4794,6 +4867,16 @@ function MembersTab({ t, members, role, team, inp, btnBase, secHdr, apiFetch, on
     } catch (e) { showStatus(e.message, true); }
   };
 
+  const handleGenerateLink = async () => {
+    setGeneratingLink(true);
+    try {
+      const data = await apiFetch('/api/teams/invite');
+      const url = `${window.location.origin}${window.location.pathname}?invite=${data.token}`;
+      setInviteLink(url);
+    } catch (e) { showStatus(e.message, true); }
+    setGeneratingLink(false);
+  };
+
   return (
     <div>
       {isAdmin && (
@@ -4813,6 +4896,21 @@ function MembersTab({ t, members, role, team, inp, btnBase, secHdr, apiFetch, on
               {inviting ? '…' : '添加'}
             </button>
           </div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={secHdr}>邀请链接（7天有效）</div>
+            {inviteLink ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input readOnly value={inviteLink} style={{ ...inp, flex: 1, fontFamily: 'monospace', fontSize: 11 }} onClick={e => e.target.select()}/>
+                <button onClick={() => { navigator.clipboard.writeText(inviteLink); showStatus('链接已复制'); }}
+                  style={{ ...btnBase, background: t.ink, color: t.paper }}>复制</button>
+              </div>
+            ) : (
+              <button onClick={handleGenerateLink} disabled={generatingLink}
+                style={{ ...btnBase, background: 'transparent', border: `1px solid ${t.rule}`, color: t.mute, opacity: generatingLink ? 0.5 : 1 }}>
+                {generatingLink ? '生成中…' : '生成邀请链接'}
+              </button>
+            )}
+          </div>
         </>
       )}
       <div style={secHdr}>成员列表 · {members.length} 人</div>
@@ -4825,7 +4923,7 @@ function MembersTab({ t, members, role, team, inp, btnBase, secHdr, apiFetch, on
             <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 600, color: t.ink }}>{m.displayName || m.email}</div>
             <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{m.email}</div>
           </div>
-          {isAdmin && m.userId !== members.find(x => x.role === 'admin')?.userId ? (
+          {isAdmin && m.userId !== currentUserId ? (
             <select value={m.role} onChange={e => handleRoleChange(m.userId, e.target.value)}
               style={{ ...inp, width: 80, padding: '4px 8px', cursor: 'pointer' }}>
               <option value="admin">管理员</option>
@@ -4835,7 +4933,7 @@ function MembersTab({ t, members, role, team, inp, btnBase, secHdr, apiFetch, on
           ) : (
             <span style={{ fontFamily: t.fontMono, fontSize: 9, color: ROLE_COLORS[m.role], border: `1px solid ${ROLE_COLORS[m.role]}`, padding: '2px 8px' }}>{ROLE_LABELS[m.role]}</span>
           )}
-          {isAdmin && (
+          {isAdmin && m.userId !== currentUserId && (
             <button onClick={() => handleRemove(m.userId)} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '4px 10px', fontSize: 9 }}>移除</button>
           )}
         </div>
@@ -10443,10 +10541,17 @@ function App() {
   const modelStore = useModelStore();
   const toolbarStore = useToolbarStore();
   const savedReports = useSavedReports();
+  const teamKnowledge = useTeamKnowledge();
   const [activeReportId, setActiveReportId] = React.useState(null);
 
-  // Deep-link: read ?r=<reportId> from URL on startup, navigate once reports load
+  // Sync team languages into toolbarStore
+  React.useEffect(() => {
+    toolbarStore.setTeamLanguages(teamKnowledge.languages);
+  }, [teamKnowledge.languages]);
+
+  // Deep-link & invite-link: read URL params on startup
   const [deepLinkId] = React.useState(() => new URLSearchParams(window.location.search).get('r') || null);
+  const [inviteToken] = React.useState(() => new URLSearchParams(window.location.search).get('invite') || null);
   const deepLinkHandled = React.useRef(false);
   React.useEffect(() => {
     if (!deepLinkId || deepLinkHandled.current) return;
@@ -10458,6 +10563,24 @@ function App() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [deepLinkId, savedReports.reports]);
+
+  const inviteHandled = React.useRef(false);
+  React.useEffect(() => {
+    if (!inviteToken || inviteHandled.current || !user) return;
+    inviteHandled.current = true;
+    window.history.replaceState({}, '', window.location.pathname);
+    import('./lib/supabase.js').then(({ supabase }) =>
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session?.access_token) return;
+        return fetch(`/api/teams/invite?token=${encodeURIComponent(inviteToken)}`, {
+          method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        }).then(r => r.json()).then(data => {
+          if (data.success) { alert('成功加入团队！'); window.location.reload(); }
+          else alert(data.error || '邀请链接无效或已过期');
+        }).catch(() => alert('加入团队失败，请稍后重试'));
+      })
+    );
+  }, [inviteToken, user]);
 
   const [route, setRoute] = React.useState('home');
   const [prompt, setPrompt] = React.useState(SAMPLE_FIRST_PROMPT);
@@ -10586,7 +10709,8 @@ function App() {
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
             onStart={goRun} onBackground={goBackground} onWorkflow={goWorkflow} bgTaskStatus={bgTaskStatus}
             density={tweaks.density} modelStore={modelStore}
-            toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}/>
+            toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}
+            teamTemplates={teamKnowledge.templates}/>
         )}
         {route === 'team' && (
           <TeamPanel t={t} onBack={() => setRoute('home')}/>
@@ -10629,7 +10753,7 @@ function App() {
               urlContexts: toolbarStore.urlContexts,
               searchContexts: toolbarStore.searchContexts,
               temperature: modelStore.temperature,
-              systemPromptExtra: modelStore.systemPromptExtra,
+              systemPromptExtra: [modelStore.systemPromptExtra, ...teamKnowledge.promptExtras].filter(Boolean).join('\n\n'),
               topP: modelStore.topP,
               frequencyPenalty: modelStore.frequencyPenalty,
               presencePenalty: modelStore.presencePenalty,
