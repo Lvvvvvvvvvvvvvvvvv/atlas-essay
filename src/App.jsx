@@ -4710,10 +4710,10 @@ function TeamPanel({ t, onBack }) {
   };
 
   const [teamReports, setTeamReports] = React.useState([]);
-  const loadMembers  = React.useCallback(() => apiFetch('/api/teams/members').then(setMembers).catch(() => {}), [apiFetch]);
-  const loadKeys     = React.useCallback(() => apiFetch('/api/teams/keys').then(setTeamKeys).catch(() => {}), [apiFetch]);
-  const loadKnowledge = React.useCallback(() => apiFetch('/api/teams/knowledge').then(setKnowledge).catch(() => {}), [apiFetch]);
-  const loadReports  = React.useCallback(() => apiFetch('/api/teams/reports').then(setTeamReports).catch(() => {}), [apiFetch]);
+  const loadMembers  = React.useCallback(() => apiFetch('/api/teams/members').then(d => setMembers(Array.isArray(d) ? d : [])).catch(() => {}), [apiFetch]);
+  const loadKeys     = React.useCallback(() => apiFetch('/api/teams/keys').then(d => setTeamKeys(Array.isArray(d) ? d : [])).catch(() => {}), [apiFetch]);
+  const loadKnowledge = React.useCallback(() => apiFetch('/api/teams/knowledge').then(d => setKnowledge(Array.isArray(d) ? d : [])).catch(() => {}), [apiFetch]);
+  const loadReports  = React.useCallback(() => apiFetch('/api/teams/reports').then(d => setTeamReports(Array.isArray(d) ? d : [])).catch(() => {}), [apiFetch]);
 
   React.useEffect(() => {
     if (!team) return;
