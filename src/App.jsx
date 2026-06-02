@@ -4697,8 +4697,10 @@ function TeamPanel({ t, onBack }) {
   const apiFetch = React.useCallback(async (path, opts = {}) => {
     const token = await getToken();
     const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts.headers || {}) } });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'Error');
+    const text = await res.text();
+    let json = null;
+    try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
+    if (!res.ok) throw new Error(json?.error || json?.message || `服务器错误 ${res.status}`);
     return json;
   }, [getToken]);
 
