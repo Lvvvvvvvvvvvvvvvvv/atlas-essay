@@ -1488,7 +1488,11 @@ function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, 
 
   React.useEffect(() => {
     if (!open) return;
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setSection(null); } };
+    const h = (e) => {
+      const inside = ref.current && ref.current.contains(e.target);
+      console.log('[UserMenu] doc mousedown, inside ref?', inside, e.target);
+      if (!inside) { setOpen(false); setSection(null); }
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
@@ -1517,7 +1521,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, 
   const accentKind = curAccentOpt?.gradient ? 'GRADIENT' : 'SOLID';
 
   const MRow = ({ label, sub, isOpen, onClick, arrow }) => (
-    <div onClick={onClick} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 16px', cursor:'pointer', background: isOpen ? t.faint : 'transparent', userSelect:'none' }}>
+    <div onClick={(e) => { console.log('[UserMenu] MRow clicked:', label); onClick && onClick(e); }} onMouseDown={(e) => { console.log('[UserMenu] MRow mousedown:', label, 'inside ref?', ref.current?.contains(e.target)); }} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 16px', cursor:'pointer', background: isOpen ? t.faint : 'transparent', userSelect:'none' }}>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontFamily:'Noto Sans SC', fontSize:12, fontWeight:600, color:t.ink }}>{label}</div>
         {sub && <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
