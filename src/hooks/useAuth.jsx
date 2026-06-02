@@ -9,39 +9,42 @@ export function AuthProvider({ children }) {
   const [role,    setRole]    = React.useState(null);
   const [loading, setLoading] = React.useState(true);
 
-  // Load team + role for a given user id
-  const loadTeam = React.useCallback(async (userId) => {
-    const { data: membership } = await supabase
-      .from('team_members')
-      .select('role, team_id')
-      .eq('user_id', userId)
-      .limit(1)
-      .single();
+  // Load team + role via API (uses supabaseAdmin, bypasses client RLS issues)
+  const loadTeam = React.useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { setTeam(null); setRole(null); return; }
 
-    if (!membership) { setTeam(null); setRole(null); return; }
-
-    const { data: teamData } = await supabase
-      .from('teams')
-      .select('id, name')
-      .eq('id', membership.team_id)
-      .single();
-
-    setTeam(teamData || null);
-    setRole(membership.role);
+      const res = await fetch('/api/teams', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) { setTeam(null); setRole(null); return; }
+      const data = await res.json();
+      if (data && data.id) {
+        setTeam({ id: data.id, name: data.name });
+        setRole(data.myRole);
+      } else {
+        setTeam(null);
+        setRole(null);
+      }
+    } catch {
+      setTeam(null);
+      setRole(null);
+    }
   }, []);
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const u = session?.user ?? null;
       setUser(u);
-      if (u) loadTeam(u.id).finally(() => setLoading(false));
+      if (u) loadTeam().finally(() => setLoading(false));
       else setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null;
       setUser(u);
-      if (u) loadTeam(u.id);
+      if (u) loadTeam();
       else { setTeam(null); setRole(null); }
     });
 
@@ -60,7 +63,7 @@ export function AuthProvider({ children }) {
   const signOut = () => supabase.auth.signOut();
 
   return (
-    <AuthContext.Provider value={{ user, team, role, loading, signIn, signInMagic, signUp, signOut, refreshTeam: () => user && loadTeam(user.id) }}>
+    <AuthContext.Provider value={{ user, team, role, loading, signIn, signInMagic, signUp, signOut, refreshTeam: loadTeam }}>
       {children}
     </AuthContext.Provider>
   );
