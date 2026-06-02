@@ -4707,15 +4707,18 @@ function TeamPanel({ t, onBack }) {
     setTimeout(() => { setError(''); setStatus(''); }, 3500);
   };
 
+  const [teamReports, setTeamReports] = React.useState([]);
   const loadMembers  = React.useCallback(() => apiFetch('/api/teams/members').then(setMembers).catch(() => {}), [apiFetch]);
   const loadKeys     = React.useCallback(() => apiFetch('/api/teams/keys').then(setTeamKeys).catch(() => {}), [apiFetch]);
   const loadKnowledge = React.useCallback(() => apiFetch('/api/teams/knowledge').then(setKnowledge).catch(() => {}), [apiFetch]);
+  const loadReports  = React.useCallback(() => apiFetch('/api/teams/reports').then(setTeamReports).catch(() => {}), [apiFetch]);
 
   React.useEffect(() => {
     if (!team) return;
     if (activeTab === 'members') loadMembers();
     else if (activeTab === 'keys') loadKeys();
     else if (activeTab === 'knowledge') loadKnowledge();
+    else if (activeTab === 'reports') loadReports();
   }, [activeTab, team]);
 
   const handleCreateTeam = async () => {
@@ -4740,6 +4743,7 @@ function TeamPanel({ t, onBack }) {
     { k: 'members', label: '成员' },
     { k: 'keys', label: '共享密钥' },
     { k: 'knowledge', label: '知识库' },
+    { k: 'reports', label: '报告库' },
     ...(isAdmin ? [{ k: 'settings', label: '团队设置' }] : []),
   ];
 
@@ -4820,6 +4824,9 @@ function TeamPanel({ t, onBack }) {
 
         {/* ── 知识库 Tab ────────────────────────────── */}
         {activeTab === 'knowledge' && <KnowledgeTab t={t} knowledge={knowledge} canEdit={isEditorOrAdmin} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadKnowledge} showStatus={showStatus}/>}
+
+        {/* ── 报告库 Tab ────────────────────────────── */}
+        {activeTab === 'reports' && <TeamReportsTab t={t} reports={teamReports} isAdmin={isAdmin} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadReports} showStatus={showStatus}/>}
 
         {/* ── 团队设置 Tab ──────────────────────────── */}
         {activeTab === 'settings' && isAdmin && <TeamSettingsTab t={t} team={team} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={refreshTeam} showStatus={showStatus} onBack={onBack}/>}
@@ -5048,6 +5055,10 @@ function KnowledgeTab({ t, knowledge, canEdit, inp, btnBase, secHdr, apiFetch, o
   const [form, setForm] = React.useState({ name: '', content: '' });
   const [showForm, setShowForm] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [showImport, setShowImport] = React.useState(false);
+  const [importItems, setImportItems] = React.useState([]);
+  const [importSel, setImportSel] = React.useState({});
+  const [importing, setImporting] = React.useState(false);
 
   const TYPE_LABELS = { template: '提示词模板', language: '自定义语言', prompt_extra: '追加指令' };
   const filtered = knowledge.filter(k => k.type === knType);
@@ -5074,6 +5085,44 @@ function KnowledgeTab({ t, knowledge, canEdit, inp, btnBase, secHdr, apiFetch, o
     } catch (e) { showStatus(e.message, true); }
   };
 
+  const openImport = () => {
+    const localType = knType === 'language' ? 'language' : 'template';
+    let locals = [];
+    try {
+      if (localType === 'template') {
+        locals = JSON.parse(localStorage.getItem('atlas_custom_templates') || '[]')
+          .map(t => ({ id: t.id, name: t.name, content: t.content || t.prompt || '', type: 'template' }));
+      } else {
+        locals = JSON.parse(localStorage.getItem('atlas_custom_languages') || '[]')
+          .filter(l => l.custom)
+          .map(l => ({ id: l.id, name: l.label, content: l.instr || `使用${l.label}写作`, type: 'language' }));
+      }
+    } catch {}
+    const existingNames = new Set(knowledge.filter(k => k.type === localType).map(k => k.name));
+    const available = locals.filter(l => !existingNames.has(l.name));
+    setImportItems(available);
+    setImportSel({});
+    setShowImport(true);
+  };
+
+  const handleImport = async () => {
+    const selected = importItems.filter(i => importSel[i.id]);
+    if (!selected.length) return;
+    setImporting(true);
+    try {
+      for (const item of selected) {
+        await apiFetch('/api/teams/knowledge', {
+          method: 'POST',
+          body: JSON.stringify({ type: item.type, name: item.name, content: { value: item.content } }),
+        });
+      }
+      await onRefresh();
+      showStatus(`已导入 ${selected.length} 条`);
+      setShowImport(false);
+    } catch (e) { showStatus(e.message, true); }
+    setImporting(false);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: `1px solid ${t.rule}` }}>
@@ -5087,9 +5136,16 @@ function KnowledgeTab({ t, knowledge, canEdit, inp, btnBase, secHdr, apiFetch, o
       </div>
       {canEdit && (
         <>
-          <button onClick={() => setShowForm(f => !f)} style={{ ...btnBase, background: t.ink, color: t.paper, marginBottom: 16 }}>
-            {showForm ? '取消' : `＋ 添加${TYPE_LABELS[knType]}`}
-          </button>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            <button onClick={() => { setShowForm(f => !f); setShowImport(false); }} style={{ ...btnBase, background: t.ink, color: t.paper }}>
+              {showForm ? '取消' : `＋ 添加${TYPE_LABELS[knType]}`}
+            </button>
+            {knType !== 'prompt_extra' && (
+              <button onClick={() => { openImport(); setShowForm(false); }} style={{ ...btnBase }}>
+                ↑ 从本地导入
+              </button>
+            )}
+          </div>
           {showForm && (
             <div style={{ padding: 16, border: `1px solid ${t.rule}`, marginBottom: 20, background: t.faint }}>
               <div style={{ marginBottom: 10 }}>
@@ -5107,6 +5163,32 @@ function KnowledgeTab({ t, knowledge, canEdit, inp, btnBase, secHdr, apiFetch, o
               </button>
             </div>
           )}
+          {showImport && (
+            <div style={{ padding: 16, border: `1px solid ${t.rule}`, marginBottom: 20, background: t.faint }}>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 10 }}>
+                从个人{TYPE_LABELS[knType]}导入（已在团队库中的将不显示）
+              </div>
+              {importItems.length === 0
+                ? <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>没有可导入的本地{TYPE_LABELS[knType]}</div>
+                : <>
+                    {importItems.map(item => (
+                      <label key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!!importSel[item.id]} onChange={e => setImportSel(s => ({ ...s, [item.id]: e.target.checked }))}
+                          style={{ marginTop: 2, flexShrink: 0 }}/>
+                        <div>
+                          <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{item.name}</div>
+                          <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{item.content.slice(0, 60)}{item.content.length > 60 ? '…' : ''}</div>
+                        </div>
+                      </label>
+                    ))}
+                    <button onClick={handleImport} disabled={importing || !Object.values(importSel).some(Boolean)}
+                      style={{ ...btnBase, background: t.accent, color: '#fff', marginTop: 8, opacity: importing ? 0.5 : 1 }}>
+                      {importing ? '导入中…' : `导入选中 (${Object.values(importSel).filter(Boolean).length})`}
+                    </button>
+                  </>
+              }
+            </div>
+          )}
         </>
       )}
       <div style={secHdr}>{TYPE_LABELS[knType]} · {filtered.length} 条</div>
@@ -5118,6 +5200,79 @@ function KnowledgeTab({ t, knowledge, canEdit, inp, btnBase, secHdr, apiFetch, o
             {canEdit && <button onClick={() => handleDelete(item.id)} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '3px 10px', fontSize: 9 }}>删除</button>}
           </div>
           <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>{item.content?.value || ''}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TeamReportsTab({ t, reports, isAdmin, btnBase, secHdr, apiFetch, onRefresh, showStatus }) {
+  const [viewing, setViewing] = React.useState(null);
+
+  const handleDelete = async (id) => {
+    if (!confirm('确认从团队报告库中删除该报告？')) return;
+    try {
+      await apiFetch(`/api/teams/reports?id=${id}`, { method: 'DELETE' });
+      await onRefresh();
+      showStatus('已删除');
+      if (viewing?.id === id) setViewing(null);
+    } catch (e) { showStatus(e.message, true); }
+  };
+
+  if (viewing) {
+    const sections = viewing.content?.sections || [];
+    const fullText = viewing.content?.text || '';
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+          <button onClick={() => setViewing(null)} style={{ ...btnBase, background: 'transparent' }}>← 返回列表</button>
+          {isAdmin && <button onClick={() => handleDelete(viewing.id)} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, marginLeft: 'auto' }}>删除</button>}
+        </div>
+        <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 16, color: t.ink, marginBottom: 6 }}>{viewing.title || '无标题'}</div>
+        <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginBottom: 4 }}>
+          {viewing.prompt && <span>提示词：{viewing.prompt.slice(0, 100)}{viewing.prompt.length > 100 ? '…' : ''}</span>}
+        </div>
+        <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginBottom: 20 }}>
+          分享者：{viewing.shared_by_email} · {new Date(viewing.created_at).toLocaleDateString('zh-CN')}
+        </div>
+        <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, lineHeight: 1.9, whiteSpace: 'pre-wrap', background: t.faint, padding: 16, maxHeight: 600, overflowY: 'auto' }}>
+          {sections.length > 0
+            ? sections.map((s, i) => (
+                <div key={i} style={{ marginBottom: 20 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{s.en || s.title}</div>
+                  {(s.blocks || []).map((b, j) => <div key={j} style={{ marginBottom: 6, fontSize: 13 }}>{b.text}</div>)}
+                </div>
+              ))
+            : fullText || '（无内容）'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={secHdr}>团队报告库 · {reports.length} 篇</div>
+      {reports.length === 0 && (
+        <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>暂无共享报告。在报告查看页点击「分享到团队」可将报告添加到此处。</div>
+      )}
+      {reports.map(r => (
+        <div key={r.id} style={{ padding: '12px 14px', border: `1px solid ${t.rule}`, marginBottom: 6, cursor: 'pointer' }}
+          onClick={() => setViewing(r)}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: t.fontCN, fontWeight: 600, fontSize: 13, color: t.ink, marginBottom: 3 }}>{r.title || '无标题'}</div>
+              {r.prompt && <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginBottom: 3 }}>{r.prompt.slice(0, 80)}{r.prompt.length > 80 ? '…' : ''}</div>}
+              <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
+                {r.shared_by_email} · {new Date(r.created_at).toLocaleDateString('zh-CN')} · {(r.word_count || 0).toLocaleString()} 字
+              </div>
+            </div>
+            {isAdmin && (
+              <button onClick={e => { e.stopPropagation(); handleDelete(r.id); }}
+                style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '3px 10px', fontSize: 9, flexShrink: 0 }}>
+                删除
+              </button>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -6822,7 +6977,7 @@ function SectionRefineBar({ t, section, topic, model, onApply }) {
   );
 }
 
-function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport, rating, onRate, modelStore }) {
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport, rating, onRate, modelStore, onShareToTeam }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
   const [editMode, setEditMode] = React.useState(false);
@@ -6945,6 +7100,9 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
           <Btn t={t} size="sm" onClick={handleSaveEdits} primary accent>✓ 保存</Btn>
           <Btn t={t} size="sm" onClick={handleCancelEdits}>✕ 取消</Btn>
         </>}
+        {!isStatic && onShareToTeam && (
+          <Btn t={t} size="sm" onClick={onShareToTeam}>⊕ 分享到团队</Btn>
+        )}
         <Btn t={t} size="sm" primary accent onClick={onExport}>↗ 导出 / 分享</Btn>
       </div>
 
@@ -10545,7 +10703,7 @@ class ReportErrorBoundary extends React.Component {
 }
 
 function App() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, team, loading: authLoading } = useAuth();
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const t = essayTokens({ theme: tweaks.theme, accent: tweaks.accent });
 
@@ -10685,6 +10843,30 @@ function App() {
   const activeReport = activeReportId ? savedReports.reports.find(r => r.id === activeReportId) : null;
   const reportData = activeReport ? { id: activeReport.id, meta: activeReport.meta, metrics: [], sections: activeReport.sections, refs: activeReport.refs || [], attachments: activeReport.attachments || [] } : null;
 
+  const handleShareToTeam = React.useCallback(async () => {
+    if (!activeReport || !team) return;
+    try {
+      const { supabase } = await import('./lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const title = activeReport.meta?.titleEn || activeReport.meta?.title?.en || activeReport.prompt?.slice(0, 60) || '无标题';
+      const wordCount = parseInt((activeReport.meta?.words || '0').replace(/,/g, ''), 10) || 0;
+      const res = await fetch('/api/teams/reports', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          prompt: activeReport.prompt || '',
+          content: { text: activeReport.text || '', sections: activeReport.sections || [] },
+          wordCount,
+          sharedByEmail: user?.email || '',
+        }),
+      });
+      if (res.ok) alert('报告已分享到团队报告库');
+      else { const d = await res.json(); alert(d.error || '分享失败'); }
+    } catch { alert('分享失败，请稍后重试'); }
+  }, [activeReport, team, user]);
+
   const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
 
   // Map tweak accent (named) → hex (already keyed in essayTokens)
@@ -10786,6 +10968,7 @@ function App() {
               onRerun={activeReport ? () => { setPrompt(activeReport.prompt); goRun(); } : null}
               toolbarStore={toolbarStore}
               onSaveReport={activeReport ? (updated) => savedReports.save({ ...updated, id: activeReport.id }) : null}
+              onShareToTeam={activeReport && team ? handleShareToTeam : null}
               onFollowUp={(followText) => {
                 const base = activeReport?.prompt || prompt;
                 setPrompt(`【追问】在下面的报告基础上：${base}\n\n【新要求】${followText}`);

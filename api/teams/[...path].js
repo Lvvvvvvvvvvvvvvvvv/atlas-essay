@@ -196,6 +196,53 @@ async function handleInvite(req, res, user) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
+// /api/teams/reports
+async function handleReports(req, res, user) {
+  const m = await getMyMembership(user.id);
+  if (!m) throw { status: 404, message: 'Not in a team' };
+
+  if (req.method === 'GET') {
+    const { id } = req.query;
+    if (id) {
+      const { data } = await supabaseAdmin
+        .from('team_reports')
+        .select('*')
+        .eq('id', id)
+        .eq('team_id', m.team_id)
+        .single();
+      if (!data) throw { status: 404, message: 'Report not found' };
+      return res.json(data);
+    }
+    const { data } = await supabaseAdmin
+      .from('team_reports')
+      .select('id, title, prompt, word_count, created_by, created_at, shared_by_email')
+      .eq('team_id', m.team_id)
+      .order('created_at', { ascending: false });
+    return res.json(data || []);
+  }
+
+  if (req.method === 'POST') {
+    const { title, prompt, content, wordCount, sharedByEmail } = req.body || {};
+    if (!content) throw { status: 400, message: 'content required' };
+    const { data, error } = await supabaseAdmin
+      .from('team_reports')
+      .insert({ team_id: m.team_id, created_by: user.id, title, prompt, content, word_count: wordCount || 0, shared_by_email: sharedByEmail || '' })
+      .select('id').single();
+    if (error) throw { status: 500, message: error.message };
+    return res.status(201).json({ id: data.id });
+  }
+
+  if (req.method === 'DELETE') {
+    const { id } = req.query;
+    if (!id) throw { status: 400, message: 'id required' };
+    if (m.role !== 'admin') throw { status: 403, message: 'Admin required' };
+    await supabaseAdmin.from('team_reports').delete().eq('id', id).eq('team_id', m.team_id);
+    return res.json({ success: true });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
 export default withAuth(async (req, res, user) => {
   const segments = req.query.path || [];
   const resource = Array.isArray(segments) ? segments[0] : segments;
@@ -204,6 +251,7 @@ export default withAuth(async (req, res, user) => {
   if (resource === 'keys')    return handleKeys(req, res, user);
   if (resource === 'knowledge') return handleKnowledge(req, res, user);
   if (resource === 'invite')  return handleInvite(req, res, user);
+  if (resource === 'reports') return handleReports(req, res, user);
 
   return res.status(404).json({ error: 'Not found' });
 });
