@@ -4007,57 +4007,64 @@ function TemplateLockBadge({ t, store }) {
   );
 }
 
-function MoreActionsMenu({ t, disabled, onWorkflow, onBackground, bgTaskStatus }) {
-  const [open, setOpen] = React.useState(false);
+function StartWritingBtn({ t, disabled, onStart, onWorkflow, onBackground, bgTaskStatus }) {
+  const [hover, setHover] = React.useState(false);
+  const leaveTimer = React.useRef(null);
   const ref = React.useRef(null);
-  React.useEffect(() => {
-    if (!open) return;
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [open]);
 
-  const bgLabel = bgTaskStatus === 'queued' ? '排队中…' : bgTaskStatus === 'running' ? '生成中…' : bgTaskStatus === 'done' ? '✓ 后台完成' : bgTaskStatus === 'failed' ? '✕ 后台失败' : '后台生成';
+  const show = hover && !disabled && (onWorkflow || onBackground);
+
+  const handleEnter = () => { clearTimeout(leaveTimer.current); setHover(true); };
+  const handleLeave = () => { leaveTimer.current = setTimeout(() => setHover(false), 180); };
+
+  const bgLabel = bgTaskStatus === 'queued' ? '排队中…' : bgTaskStatus === 'running' ? '生成中…' : bgTaskStatus === 'done' ? '✓ 后台完成' : bgTaskStatus === 'failed' ? '✕ 失败' : '后台生成';
   const bgDisabled = disabled || bgTaskStatus === 'queued' || bgTaskStatus === 'running';
 
-  const itemStyle = (isDisabled) => ({
-    display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px',
+  const optionStyle = (dim) => ({
+    display: 'flex', alignItems: 'center', gap: 8,
+    width: '100%', padding: '9px 14px', textAlign: 'left',
     fontFamily: t.fontMono, fontSize: 10, letterSpacing: 0.8,
-    background: 'none', border: 'none', cursor: isDisabled ? 'default' : 'pointer',
-    color: isDisabled ? t.mute : t.ink,
+    background: 'none', border: 'none',
     borderBottom: `1px solid ${t.rule}`,
+    color: dim ? t.mute : t.ink,
+    cursor: dim ? 'default' : 'pointer',
   });
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => !disabled && setOpen(o => !o)} style={{
-        padding: '5px 10px', fontFamily: t.fontMono, fontSize: 12, letterSpacing: 0.5,
-        border: `1px solid ${open ? t.ink : t.rule}`,
-        background: open ? t.ink : 'transparent',
-        color: open ? t.paper : disabled ? t.mute : t.ink,
-        cursor: disabled ? 'default' : 'pointer',
-      }}>▾</button>
-      {open && (
+    <div ref={ref} style={{ position: 'relative' }} onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
+      {show && (
         <div style={{
-          position: 'absolute', bottom: 'calc(100% + 6px)', right: 0,
-          background: t.paper, border: `1px solid ${t.ink}`, minWidth: 160, zIndex: 200,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+          position: 'absolute', bottom: 'calc(100% + 5px)', right: 0,
+          background: t.paper, border: `1px solid ${t.ink}`,
+          minWidth: 170, zIndex: 200,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
+          animation: 'fadeInUp 0.1s ease',
         }}>
+          <div style={{ padding: '5px 14px 4px', fontFamily: t.fontMono, fontSize: 8, letterSpacing: 1.2, color: t.mute, borderBottom: `1px solid ${t.rule}` }}>
+            모드 선택 · MODE
+          </div>
           {onWorkflow && (
-            <button style={itemStyle(disabled)} onClick={() => { if (!disabled) { onWorkflow(); setOpen(false); } }}
-              title="节点式工作流：资料搜集 → 大纲 → 分节写作 → 存档">
-              ◈ 工作流模式
+            <button style={optionStyle(disabled)} onClick={() => { if (!disabled) { setHover(false); onWorkflow(); } }}>
+              <span style={{ color: t.accent }}>◈</span> 工作流模式
             </button>
           )}
           {onBackground && (
-            <button style={{ ...itemStyle(bgDisabled), borderBottom: 'none' }}
-              onClick={() => { if (!bgDisabled) { onBackground(); setOpen(false); } }}
-              title="关 Tab 也能继续生成，完成后在报告库查看">
-              ◈ {bgLabel}
+            <button style={{ ...optionStyle(bgDisabled), borderBottom: 'none' }}
+              onClick={() => { if (!bgDisabled) { setHover(false); onBackground(); } }}>
+              <span style={{ color: bgDisabled ? t.mute : t.accent }}>◈</span> {bgLabel}
             </button>
           )}
         </div>
       )}
+      <button onClick={() => !disabled && onStart()} disabled={disabled} style={{
+        padding: '7px 16px', fontFamily: t.fontMono, fontSize: 11, letterSpacing: 0.8,
+        border: `1px solid ${disabled ? t.rule : t.ink}`,
+        background: disabled ? 'transparent' : t.ink,
+        color: disabled ? t.mute : t.paper,
+        cursor: disabled ? 'default' : 'pointer',
+      }}>
+        Start writing ↗
+      </button>
     </div>
   );
 }
@@ -4146,13 +4153,8 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
           onClick={() => setPrompt(SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)])}>
           ✦ Surprise me
         </Btn>
-        <Btn t={t} primary accent size="md" onClick={onStart} disabled={!prompt.trim()}>
-          Start writing ↗
-        </Btn>
-        {(onWorkflow || onBackground) && (
-          <MoreActionsMenu t={t} disabled={!prompt.trim()}
-            onWorkflow={onWorkflow} onBackground={onBackground} bgTaskStatus={bgTaskStatus}/>
-        )}
+        <StartWritingBtn t={t} disabled={!prompt.trim()}
+          onStart={onStart} onWorkflow={onWorkflow} onBackground={onBackground} bgTaskStatus={bgTaskStatus}/>
       </div>
     </div>
   );
