@@ -2600,7 +2600,7 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskS
                   toolbarStore?.clearActiveTemplate();
                 }
               }}
-                style={{ borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}`, background:t.paper, padding:'18px 22px', textAlign:'left', display:'flex', flexDirection:'column', gap:6, cursor:'pointer', fontFamily:t.fontBody, color:t.ink, transition:'background 0.12s', border:'none', borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}` }}
+                style={{ background:t.paper, padding:'18px 22px', textAlign:'left', display:'flex', flexDirection:'column', gap:6, cursor:'pointer', fontFamily:t.fontBody, color:t.ink, transition:'background 0.12s', border:'none', borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}` }}
                 onMouseEnter={e=>e.currentTarget.style.background=t.faint}
                 onMouseLeave={e=>e.currentTarget.style.background=t.paper}
               >
@@ -2622,7 +2622,7 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskS
 
             {/* ── + add new template ── */}
             <button type="button" onClick={()=>{setEditingTemplate(null);setEditorOpen(true);}}
-              style={{ borderRight:`1px solid ${t.rule}`, borderBottom:`1px solid ${t.rule}`, background:'transparent', padding:'18px 22px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', minHeight:130, border:'none', borderRight:`1px dashed ${t.rule}`, borderBottom:`1px dashed ${t.rule}`, outline:`1px dashed ${t.rule}` }}
+              style={{ background:'transparent', padding:'18px 22px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', minHeight:130, border:'none', borderRight:`1px dashed ${t.rule}`, borderBottom:`1px dashed ${t.rule}`, outline:`1px dashed ${t.rule}` }}
               onMouseEnter={e=>{e.currentTarget.style.background=t.faint;}}
               onMouseLeave={e=>{e.currentTarget.style.background='transparent';}}
             >
@@ -9552,8 +9552,7 @@ function ExportModal({ t, onClose, exportData }) {
               <button key={f.k} type="button" onClick={() => { setFormat(f.k); setStatus('idle'); }} style={{
                 display: 'block', width: '100%', textAlign: 'left',
                 background: format === f.k ? t.faint : 'transparent',
-                borderLeft: format === f.k ? `3px solid ${t.accent}` : '3px solid transparent',
-                border: 'none', borderLeft: format === f.k ? `3px solid ${t.accent}` : `3px solid transparent`,
+                border: 'none', borderLeft: format === f.k ? `3px solid ${t.accent}` : '3px solid transparent',
                 padding: '10px 16px', cursor: 'pointer',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
