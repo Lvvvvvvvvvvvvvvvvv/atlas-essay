@@ -5091,7 +5091,8 @@ function KnowledgeTab({ t, knowledge, canEdit, inp, btnBase, secHdr, apiFetch, o
     try {
       if (localType === 'template') {
         locals = JSON.parse(localStorage.getItem('atlas_custom_templates') || '[]')
-          .map(t => ({ id: t.id, name: t.name, content: t.content || t.prompt || '', type: 'template' }));
+          .map(t => ({ id: t.id || String(Math.random()), name: t.en || t.name || '', content: t.prompt || '', type: 'template' }))
+          .filter(t => t.name && t.content);
       } else {
         locals = JSON.parse(localStorage.getItem('atlas_custom_languages') || '[]')
           .filter(l => l.custom)
@@ -10863,8 +10864,12 @@ function App() {
         }),
       });
       if (res.ok) alert('报告已分享到团队报告库');
-      else { const d = await res.json(); alert(d.error || '分享失败'); }
-    } catch { alert('分享失败，请稍后重试'); }
+      else {
+        let msg = `分享失败 (${res.status})`;
+        try { const d = await res.json(); msg = d.error || d.message || msg; } catch {}
+        alert(msg);
+      }
+    } catch (e) { alert('分享失败：' + (e?.message || '网络错误')); }
   }, [activeReport, team, user]);
 
   const footer = FOOTER_CONTEXT[route] || FOOTER_CONTEXT.home;
