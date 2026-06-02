@@ -5909,12 +5909,186 @@ function ReportCoverPlate({ t, title, category, isStatic, editorial }) {
   );
 }
 
-function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport, rating, onRate }) {
+// ── Section Refine ────────────────────────────────────────────────────────
+
+async function streamSectionRefine({ sectionTitle, existingText, action, customInstr, topic, model, onChunk, onDone, onError }) {
+  const actionPrompts = {
+    rewrite: '请完全重新撰写这个章节，保持相同话题但换一个新的角度与结构。',
+    expand:  '请扩写这个章节，增加更多细节、数据和分析，字数扩充到原来的 1.5 倍以上。',
+    shrink:  '请精简这个章节，保留核心论点，字数压缩到原来的 60% 左右。',
+    custom:  customInstr || '请改进这个章节。',
+  };
+  const instruction = actionPrompts[action] || actionPrompts.custom;
+
+  const systemPrompt = `你是专业报告写作助手。你正在对一篇关于「${topic || '该话题'}」的报告中的某个章节进行精修。
+${instruction}
+
+要求：
+- 以 ## 开头写章节标题（保持原标题或适当调整）
+- 正文使用中文，风格专业、可读
+- 只输出这一个章节，不要其他内容`;
+
+  const userMsg = `原章节标题：${sectionTitle}
+
+原章节内容：
+${existingText}
+
+请按要求重新写这个章节。`;
+
+  const apiKey = model?.apiKey || '';
+  const apiUrl = (model?.apiUrl || '').replace(/\/$/, '');
+
+  const readStream = async (resp) => {
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (raw === '[DONE]') { onDone?.(); return; }
+        try { const d = JSON.parse(raw); const c = d.choices?.[0]?.delta?.content; if (c) onChunk?.(c); } catch {}
+      }
+    }
+    onDone?.();
+  };
+
+  try {
+    if (!apiKey) {
+      const { supabase: sb } = await import('./lib/supabase.js');
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token;
+      const resp = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: 2000, temperature: 0.5 }),
+      });
+      if (!resp.ok) throw new Error(`API ${resp.status}`);
+      await readStream(resp);
+    } else {
+      const resp = await fetch(`${apiUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: model.id, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: 2000, temperature: 0.5 }),
+      });
+      if (!resp.ok) throw new Error(`API ${resp.status}`);
+      await readStream(resp);
+    }
+  } catch (e) { onError?.(String(e)); }
+}
+
+function SectionRefineBar({ t, section, topic, model, onApply }) {
+  const [state, setState] = React.useState('idle'); // idle|running|preview|error
+  const [streamText, setStreamText] = React.useState('');
+  const [customInstr, setCustomInstr] = React.useState('');
+  const [showCustom, setShowCustom] = React.useState(false);
+  const streamRef = React.useRef('');
+
+  const existingText = '## ' + section.en + '\n\n' + (section.blocks || []).map(b => b.text || '').join('\n\n');
+
+  const run = (action) => {
+    if (state === 'running') return;
+    streamRef.current = '';
+    setStreamText('');
+    setState('running');
+    setShowCustom(false);
+    streamSectionRefine({
+      sectionTitle: section.en, existingText, action,
+      customInstr: action === 'custom' ? customInstr : '',
+      topic, model,
+      onChunk: (c) => { streamRef.current += c; setStreamText(streamRef.current); },
+      onDone: () => setState('preview'),
+      onError: () => setState('error'),
+    });
+  };
+
+  const handleApply = () => {
+    const parsed = parseMarkdownReport(streamRef.current);
+    if (parsed.length > 0) {
+      onApply({ blocks: parsed[0].blocks, en: parsed[0].en || section.en });
+    }
+    setState('idle');
+    setStreamText('');
+    streamRef.current = '';
+  };
+
+  const btnStyle = (dim) => ({
+    padding: '3px 9px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8,
+    border: `1px solid ${dim ? t.rule : t.ink}`, background: 'transparent',
+    color: dim ? t.mute : t.ink, cursor: dim ? 'default' : 'pointer',
+  });
+
+  return (
+    <div>
+      {/* Action bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 1, marginRight: 4 }}>AI 精修</span>
+        {[['rewrite','重写'],['expand','扩写'],['shrink','精简']].map(([act, label]) => (
+          <button key={act} style={btnStyle(state === 'running')}
+            disabled={state === 'running'}
+            onClick={() => run(act)}>{label}</button>
+        ))}
+        <button style={btnStyle(state === 'running')} disabled={state === 'running'}
+          onClick={() => setShowCustom(v => !v)}>自定义</button>
+        {state === 'running' && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent }}>生成中…</span>}
+        {state === 'error' && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: '#e5251d' }}>✕ 生成失败</span>}
+      </div>
+
+      {/* Custom instruction input */}
+      {showCustom && state !== 'running' && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <input value={customInstr} onChange={e => setCustomInstr(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && customInstr.trim() && run('custom')}
+            placeholder="输入修改要求，如：换成更适合投资人的视角"
+            style={{ flex: 1, padding: '5px 8px', border: `1px solid ${t.rule}`, fontFamily: t.fontCN, fontSize: 12, color: t.ink, background: t.paper, outline: 'none' }}/>
+          <button onClick={() => customInstr.trim() && run('custom')} disabled={!customInstr.trim()}
+            style={{ ...btnStyle(!customInstr.trim()), background: customInstr.trim() ? t.ink : 'transparent', color: customInstr.trim() ? t.paper : t.mute }}>
+            执行
+          </button>
+        </div>
+      )}
+
+      {/* Preview */}
+      {(state === 'running' || state === 'preview') && streamText && (
+        <div style={{ marginTop: 12, border: `1px solid ${t.accent}`, padding: '14px 16px', background: 'rgba(200,50,50,0.03)' }}>
+          <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, letterSpacing: 1, marginBottom: 10 }}>
+            {state === 'running' ? '▶ 生成中…' : '✓ 生成完成 · 预览'}
+          </div>
+          <div style={{ fontFamily: t.fontCN, fontSize: 14, lineHeight: 1.8, color: t.ink, whiteSpace: 'pre-wrap', maxHeight: 320, overflowY: 'auto' }}>
+            {streamText}
+            {state === 'running' && <span style={{ display: 'inline-block', width: 8, height: 14, background: t.accent, marginLeft: 2, animation: 'essay-blink 1s steps(2) infinite', verticalAlign: 'middle' }}/>}
+          </div>
+          {state === 'preview' && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={handleApply} style={{ padding: '6px 16px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, border: `1px solid ${t.ink}`, background: t.ink, color: t.paper, cursor: 'pointer' }}>
+                ✓ 采用
+              </button>
+              <button onClick={() => { setState('idle'); setStreamText(''); streamRef.current = ''; }}
+                style={{ padding: '6px 12px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, border: `1px solid ${t.rule}`, background: 'transparent', color: t.mute, cursor: 'pointer' }}>
+                放弃
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport, rating, onRate, modelStore }) {
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
   const [editMode, setEditMode] = React.useState(false);
   const [edits, setEdits] = React.useState({});
   const [warnDismissed, setWarnDismissed] = React.useState(false);
+  const [localSections, setLocalSections] = React.useState(null); // null = use reportData
+  const [hoveredSec, setHoveredSec] = React.useState(null);
+  const [refineOpen, setRefineOpen] = React.useState(null); // section id
 
   const getEdit = (key, fallback) => edits[key] !== undefined ? edits[key] : fallback;
   const setEdit = (key, val) => setEdits(prev => ({ ...prev, [key]: val }));
@@ -5941,7 +6115,15 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
   const isStatic     = !reportData;
   const rMeta        = reportData?.meta     || REPORT_META;
   const rMetrics     = reportData?.metrics  || REPORT_METRICS;
-  const rSections    = reportData?.sections?.length > 0 ? reportData.sections : REPORT_SECTIONS;
+  const rSections    = (localSections || reportData?.sections)?.length > 0 ? (localSections || reportData?.sections) : REPORT_SECTIONS;
+
+  const handleSectionApply = (sectionId, { blocks, en }) => {
+    const base = localSections || reportData?.sections || [];
+    const updated = base.map(s => s.id === sectionId ? { ...s, blocks, en } : s);
+    setLocalSections(updated);
+    setRefineOpen(null);
+    if (onSaveReport && reportData) onSaveReport({ ...reportData, sections: updated });
+  };
   const rRefs        = reportData?.refs     || REPORT_REFS;
   const rAttachments = reportData?.attachments || [];
 
@@ -6204,7 +6386,10 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
             const cnNumPrefix = cnNumMatch?.[1] || '';
             const sectionTitle = cnNumPrefix ? rawTitle.slice(cnNumMatch[0].length) : rawTitle;
             return (
-            <section key={s.id} data-sec={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 28, scrollMarginTop: 80 }}>
+            <section key={s.id} data-sec={s.id}
+              onMouseEnter={() => setHoveredSec(s.id)}
+              onMouseLeave={() => setHoveredSec(null)}
+              style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 28, scrollMarginTop: 80 }}>
               <div style={{ borderTop: `2px solid ${t.ink}`, paddingTop: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                   {cnNumPrefix ? (
@@ -6218,7 +6403,19 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
                     : <span style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: editorial ? 18 : 16, letterSpacing: 0.5, color: t.ink }}>{sectionTitle}</span>
                   }
                   {s.cn && !editMode && <span style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 500, color: t.mute }}>· {s.cn}</span>}
+                  {!editMode && !isStatic && modelStore?.selected && (hoveredSec === s.id || refineOpen === s.id) && (
+                    <button onClick={() => setRefineOpen(v => v === s.id ? null : s.id)}
+                      style={{ marginLeft: 'auto', padding: '2px 9px', fontFamily: t.fontMono, fontSize: 8, letterSpacing: 1, border: `1px solid ${refineOpen === s.id ? t.ink : t.rule}`, background: refineOpen === s.id ? t.ink : 'transparent', color: refineOpen === s.id ? t.paper : t.mute, cursor: 'pointer' }}>
+                      ✦ 精修
+                    </button>
+                  )}
                 </div>
+                {refineOpen === s.id && !editMode && modelStore?.selected && (
+                  <SectionRefineBar t={t} section={s}
+                    topic={reportData?.prompt || reportData?.meta?.titleEn || ''}
+                    model={modelStore.selected}
+                    onApply={(update) => handleSectionApply(s.id, update)}/>
+                )}
               </div>
               <div style={{ fontFamily: t.fontCN, fontSize: editorial ? 16 : 15, lineHeight: 1.85, color: t.inkSoft, display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {s.blocks.map((b, bIdx) => {
@@ -9506,6 +9703,7 @@ function App() {
             <Report t={t} onExport={() => setShowExport(true)}
               marginaliaOn={tweaks.marginalia} density={tweaks.density}
               reportData={reportData}
+              modelStore={modelStore}
               isFavorited={activeReport?.favorited || false}
               onToggleFavorite={activeReport ? () => savedReports.toggleFav(activeReportId) : null}
               rating={activeReport?.rating || null}
