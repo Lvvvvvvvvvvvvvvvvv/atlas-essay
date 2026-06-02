@@ -4947,8 +4947,19 @@ function KeysTab({ t, teamKeys, isAdmin, inp, btnBase, secHdr, apiFetch, onRefre
   const [adding, setAdding] = React.useState(false);
   const [showForm, setShowForm] = React.useState(false);
 
-  const PROVIDERS = [{ v: 'anthropic', label: 'Anthropic (Claude)' }, { v: 'openai', label: 'OpenAI' }, { v: 'custom', label: '自定义' }];
+  const PROVIDERS = [
+    { v: 'anthropic', label: 'Anthropic (Claude)',  url: 'https://api.anthropic.com/v1' },
+    { v: 'openai',    label: 'OpenAI',              url: 'https://api.openai.com/v1' },
+    { v: 'deepseek',  label: 'DeepSeek',            url: 'https://api.deepseek.com/v1' },
+    { v: 'mimo',      label: 'MiMo (小米)',          url: 'https://api.xiaomimimo.com/v1' },
+    { v: 'custom',    label: '自定义',               url: '' },
+  ];
   const maskKey = (label) => label || '(未命名)';
+
+  const handleProviderChange = (v) => {
+    const p = PROVIDERS.find(x => x.v === v);
+    setForm(f => ({ ...f, provider: v, apiUrl: p?.url || '' }));
+  };
 
   const handleAdd = async () => {
     if (!form.apiKey.trim()) return;
@@ -4987,7 +4998,7 @@ function KeysTab({ t, teamKeys, isAdmin, inp, btnBase, secHdr, apiFetch, onRefre
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
                 <div>
                   <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>供应商</div>
-                  <select value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} style={{ ...inp }}>
+                  <select value={form.provider} onChange={e => handleProviderChange(e.target.value)} style={{ ...inp }}>
                     {PROVIDERS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
                   </select>
                 </div>
@@ -5000,12 +5011,13 @@ function KeysTab({ t, teamKeys, isAdmin, inp, btnBase, secHdr, apiFetch, onRefre
                 <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>API Key</div>
                 <input type="password" value={form.apiKey} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))} placeholder="sk-..." style={inp}/>
               </div>
-              {form.provider === 'custom' && (
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>API URL</div>
-                  <input value={form.apiUrl} onChange={e => setForm(f => ({ ...f, apiUrl: e.target.value }))} placeholder="https://..." style={inp}/>
-                </div>
-              )}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 4 }}>API URL</div>
+                <input value={form.apiUrl} onChange={e => setForm(f => ({ ...f, apiUrl: e.target.value }))}
+                  readOnly={form.provider !== 'custom'}
+                  placeholder="https://..."
+                  style={{ ...inp, background: form.provider !== 'custom' ? t.faint : t.paper, color: form.provider !== 'custom' ? t.mute : t.ink }}/>
+              </div>
               <button onClick={handleAdd} disabled={adding || !form.apiKey.trim()}
                 style={{ ...btnBase, background: t.accent, color: '#fff', opacity: adding || !form.apiKey.trim() ? 0.5 : 1 }}>
                 {adding ? '保存中…' : '保存密钥'}
