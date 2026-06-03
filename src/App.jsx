@@ -4357,6 +4357,155 @@ async function fetchUrlContents(urls, onProgress) {
   return results;
 }
 
+// ── Agentic research (P4 stage 2 · Tool Use) ─────────────────────────────────
+// Tool schemas exposed to the model (OpenAI function-calling format)
+const RESEARCH_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: '联网搜索实时信息。当你需要最新数据、事实核查、或不确定的细节时调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '搜索关键词，简洁精确' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'fetch_url',
+      description: '读取指定网页的正文内容。当你已知一个具体 URL 需要深入了解其内容时调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: '要读取的完整网页 URL' },
+        },
+        required: ['url'],
+      },
+    },
+  },
+];
+
+// Resolve a non-streaming model endpoint (handles both server-key proxy and direct key)
+async function resolveModelCall(model) {
+  const apiKey = model.apiKey || '';
+  const apiUrl = (model.apiUrl || 'https://api.xiaomimimo.com/v1').replace(/\/$/, '');
+  const useServerKey = !apiKey && !!model.provider;
+  let sessionToken = null;
+  if (useServerKey) {
+    try {
+      const { supabase } = await import('./lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      sessionToken = session?.access_token || null;
+    } catch {}
+  }
+  const url = useServerKey && sessionToken ? '/api/generate' : `${apiUrl}/chat/completions`;
+  const auth = useServerKey && sessionToken ? sessionToken : apiKey;
+  return { url, auth, provider: model.provider };
+}
+
+// Execute a single tool call → returns a string result for the model
+async function executeResearchTool(name, args, onStatus) {
+  try {
+    if (name === 'web_search') {
+      const query = (args?.query || '').trim();
+      if (!query) return '（空查询）';
+      onStatus?.({ phase: 'research', action: 'search', detail: query });
+      const { supabase } = await import('./lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ query, maxResults: 5 }),
+      });
+      if (!resp.ok) return `搜索失败（${resp.status}）`;
+      const data = await resp.json();
+      const results = data.results || [];
+      if (!results.length) return '无搜索结果';
+      return results.map((r, i) => `[${i + 1}] ${r.title}（${r.url}）\n${r.content}`).join('\n\n');
+    }
+    if (name === 'fetch_url') {
+      const url = (args?.url || '').trim();
+      if (!url) return '（空 URL）';
+      onStatus?.({ phase: 'research', action: 'fetch', detail: url });
+      const [res] = await fetchUrlContents([url]);
+      return res?.ok ? res.content : '网页抓取失败';
+    }
+  } catch (e) {
+    return `工具执行出错：${String(e).slice(0, 120)}`;
+  }
+  return '未知工具';
+}
+
+// Run the agentic research loop. Returns { context, log }.
+// MiMo: single-round only (upstream bug #44 rejects tool-call history on round 2+).
+async function runAgenticResearch({ model, prompt, onStatus }) {
+  const { url, auth, provider } = await resolveModelCall(model);
+  const singleRound = provider === 'mimo'; // MiMo can't take tool history multi-turn
+  const maxRounds = singleRound ? 1 : 3;
+
+  const log = [];
+  const gathered = [];
+  const messages = [
+    { role: 'system', content: '你是一名严谨的研究助理。在为用户撰写报告前，先判断是否需要联网搜索或读取网页来补充事实、数据或最新信息。如需要就调用工具；如已掌握足够信息，直接回复"RESEARCH_DONE"即可，不要写报告正文。' },
+    { role: 'user', content: `报告主题：${prompt}` },
+  ];
+
+  for (let round = 0; round < maxRounds; round++) {
+    let data;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` },
+        body: JSON.stringify({
+          model: model.id,
+          provider: model.provider,
+          messages,
+          tools: RESEARCH_TOOLS,
+          tool_choice: round === 0 ? 'auto' : 'auto',
+          stream: false,
+          max_tokens: 1024,
+          temperature: 0.3,
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      data = await resp.json();
+    } catch (e) {
+      // Any failure (incl. MiMo #44 on round 2) → stop gracefully, keep what we have
+      log.push({ type: 'error', detail: String(e).slice(0, 80) });
+      break;
+    }
+
+    const choice = data.choices?.[0];
+    const msg = choice?.message;
+    const toolCalls = msg?.tool_calls || [];
+
+    if (!toolCalls.length) break; // model decided no (more) tools needed
+
+    // Append assistant's tool-call message, then execute each tool
+    messages.push(msg);
+    for (const tc of toolCalls) {
+      let args = {};
+      try { args = JSON.parse(tc.function?.arguments || '{}'); } catch {}
+      const result = await executeResearchTool(tc.function?.name, args, onStatus);
+      log.push({ type: tc.function?.name, detail: args.query || args.url || '', ok: true });
+      gathered.push(`【${tc.function?.name === 'web_search' ? '搜索' : '网页'}：${args.query || args.url || ''}】\n${result}`);
+      messages.push({ role: 'tool', tool_call_id: tc.id, content: result.slice(0, 4000) });
+    }
+
+    if (singleRound) break; // MiMo: stop after first round of tool execution
+  }
+
+  const context = gathered.length
+    ? gathered.join('\n\n---\n\n')
+    : '';
+  return { context, log };
+}
+
 function validateReport(text, { effectiveLength, templateSections } = {}) {
   const warnings = [];
   const clean = text
@@ -4473,7 +4622,7 @@ async function streamOutline({ model, prompt, language, onChunk, onDone, onError
 }
 
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError, onStatus }) {
-  const { tone, language, style, length, selectedSources, attachments, urlContexts, searchContexts, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
+  const { tone, language, style, length, selectedSources, attachments, urlContexts, searchContexts, gatheredContext, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
   const langInstr = language?.instr || '使用简体中文写作';
   const styleInstr = style?.instr || BUILTIN_STYLES[0].instr;
@@ -4513,8 +4662,13 @@ async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onE
       ).join('\n\n---\n\n')
     : '';
 
+  // Agentic research findings (P4 stage 2): model-gathered context
+  const researchBlock = gatheredContext
+    ? `\n\n【模型自主研究资料】\n${gatheredContext}`
+    : '';
+
   const contextBlock = `<context>
-生成日期：${dateStr}${urlContextBlock}${searchContextBlock}
+生成日期：${dateStr}${urlContextBlock}${searchContextBlock}${researchBlock}
 </context>`;
 
   const sourceNote = (() => {

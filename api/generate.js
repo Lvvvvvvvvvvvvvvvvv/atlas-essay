@@ -11,7 +11,8 @@ export default async function handler(req, res) {
   try { user = await requireAuth(req); }
   catch (e) { return res.status(e.status || 401).json({ error: e.message }); }
 
-  const { provider, messages, model, temperature, top_p, frequency_penalty, presence_penalty, max_tokens } = req.body || {};
+  const { provider, messages, model, temperature, top_p, frequency_penalty, presence_penalty, max_tokens, tools, tool_choice, stream } = req.body || {};
+  const wantStream = stream !== false; // default true; agentic tool-decision rounds send false
 
   // 1. Try personal key first
   let keyRow = null;
@@ -55,24 +56,32 @@ export default async function handler(req, res) {
 
   const apiUrl = (keyRow.api_url || 'https://api.anthropic.com/v1').replace(/\/$/, '');
 
-  // Proxy the streaming request
+  // Proxy the request (streaming for report generation, JSON for tool-decision rounds)
   try {
     const upstream = await fetch(`${apiUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model, messages, stream: true,
+        model, messages, stream: wantStream,
         max_tokens: max_tokens || 4000,
         temperature: temperature ?? 0.45,
         ...(top_p          != null ? { top_p }           : {}),
         ...(frequency_penalty != null ? { frequency_penalty } : {}),
         ...(presence_penalty  != null ? { presence_penalty }  : {}),
+        ...(tools ? { tools } : {}),
+        ...(tool_choice ? { tool_choice } : {}),
       }),
     });
 
     if (!upstream.ok) {
       const err = await upstream.text();
       return res.status(upstream.status).json({ error: err.slice(0, 300) });
+    }
+
+    // Non-streaming (tool-decision round): pass the JSON body straight through
+    if (!wantStream) {
+      const json = await upstream.json();
+      return res.status(200).json(json);
     }
 
     res.setHeader('Content-Type', 'text/event-stream');
