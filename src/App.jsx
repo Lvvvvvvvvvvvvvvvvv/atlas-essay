@@ -947,6 +947,12 @@ function ServerKeySection({ t, inp, secHdr }) {
 }
 
 // MCP server configuration (remote HTTP only). Lives in self-managed localStorage.
+// Recommended no-auth public remote MCP servers (verify current URLs at provider docs).
+const PRESET_MCP_SERVERS = [
+  { name: 'DeepWiki', url: 'https://mcp.deepwiki.com/mcp', desc: '查询 GitHub 仓库文档/问答 · 免鉴权' },
+  { name: 'Context7', url: 'https://mcp.context7.com/mcp', desc: '查询开源库最新文档 · 免鉴权' },
+];
+
 function McpServersConfig({ t, secHdr }) {
   const [servers, setServers] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('atlas_mcp_servers') || '[]'); } catch { return []; }
@@ -963,6 +969,10 @@ function McpServersConfig({ t, secHdr }) {
     persist([...servers, { id: Date.now().toString(), name: form.name.trim(), url: form.url.trim(), token: form.token.trim() }]);
     setForm({ name: '', url: '', token: '' });
     setAdding(false);
+  };
+  const addPreset = (p) => {
+    if (servers.some(s => s.url === p.url)) return;
+    persist([...servers, { id: Date.now().toString(), name: p.name, url: p.url, token: '' }]);
   };
   const remove = (id) => persist(servers.filter(s => s.id !== id));
 
@@ -984,6 +994,18 @@ function McpServersConfig({ t, secHdr }) {
           <button onClick={() => remove(s.id)} style={{ ...btn, border: `1px solid #e5251d`, color: '#e5251d', flexShrink: 0 }}>删除</button>
         </div>
       ))}
+      {/* Recommended no-auth presets */}
+      <div style={{ fontFamily: t.fontMono, fontSize: 8.5, color: t.mute, letterSpacing: 1, margin: '10px 0 6px' }}>推荐（免鉴权，一键添加）</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {PRESET_MCP_SERVERS.map(p => {
+          const added = servers.some(s => s.url === p.url);
+          return (
+            <button key={p.url} onClick={() => addPreset(p)} disabled={added} title={p.desc} style={{
+              ...btn, fontSize: 9, opacity: added ? 0.4 : 1, cursor: added ? 'default' : 'pointer',
+            }}>{added ? '✓ ' : '＋ '}{p.name}</button>
+          );
+        })}
+      </div>
       {adding ? (
         <div style={{ padding: 10, border: `1px solid ${t.rule}`, background: t.faint, marginTop: 6 }}>
           <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="名称（如 Notion）" style={{ ...inp, marginBottom: 6 }}/>
@@ -995,7 +1017,7 @@ function McpServersConfig({ t, secHdr }) {
           </div>
         </div>
       ) : (
-        <button onClick={() => setAdding(true)} style={{ ...btn, marginTop: 4 }}>＋ 添加 MCP 服务器</button>
+        <button onClick={() => setAdding(true)} style={{ ...btn, marginTop: 4 }}>＋ 手动添加</button>
       )}
     </div>
   );

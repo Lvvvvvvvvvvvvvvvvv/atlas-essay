@@ -165,10 +165,48 @@ MCP 有两类传输，当前「纯 Web 应用 + Vercel Serverless」架构只能
 
 **边界（已实测）**：仅远程 HTTP。`discoverMcpTools` 与 `executeMcpTool` 是两次独立 `mcpOperation`，各自重新 `initialize`——允许重复 initialize 的无状态 server 正常；禁止重复 initialize / 要求跨操作 session 连续的 server，工具能被发现但调用失败。任何 MCP 调用失败 → 兜底成文本回填模型，不阻断出报告。
 
+#### 推荐 MCP 服务器（前端已内置一键添加）
+
+`PRESET_MCP_SERVERS`（`src/App.jsx`）+ Settings UI「推荐」区，免鉴权、可一键添加：
+
+| 名称 | 端点 | 用途 | 鉴权 |
+|------|------|------|------|
+| DeepWiki | `https://mcp.deepwiki.com/mcp` | 查 GitHub 仓库文档/问答 | 无 |
+| Context7 | `https://mcp.context7.com/mcp` | 查开源库最新文档 | 无 |
+
+> URL 以各自官方文档为准，可能变动。其它（GitHub 官方、Hugging Face）走静态 token，可手动添加并填 Bearer Token。
+
+#### 线上验证状态
+
+- 协议逻辑：✅ 已用本地真实 MCP server 验证（见上表，`scripts/mcp-test.mjs`）
+- 公网 DeepWiki/Context7 端到端：⏳ **待 Vercel 线上验证**（开发沙箱出口白名单拦截外部 host，无法在 CI/沙箱内连公网 MCP）
+
+---
+
+## 待办（Roadmap）
+
+### OAuth 类 MCP 支持 `未做`
+
+当前 MCP 配置仅支持「URL + 静态 Bearer Token」。大量 SaaS 远程 MCP（**Linear / Notion / Sentry / Atlassian / Stripe / Asana** 等）走 **OAuth 2.1 授权流程**（PKCE + 授权码 + 动态客户端注册），填静态 token 接不了。
+
+落地需要：
+1. MCP 鉴权发现：读取 server 的 `WWW-Authenticate` / `.well-known/oauth-protected-resource`，定位 authorization server
+2. OAuth 2.1 授权码 + PKCE 流程，含浏览器跳转授权页 + 回调接收 code
+3. 换取 access/refresh token，安全存储（敏感，建议存后端而非 localStorage）+ 自动刷新
+4. `mcpProxy` 携带动态 access token（替代静态 Bearer）
+
+难度：高（前端跳转 + Serverless 回调 + token 安全存储）。优先级：中——先覆盖免鉴权与静态 token 类，OAuth 类按需再做。
+
+### stdio MCP 支持 `待桌面客户端`
+
+见上文「阶段三 · TODO」：需 Atlas 改为 Electron/Tauri 桌面应用后落地。
+
 ---
 
 ## 实现难度
 
 - 阶段一（Jina 注入）：低
 - 阶段二（Tool Use）：高（需重构调用流程 + 后端代理）
-- 阶段三（MCP）：很高
+- 阶段三（远程 HTTP MCP）：很高（已完成）
+- OAuth 类 MCP：高（待办）
+- stdio MCP：很高（待桌面客户端）
