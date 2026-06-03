@@ -8,10 +8,12 @@
 
 ## 当前状态
 
-- 报告存储：localStorage 保存完整报告内容
-- 无生成元数据（使用了哪个模型？花了多长时间？token 估算？）
-- 无用户行为数据（哪些报告被收藏？哪些被删除？）
-- 无质量指标（用户对报告满意度？）
+- 报告存储：localStorage + 云端 `/api/reports` 同步完整内容
+- 🟡 **部分元数据已记录**（方案 A 部分完成）：`meta` 已含 `model` / `words` / `sources` / `tokens` / `tone` / `warnings` / `retried`，v2.7.0 起新增 `research`（自主研究轮数与工具调用轨迹）
+- ✅ 用户评分：`meta.userRating`（good/bad，P2-V3 已实现）
+- ⬜ 无聚合统计面板（方案 B）
+- ⬜ 无 prompt 版本效果追踪（方案 C）
+- ⬜ 缺 `durationMs` / `generationMode` / `promptHash` 等字段
 
 ---
 

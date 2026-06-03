@@ -642,7 +642,7 @@ const NAV_ITEMS = [
   { k: 'sources', en: 'SOURCES', cn: '数据源' },
 ];
 
-function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode }) {
+function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode }) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -703,7 +703,7 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks,
           VOL.04 · № {issueNum}
         </span>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{dateStr} · {timeStr}</span>
-        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode} setRoute={setRoute}/>
+        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode} researchMode={researchMode} setResearchMode={setResearchMode} setRoute={setRoute}/>
       </div>
     </div>
   );
@@ -946,7 +946,7 @@ function ServerKeySection({ t, inp, secHdr }) {
   );
 }
 
-function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMode, onClose }) {
+function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, onClose }) {
   const [tab, setTab] = React.useState('model');
   const [modalReports, setModalReports] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; }
@@ -1180,6 +1180,23 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
                     }}>
                       <span style={{
                         position: 'absolute', top: 3, left: outlineMode ? 18 : 3,
+                        width: 14, height: 14, borderRadius: '50%', background: t.paper,
+                        transition: 'left 0.2s',
+                      }}/>
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', border: `1px solid ${t.rule}` }}>
+                    <div>
+                      <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>🔬 自主研究模式</div>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>生成前模型自主联网搜索/读网页补充资料 · 需 API Key · MiMo 仅单轮</div>
+                    </div>
+                    <button type="button" onClick={() => setResearchMode && setResearchMode(!researchMode)} style={{
+                      width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', flexShrink: 0,
+                      background: researchMode ? t.accent : t.rule,
+                      position: 'relative', transition: 'background 0.2s',
+                    }}>
+                      <span style={{
+                        position: 'absolute', top: 3, left: researchMode ? 18 : 3,
                         width: 14, height: 14, borderRadius: '50%', background: t.paper,
                         transition: 'left 0.2s',
                       }}/>
@@ -1471,7 +1488,7 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
   );
 }
 
-function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, setRoute }) {
+function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, setRoute }) {
   const { user, team, role, signOut } = useAuth();
   const [open, setOpen] = React.useState(false);
   const [section, setSection] = React.useState(null);
@@ -1619,7 +1636,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, 
         </div>
       )}
 
-      {settingsOpen && <SettingsModal t={t} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode} onClose={() => setSettingsOpen(false)}/>}
+      {settingsOpen && <SettingsModal t={t} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode} researchMode={researchMode} setResearchMode={setResearchMode} onClose={() => setSettingsOpen(false)}/>}
 
     </div>
   );
@@ -6195,7 +6212,7 @@ function WorkflowView({ t, topic, modelStore, toolbarConfig, onSaveReport, onBac
 }
 
 // ── Component -----------------------------------------------------------
-function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, density = 'editorial', modelStore, toolbarConfig, onSaveReport }) {
+function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, density = 'editorial', modelStore, toolbarConfig, onSaveReport, researchMode = false }) {
   const selectedModel = modelStore?.selected;
   const isLiveMode = !!(selectedModel?.apiKey);
 
@@ -6212,6 +6229,11 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
   const [liveTokens, setLiveTokens] = React.useState(0);
   const liveTimerRef = React.useRef(null);
 
+  // Agentic research (P4 stage 2) — runs before generation when researchMode on
+  const [researchStatus, setResearchStatus] = React.useState(researchMode ? 'pending' : 'off'); // off | pending | running | done
+  const [researchLog, setResearchLog] = React.useState([]);
+  const researchMetaRef = React.useRef(null);
+
   // Ref always holds the latest streamed text — no stale-closure risk
   const liveTextRef = React.useRef('');
   const savedRef = React.useRef(false);
@@ -6225,10 +6247,35 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
     liveTimerRef.current = setInterval(() => {
       setLiveElapsed(((Date.now() - liveStartTime) / 1000));
     }, 200);
-    streamReport({
+
+    let cancelled = false;
+    (async () => {
+      // ── Phase 0: agentic research (optional) ───────────────────────────
+      let effectiveConfig = toolbarConfig;
+      if (researchMode) {
+        setResearchStatus('running');
+        try {
+          const { context, log } = await runAgenticResearch({
+            model: selectedModel,
+            prompt: effectivePrompt,
+            onStatus: (s) => {
+              if (cancelled) return;
+              if (s.action) setResearchLog(prev => [...prev, { action: s.action, detail: s.detail }]);
+            },
+          });
+          if (cancelled) return;
+          researchMetaRef.current = { rounds: log.filter(l => l.type !== 'error').length, log };
+          if (context) effectiveConfig = { ...toolbarConfig, gatheredContext: context };
+        } catch { /* degrade silently → plain generation */ }
+        if (cancelled) return;
+        setResearchStatus('done');
+      }
+
+      // ── Phase 1: report generation ─────────────────────────────────────
+      streamReport({
       model: selectedModel,
       prompt: effectivePrompt,
-      toolbarConfig,
+      toolbarConfig: effectiveConfig,
       onStatus: ({ phase, total, done }) => {
         if (phase === 'fetching') { setLiveStatus('fetching'); setLiveFetchProgress({ done: done || 0, total: total || 0 }); }
         else if (phase === 'connecting') { setLiveStatus('connecting'); }
@@ -6293,6 +6340,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
               tokens: totalTokens,
               warnings: warnings.length > 0 ? warnings : undefined,
               retried: retried || undefined,
+              research: researchMetaRef.current || undefined,
             },
             favorited: false,
           });
@@ -6370,7 +6418,8 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
         onTimelineComplete && onTimelineComplete();
       },
     });
-    return () => clearInterval(liveTimerRef.current);
+    })();
+    return () => { cancelled = true; clearInterval(liveTimerRef.current); };
   }, []);
 
   // Split liveText into paragraphs for rendering
@@ -6452,6 +6501,16 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
   const liveMargins = React.useMemo(() => {
     if (!isLiveMode) return [];
     const out = [];
+    // Agentic research trail (P4 stage 2)
+    if (researchStatus !== 'off') {
+      researchLog.forEach((r, i) => out.push({
+        id: `research-${i}`,
+        tag: r.action === 'search' ? 'SEARCH' : 'READ',
+        cn: `${r.action === 'search' ? '搜索' : '读取'}：${(r.detail || '').slice(0, 40)}`,
+        state: 'done', t: 0,
+      }));
+      if (researchStatus === 'running') out.push({ id: 'research-live', tag: 'RESEARCH', cn: '模型自主研究中…', state: 'live', t: 0 });
+    }
     if (liveStatus === 'fetching') out.push({ id: 'fetch', tag: 'FETCH', cn: `抓取网页内容… ${liveFetchProgress.done}/${liveFetchProgress.total}`, state: 'live', t: 0 });
     if (liveStatus === 'connecting') out.push({ id: 'connect', tag: 'CONNECT', cn: `正在连接 ${selectedModel?.name || '模型'}…`, state: 'live', t: 0 });
     if (liveStatus === 'streaming' || liveStatus === 'done') {
@@ -6464,7 +6523,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
     if (liveStatus === 'done') out.push({ id: 'done', tag: 'DONE', cn: `共 ${liveText.length} 字`, state: 'done', t: liveElapsed });
     if (liveStatus === 'error') out.push({ id: 'err', tag: 'ERROR', cn: liveError.slice(0, 60), state: 'done', t: liveElapsed });
     return out;
-  }, [isLiveMode, liveStatus, liveText.length, liveError, selectedModel, liveElapsed]);
+  }, [isLiveMode, liveStatus, liveText.length, liveError, selectedModel, liveElapsed, researchStatus, researchLog]);
 
   const displayMargins = isLiveMode ? liveMargins : margins;
 
@@ -10921,6 +10980,13 @@ function App() {
     setOutlineModeState(v);
     localStorage.setItem('atlas_outline_mode', String(v));
   };
+  const [researchMode, setResearchModeState] = React.useState(
+    () => localStorage.getItem('atlas_research_mode') === 'true'
+  );
+  const setResearchMode = (v) => {
+    setResearchModeState(v);
+    localStorage.setItem('atlas_research_mode', String(v));
+  };
 
   const goRun = () => {
     setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false);
@@ -11057,7 +11123,8 @@ function App() {
       <TopBar t={t} route={route} setRoute={setRoute}
         runState={route === 'running' && !runDone ? 'running' : 'idle'}
         tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore}
-        outlineMode={outlineMode} setOutlineMode={setOutlineMode}/>
+        outlineMode={outlineMode} setOutlineMode={setOutlineMode}
+        researchMode={researchMode} setResearchMode={setResearchMode}/>
       <main style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
         {route === 'home' && (
           <Home t={t} prompt={prompt} setPrompt={setPrompt}
@@ -11097,6 +11164,7 @@ function App() {
             onDone={() => setRoute('report')}
             onTimelineComplete={() => setRunDone(true)}
             marginaliaOn={tweaks.marginalia} density={tweaks.density}
+            researchMode={researchMode}
             modelStore={modelStore} toolbarConfig={{
               tone: toolbarStore.currentTone,
               language: toolbarStore.currentLanguage,

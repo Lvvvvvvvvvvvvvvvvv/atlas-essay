@@ -6,12 +6,67 @@
 
 ---
 
+## 开发状态
+
+| 阶段 | 状态 | 完成版本 |
+|------|------|---------|
+| 阶段一：数据源内容注入（Jina Reader） | **已完成** | v2.4.x |
+| 阶段一+：实时搜索（Tavily） | **已完成** | v2.5.x |
+| 阶段二：模型 Tool Use（自主研究） | **已完成** | v2.7.0 |
+| 阶段三：MCP 集成 | 未开始（需后端） | — |
+
+---
+
 ## 当前状态
 
-- 数据源：用户手动填写 URL，以纯文本附加到 prompt 末尾
-- 模型无法实际访问 URL 内容
-- 无实时搜索能力
-- 无结构化数据获取
+- ✅ 数据源 URL：`fetchUrlContents()` 经 Jina Reader（`r.jina.ai`）抓取正文，截 2000 字注入 `<context>`
+- ✅ 实时搜索：`/api/search`（Tavily）后端代理 + 前端搜索面板，结果可手动加入上下文
+- ✅ 工作流自动研究：WorkflowView 第一步自动搜 topic
+- ✅ **模型自主研究（Tool Use）**：开启「自主研究模式」后，模型在生成前自行决定调用 `web_search` / `fetch_url`
+- ⬜ 结构化数据获取 / 代码执行：未做（需后端）
+
+---
+
+## 实现记录（v2.7.0 · 模型 Tool Use）
+
+**完成日期**：2026-06-03
+
+### 架构：客户端 Agentic 循环（零新增 serverless 函数）
+
+受 Vercel Hobby 12 函数上限约束，工具循环放在前端执行，工具复用既有设施：
+- `web_search` → 现成 `/api/search`（Tavily）
+- `fetch_url` → 现成客户端 `fetchUrlContents()`（Jina）
+
+### 流程
+
+```
+开启「自主研究模式」+ Live 模式 → 输入 topic
+  ↓
+[决策轮] 非流式调模型（带 tools 定义）
+  ├─ 返回 tool_calls → 前端执行 → 结果回填 messages → 再决策（多轮）
+  └─ 无 tool_calls → 结束研究
+  ↓
+[终轮] 研究资料注入 <context> → 流式生成报告（复用 streamReport）
+```
+
+### Per-provider 能力分级
+
+| Provider | 策略 | 原因 |
+|----------|------|------|
+| DeepSeek / OpenAI / Anthropic | 多轮循环（≤3 轮） | 原生支持多轮 tool 历史 |
+| **MiMo（小米）** | **单轮** | 上游 [Issue #44](https://github.com/XiaomiMiMo/MiMo/issues/44)：多轮 tool 历史报 400 |
+| 其他/未知 | 单轮，失败即跳过 | 保守降级 |
+
+**降级原则**：任何环节出错（模型不支持 tools、循环超时、工具失败）→ 静默跳过研究，直接走普通生成，绝不阻断出报告。
+
+### 核心代码位置
+
+- `src/App.jsx` — `RESEARCH_TOOLS`（工具 schema）
+- `src/App.jsx` — `resolveModelCall()` / `executeResearchTool()` / `runAgenticResearch()`
+- `src/App.jsx` — `streamReport()` 新增 `gatheredContext` 注入
+- `src/App.jsx` — `Running` 组件：研究阶段（Phase 0）+ 工具轨迹 marginalia
+- `src/App.jsx` — `SettingsModal`：「🔬 自主研究模式」开关（默认关，localStorage 持久化）
+- `api/generate.js` — 透传 `tools`/`tool_choice`，支持 `stream:false` 返回 JSON
 
 ---
 
