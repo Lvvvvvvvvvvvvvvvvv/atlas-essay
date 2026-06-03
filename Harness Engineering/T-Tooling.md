@@ -112,6 +112,28 @@ tools: [
 
 接入 MCP（Model Context Protocol）服务，统一管理工具注册和调用。
 
+#### 传输方式与架构约束（重要）
+
+MCP 有两类传输，当前「纯 Web 应用 + Vercel Serverless」架构只能落地其中一种：
+
+| 传输 | 说明 | 当前架构 | 原因 |
+|------|------|---------|------|
+| 远程 HTTP（HTTP+SSE / Streamable HTTP） | 远程 MCP 服务器 | ✅ 可做（需后端代理） | 折叠进 `api/search.js` 按 action 分发，无状态模式每次 re-initialize |
+| stdio（本地子进程，最常见） | 客户端 spawn 本地进程，走 stdin/stdout 管道 | ❌ 做不了 | 浏览器沙箱不能 spawn 进程；Vercel 函数即使能 spawn 也是云端一次性容器（机器不对 + 活不下来） |
+
+> stdio 的前提是「客户端能在用户本机拉起常驻子进程」。Web 应用客户端被劈成浏览器（沙箱）+ 云函数（异地、一次性），没有任何一半是用户本机常驻进程，故不支持。
+
+#### TODO（待办 · 做桌面客户端时执行）
+
+**一旦 Atlas 改为原生桌面应用（Electron / Tauri），即可解锁 stdio MCP。** 届时需注意：
+
+1. MCP 客户端逻辑必须放在**主进程 / 原生层**（Electron main / Tauri Rust 侧），**不能**放渲染层 webview —— webview 与浏览器同为沙箱，照样不能 spawn 进程
+2. 需让 MCP server 运行时可用：bundle 一个 node/python，或让用户配置可执行路径
+3. 部分 agentic 工具执行逻辑需从云端下沉到本地主进程
+4. 这是「Claude Desktop / Cursor / Cline 跑 stdio MCP」的同款做法
+
+> 提醒：当本仓库出现桌面客户端（Electron/Tauri）相关工作时，回到此处落地 stdio MCP 支持。
+
 ---
 
 ## 实现难度
