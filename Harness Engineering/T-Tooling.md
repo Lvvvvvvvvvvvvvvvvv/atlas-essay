@@ -65,7 +65,7 @@
 - `src/App.jsx` — `resolveModelCall()` / `executeResearchTool()` / `runAgenticResearch()`
 - `src/App.jsx` — `streamReport()` 新增 `gatheredContext` 注入
 - `src/App.jsx` — `Running` 组件：研究阶段（Phase 0）+ 工具轨迹 marginalia
-- `src/App.jsx` — `SettingsModal`：「🔬 自主研究模式」开关（默认关，localStorage 持久化）
+- `src/App.jsx` — `SettingsModal`：「自主研究模式」开关（默认关，localStorage 持久化）
 - `api/generate.js` — 透传 `tools`/`tool_choice`，支持 `stream:false` 返回 JSON
 
 ---

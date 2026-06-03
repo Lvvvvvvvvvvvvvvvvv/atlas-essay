@@ -1187,7 +1187,7 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', border: `1px solid ${t.rule}` }}>
                     <div>
-                      <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>🔬 自主研究模式</div>
+                      <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>自主研究模式</div>
                       <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>生成前模型自主联网搜索/读网页补充资料 · 需 API Key · MiMo 仅单轮</div>
                     </div>
                     <button type="button" onClick={() => setResearchMode && setResearchMode(!researchMode)} style={{
