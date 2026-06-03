@@ -6724,10 +6724,13 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
           <PromptHeader t={t} prompt={prompt}/>
           {/* Model badge in live mode */}
           {isLiveMode && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <Tag t={t} accent>◈ {selectedModel?.name} · {selectedModel?.provider}</Tag>
+              {researchStatus === 'running' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>◈ 自主研究中… 已调用 {researchLog.length} 个工具</span>}
+              {researchStatus === 'done' && researchLog.length > 0 && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>✓ 研究完成 · 调用 {researchLog.length} 个工具</span>}
+              {researchStatus === 'done' && researchLog.length === 0 && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>✓ 研究完成 · 模型未调用工具</span>}
               {liveStatus === 'fetching' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>↗ 正在抓取网页内容… ({liveFetchProgress.done}/{liveFetchProgress.total})</span>}
-              {liveStatus === 'connecting' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>正在连接…</span>}
+              {liveStatus === 'connecting' && researchStatus !== 'running' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>正在连接…</span>}
               {retryStatus === 'retrying' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>◈ 检测到截断，正在自动补全…</span>}
             </div>
           )}
@@ -6743,6 +6746,30 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
             display: 'flex', flexDirection: 'column', gap: 18,
             paddingTop: 18, borderTop: `2px solid ${t.ink}`,
           }}>
+            {/* Agentic research trail (visible regardless of marginalia toggle) */}
+            {isLiveMode && researchStatus !== 'off' && (researchLog.length > 0 || researchStatus === 'running') && (
+              <div style={{ border: `1px solid ${t.rule}`, background: t.faint, padding: '12px 14px' }}>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2, color: t.mute, marginBottom: researchLog.length ? 8 : 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>自主研究 · RESEARCH</span>
+                  {researchStatus === 'running' && <span style={{ display: 'inline-block', width: 7, height: 12, background: t.accent, animation: 'essay-blink 1s steps(2) infinite' }}/>}
+                  <span style={{ flex: 1 }}/>
+                  <span>{researchLog.length} 次调用</span>
+                </div>
+                {researchLog.map((r, i) => {
+                  const label = r.action === 'search' ? '搜索' : r.action === 'mcp' ? 'MCP' : '读取';
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 8, fontFamily: t.fontMono, fontSize: 11, color: t.ink, padding: '3px 0' }}>
+                      <span style={{ color: t.accent, flexShrink: 0, width: 38 }}>{label}</span>
+                      <span style={{ color: t.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.detail}</span>
+                    </div>
+                  );
+                })}
+                {researchStatus === 'running' && researchLog.length === 0 && (
+                  <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>模型正在判断是否需要联网/调用工具…</div>
+                )}
+              </div>
+            )}
+
             {/* LIVE MODE rendering */}
             {isLiveMode && liveParagraphs.map((p, i) => (
               <Paragraph key={i} t={t} para={p} isLead={p.kind === 'lede'} isActive={i === liveParagraphs.length - 1 && liveStatus === 'streaming'}/>
