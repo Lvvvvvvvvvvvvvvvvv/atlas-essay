@@ -13,7 +13,8 @@
 | 阶段一：数据源内容注入（Jina Reader） | **已完成** | v2.4.x |
 | 阶段一+：实时搜索（Tavily） | **已完成** | v2.5.x |
 | 阶段二：模型 Tool Use（自主研究） | **已完成** | v2.7.0 |
-| 阶段三：MCP 集成 | 未开始（需后端） | — |
+| 阶段三：MCP 集成（远程 HTTP） | **已完成** | v2.8.0 |
+| 阶段三+：stdio MCP | 待桌面客户端 | — |
 
 ---
 
@@ -133,6 +134,26 @@ MCP 有两类传输，当前「纯 Web 应用 + Vercel Serverless」架构只能
 4. 这是「Claude Desktop / Cursor / Cline 跑 stdio MCP」的同款做法
 
 > 提醒：当本仓库出现桌面客户端（Electron/Tauri）相关工作时，回到此处落地 stdio MCP 支持。
+
+#### 实现记录（v2.8.0 · 远程 HTTP MCP）
+
+**完成日期**：2026-06-03
+
+**架构：客户端发现 + 后端无状态代理（零新增 serverless 函数）**
+- 函数预算仍卡 12/12 → MCP 代理折叠进 `api/search.js`，按 `action` 字段分发（`search` 走 Tavily，`mcp` 走 JSON-RPC 转发）
+- 后端 `mcpOperation()`：单次函数调用内完成 `initialize → notifications/initialized → tools/list|tools/call` 完整握手（无状态）；兼容 `application/json` 与 `text/event-stream`(SSE) 两种响应
+- 前端 `discoverMcpTools()`：生成前拉取各 server 的 `tools/list`，转成 OpenAI function-calling schema 并命名空间化（`mcp_{si}_{name}`），与内置 `web_search`/`fetch_url` 合并喂给模型
+- 前端 `executeMcpTool()`：模型选了 MCP 工具 → 经代理调 `tools/call` → 提取 `content[].text` 回填
+- 复用 v2.7.0 的 `runAgenticResearch` 循环、per-provider 分级与降级兜底
+
+**配置**：Settings → 模型 →「MCP 服务器」（名称 + URL + 可选 Bearer Token，存 localStorage `atlas_mcp_servers`）
+
+**核心代码位置**
+- `api/search.js` — `mcpPost()` / `mcpOperation()` / `handleMcp()` + action 分发
+- `src/App.jsx` — `getMcpServers()` / `mcpProxy()` / `discoverMcpTools()` / `executeMcpTool()`
+- `src/App.jsx` — `McpServersConfig` 组件（Settings UI）
+
+**边界**：仅远程 HTTP；强会话 server 可能不兼容（无状态代理每次重新握手）；任何 MCP 调用失败 → 静默跳过该工具，不阻断出报告。
 
 ---
 

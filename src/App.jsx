@@ -946,6 +946,61 @@ function ServerKeySection({ t, inp, secHdr }) {
   );
 }
 
+// MCP server configuration (remote HTTP only). Lives in self-managed localStorage.
+function McpServersConfig({ t, secHdr }) {
+  const [servers, setServers] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_mcp_servers') || '[]'); } catch { return []; }
+  });
+  const [adding, setAdding] = React.useState(false);
+  const [form, setForm] = React.useState({ name: '', url: '', token: '' });
+
+  const persist = (next) => {
+    setServers(next);
+    try { localStorage.setItem('atlas_mcp_servers', JSON.stringify(next)); } catch {}
+  };
+  const add = () => {
+    if (!form.name.trim() || !form.url.trim()) return;
+    persist([...servers, { id: Date.now().toString(), name: form.name.trim(), url: form.url.trim(), token: form.token.trim() }]);
+    setForm({ name: '', url: '', token: '' });
+    setAdding(false);
+  };
+  const remove = (id) => persist(servers.filter(s => s.id !== id));
+
+  const inp = { width: '100%', padding: '6px 9px', fontFamily: t.fontMono, fontSize: 11, border: `1px solid ${t.rule}`, background: t.paper, color: t.ink, outline: 'none', boxSizing: 'border-box' };
+  const btn = { padding: '5px 12px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, border: `1px solid ${t.ink}`, background: 'transparent', color: t.ink, cursor: 'pointer' };
+
+  return (
+    <div>
+      <div style={secHdr}>MCP 服务器</div>
+      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 10, lineHeight: 1.6 }}>
+        仅支持远程 HTTP / Streamable HTTP 类型。配置后，开启「自主研究模式」时这些工具会一并提供给模型。stdio 本地服务器需桌面客户端，暂不支持。
+      </div>
+      {servers.map(s => (
+        <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: `1px solid ${t.rule}`, marginBottom: 6 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink }}>{s.name}</div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.url}{s.token ? ' · 已配置 token' : ''}</div>
+          </div>
+          <button onClick={() => remove(s.id)} style={{ ...btn, border: `1px solid #e5251d`, color: '#e5251d', flexShrink: 0 }}>删除</button>
+        </div>
+      ))}
+      {adding ? (
+        <div style={{ padding: 10, border: `1px solid ${t.rule}`, background: t.faint, marginTop: 6 }}>
+          <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="名称（如 Notion）" style={{ ...inp, marginBottom: 6 }}/>
+          <input value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} placeholder="服务器 URL（https://…）" style={{ ...inp, marginBottom: 6 }}/>
+          <input value={form.token} onChange={e => setForm(f => ({ ...f, token: e.target.value }))} placeholder="Bearer Token（可选）" style={{ ...inp, marginBottom: 8 }}/>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={add} disabled={!form.name.trim() || !form.url.trim()} style={{ ...btn, background: t.ink, color: t.paper, opacity: (!form.name.trim() || !form.url.trim()) ? 0.5 : 1 }}>保存</button>
+            <button onClick={() => { setAdding(false); setForm({ name: '', url: '', token: '' }); }} style={btn}>取消</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setAdding(true)} style={{ ...btn, marginTop: 4 }}>＋ 添加 MCP 服务器</button>
+      )}
+    </div>
+  );
+}
+
 function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, onClose }) {
   const [tab, setTab] = React.useState('model');
   const [modalReports, setModalReports] = React.useState(() => {
@@ -1203,6 +1258,7 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
                     </button>
                   </div>
                 </div>
+                <McpServersConfig t={t} secHdr={secHdr}/>
                 <div>
                   <div style={secHdr}>模型参数</div>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
@@ -4425,8 +4481,77 @@ async function resolveModelCall(model) {
   return { url, auth, provider: model.provider };
 }
 
+// ── MCP (remote HTTP) tool discovery & execution ─────────────────────────────
+// Servers configured in localStorage: [{ id, name, url, token }]
+function getMcpServers() {
+  try { return JSON.parse(localStorage.getItem('atlas_mcp_servers') || '[]'); } catch { return []; }
+}
+
+async function mcpProxy(server, method, params) {
+  const { supabase } = await import('./lib/supabase.js');
+  const { data: { session } } = await supabase.auth.getSession();
+  const resp = await fetch('/api/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+    body: JSON.stringify({ action: 'mcp', serverUrl: server.url, token: server.token || '', method, params }),
+  });
+  if (!resp.ok) {
+    let msg = `MCP ${resp.status}`;
+    try { const d = await resp.json(); msg = d.error || msg; } catch {}
+    throw new Error(msg);
+  }
+  const data = await resp.json();
+  return data.result;
+}
+
+// Discover tools from all configured MCP servers. Returns { tools, toolMap }.
+// tools: OpenAI function-calling schemas (namespaced); toolMap: name → { server, original }.
+async function discoverMcpTools(servers) {
+  const tools = [];
+  const toolMap = {};
+  for (let si = 0; si < servers.length; si++) {
+    const server = servers[si];
+    try {
+      const result = await mcpProxy(server, 'tools/list', {});
+      const list = result?.tools || [];
+      for (const tl of list) {
+        const safeName = `mcp_${si}_${(tl.name || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`.slice(0, 64);
+        tools.push({
+          type: 'function',
+          function: {
+            name: safeName,
+            description: `[${server.name || 'MCP'}] ${tl.description || tl.name || ''}`.slice(0, 1024),
+            parameters: tl.inputSchema || { type: 'object', properties: {} },
+          },
+        });
+        toolMap[safeName] = { server, original: tl.name };
+      }
+    } catch { /* skip unreachable server */ }
+  }
+  return { tools, toolMap };
+}
+
+// Run an MCP tool call → string result for the model
+async function executeMcpTool(entry, args, onStatus) {
+  onStatus?.({ phase: 'research', action: 'mcp', detail: `${entry.server.name || 'MCP'} · ${entry.original}` });
+  try {
+    const result = await mcpProxy(entry.server, 'tools/call', { name: entry.original, arguments: args || {} });
+    const content = result?.content;
+    if (Array.isArray(content)) {
+      return content.map(c => c.text || (c.type === 'text' ? c.text : JSON.stringify(c))).filter(Boolean).join('\n') || '（无返回内容）';
+    }
+    return typeof result === 'string' ? result : JSON.stringify(result || {}).slice(0, 4000);
+  } catch (e) {
+    return `MCP 调用失败：${String(e.message || e).slice(0, 120)}`;
+  }
+}
+
 // Execute a single tool call → returns a string result for the model
-async function executeResearchTool(name, args, onStatus) {
+async function executeResearchTool(name, args, onStatus, mcpToolMap) {
+  // MCP tool?
+  if (mcpToolMap && mcpToolMap[name]) {
+    return executeMcpTool(mcpToolMap[name], args, onStatus);
+  }
   try {
     if (name === 'web_search') {
       const query = (args?.query || '').trim();
@@ -4465,6 +4590,14 @@ async function runAgenticResearch({ model, prompt, onStatus }) {
   const singleRound = provider === 'mimo'; // MiMo can't take tool history multi-turn
   const maxRounds = singleRound ? 1 : 3;
 
+  // Discover MCP tools (remote HTTP servers) and merge with built-ins
+  let mcpTools = [], mcpToolMap = {};
+  const servers = getMcpServers();
+  if (servers.length) {
+    try { ({ tools: mcpTools, toolMap: mcpToolMap } = await discoverMcpTools(servers)); } catch {}
+  }
+  const allTools = [...RESEARCH_TOOLS, ...mcpTools];
+
   const log = [];
   const gathered = [];
   const messages = [
@@ -4482,7 +4615,7 @@ async function runAgenticResearch({ model, prompt, onStatus }) {
           model: model.id,
           provider: model.provider,
           messages,
-          tools: RESEARCH_TOOLS,
+          tools: allTools,
           tool_choice: round === 0 ? 'auto' : 'auto',
           stream: false,
           max_tokens: 1024,
@@ -4506,12 +4639,16 @@ async function runAgenticResearch({ model, prompt, onStatus }) {
     // Append assistant's tool-call message, then execute each tool
     messages.push(msg);
     for (const tc of toolCalls) {
+      const fname = tc.function?.name;
       let args = {};
       try { args = JSON.parse(tc.function?.arguments || '{}'); } catch {}
-      const result = await executeResearchTool(tc.function?.name, args, onStatus);
-      log.push({ type: tc.function?.name, detail: args.query || args.url || '', ok: true });
-      gathered.push(`【${tc.function?.name === 'web_search' ? '搜索' : '网页'}：${args.query || args.url || ''}】\n${result}`);
-      messages.push({ role: 'tool', tool_call_id: tc.id, content: result.slice(0, 4000) });
+      const result = await executeResearchTool(fname, args, onStatus, mcpToolMap);
+      const isMcp = !!mcpToolMap[fname];
+      const label = isMcp ? (mcpToolMap[fname].original) : (fname === 'web_search' ? '搜索' : '网页');
+      const detail = args.query || args.url || JSON.stringify(args).slice(0, 60);
+      log.push({ type: isMcp ? 'mcp' : fname, detail, ok: true });
+      gathered.push(`【${label}：${detail}】\n${result}`);
+      messages.push({ role: 'tool', tool_call_id: tc.id, content: String(result).slice(0, 4000) });
     }
 
     if (singleRound) break; // MiMo: stop after first round of tool execution
@@ -6503,12 +6640,11 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
     const out = [];
     // Agentic research trail (P4 stage 2)
     if (researchStatus !== 'off') {
-      researchLog.forEach((r, i) => out.push({
-        id: `research-${i}`,
-        tag: r.action === 'search' ? 'SEARCH' : 'READ',
-        cn: `${r.action === 'search' ? '搜索' : '读取'}：${(r.detail || '').slice(0, 40)}`,
-        state: 'done', t: 0,
-      }));
+      researchLog.forEach((r, i) => {
+        const tag = r.action === 'search' ? 'SEARCH' : r.action === 'mcp' ? 'MCP' : 'READ';
+        const verb = r.action === 'search' ? '搜索' : r.action === 'mcp' ? 'MCP' : '读取';
+        out.push({ id: `research-${i}`, tag, cn: `${verb}：${(r.detail || '').slice(0, 40)}`, state: 'done', t: 0 });
+      });
       if (researchStatus === 'running') out.push({ id: 'research-live', tag: 'RESEARCH', cn: '模型自主研究中…', state: 'live', t: 0 });
     }
     if (liveStatus === 'fetching') out.push({ id: 'fetch', tag: 'FETCH', cn: `抓取网页内容… ${liveFetchProgress.done}/${liveFetchProgress.total}`, state: 'live', t: 0 });
