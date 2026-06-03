@@ -149,11 +149,21 @@ MCP 有两类传输，当前「纯 Web 应用 + Vercel Serverless」架构只能
 **配置**：Settings → 模型 →「MCP 服务器」（名称 + URL + 可选 Bearer Token，存 localStorage `atlas_mcp_servers`）
 
 **核心代码位置**
-- `api/search.js` — `mcpPost()` / `mcpOperation()` / `handleMcp()` + action 分发
+- `api/_lib/mcp.js` — `mcpPost()` / `mcpOperation()`（协议逻辑，已解耦可独立测试）
+- `api/search.js` — `handleMcp()` + action 分发
 - `src/App.jsx` — `getMcpServers()` / `mcpProxy()` / `discoverMcpTools()` / `executeMcpTool()`
 - `src/App.jsx` — `McpServersConfig` 组件（Settings UI）
 
-**边界**：仅远程 HTTP；强会话 server 可能不兼容（无状态代理每次重新握手）；任何 MCP 调用失败 → 静默跳过该工具，不阻断出报告。
+**验证（`scripts/mcp-test.mjs`，对本地真实 MCP HTTP server 跑 shipped 逻辑）**
+
+| 模式 | 结果 |
+|------|------|
+| JSON 响应 | ✅ 发现工具 + 调用成功 |
+| SSE（text/event-stream）响应 | ✅ 解析正确，跑通 |
+| 每请求校验 session | ✅ 单次操作内 session 正确透传 |
+| 禁止重复 initialize 的 server | ❌ tools/call 失败（`Session already initialized`），但被降级兜底，不崩溃 |
+
+**边界（已实测）**：仅远程 HTTP。`discoverMcpTools` 与 `executeMcpTool` 是两次独立 `mcpOperation`，各自重新 `initialize`——允许重复 initialize 的无状态 server 正常；禁止重复 initialize / 要求跨操作 session 连续的 server，工具能被发现但调用失败。任何 MCP 调用失败 → 兜底成文本回填模型，不阻断出报告。
 
 ---
 
