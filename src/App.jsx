@@ -7468,7 +7468,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
   };
 
   return (
-    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
       {/* Report header bar */}
       <div style={{ padding: '12px 36px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, background: t.paper }}>
         <Tag t={t} accent>◆ {rMeta.issue || REPORT_META.issue} · DONE</Tag>
@@ -7504,7 +7504,6 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
         {!isStatic && onShareToTeam && (
           <Btn t={t} size="sm" onClick={onShareToTeam}>⊕ 分享到团队</Btn>
         )}
-        <Btn t={t} size="sm" primary accent onClick={onExport}>↗ 导出 / 分享</Btn>
       </div>
 
       {/* Validation warning banner */}
@@ -7809,6 +7808,15 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
         )}
         <div/>
       </div>
+      {/* Floating export fallback when right-rail (marginalia) is hidden */}
+      {!marginaliaOn && (
+        <button type="button" onClick={onExport} style={{
+          position: 'absolute', right: 24, bottom: 24, zIndex: 20,
+          padding: '9px 16px', border: `1.5px solid ${t.ink}`, background: t.accent, color: '#fff',
+          fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1, cursor: 'pointer',
+          boxShadow: `2px 2px 0 ${t.ink}`,
+        }}>↗ 导出 / 分享</button>
+      )}
     </div>
   );
 }
@@ -9792,22 +9800,127 @@ function _loadScript(src) {
 }
 
 // ── Build inline report HTML (rendered in current document, for html2canvas) ──
+// Fixed export palette (html2canvas-safe: no gradients / rotated text / fragile opacity)
+const _XC = { ink: '#0f0f0f', soft: '#333333', mute: '#999999', rule: '#dddddd', accent: '#e5251d', accentLite: '#fbe4e2', paper: '#ffffff' };
+const _XPAL = ['#e5251d', '#1d4ed8', '#1f6f44', '#c2540a', '#7c3aed', '#0891b2', '#b45309', '#be185d'];
+const _nf = (v) => { const n = Number(v); return isNaN(n) ? String(v ?? '') : n.toLocaleString(); };
+const _svgTag = (vw, vh, inner) => `<svg viewBox="0 0 ${vw} ${vh}" width="100%" style="display:block;height:auto" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+const _CN = "'Noto Sans SC',sans-serif", _MO = "'IBM Plex Mono',monospace";
+
+// Produce a faithful SVG string for non-bar chart types; '' if unsupported.
+function _chartSVG(cd) {
+  const items = cd.data || [];
+  if (!items.length) return '';
+  const type = cd.type;
+
+  if (type === 'column') {
+    const max = Math.max(...items.map(d => +d.value || 0), 0.001);
+    const VW = 500, VH = 210, pL = 44, pR = 16, pT = 20, pB = 48, cW = VW - pL - pR, cH = VH - pT - pB, n = items.length, slotW = cW / n, barW = Math.min(slotW * 0.62, 52);
+    let g = '';
+    [0.25, 0.5, 0.75, 1].forEach(f => { const y = pT + cH * (1 - f), v = Math.round(max * f); g += `<line x1="${pL}" y1="${y}" x2="${VW - pR}" y2="${y}" stroke="${_XC.rule}" stroke-width="0.5"/><text x="${pL - 4}" y="${y + 3.5}" text-anchor="end" fill="${_XC.mute}" font-size="8" font-family="${_MO}">${_nf(v)}</text>`; });
+    items.forEach((it, i) => { const v = +it.value || 0, bh = (v / max) * cH, x = pL + i * slotW + (slotW - barW) / 2, y = pT + cH - bh; g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${_XPAL[i % _XPAL.length]}" opacity="0.88"/>`; if (bh > 14) g += `<text x="${(x + barW / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle" fill="${_XC.ink}" font-size="8" font-family="${_MO}" font-weight="700">${_nf(v)}</text>`; g += `<text x="${(x + barW / 2).toFixed(1)}" y="${pT + cH + 14}" text-anchor="middle" fill="${_XC.soft}" font-size="9" font-family="${_CN}">${_esc(String(it.label || '').slice(0, 6))}</text>`; });
+    g += `<line x1="${pL}" y1="${pT + cH}" x2="${VW - pR}" y2="${pT + cH}" stroke="${_XC.ink}" stroke-width="1"/><line x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT + cH}" stroke="${_XC.ink}" stroke-width="0.5"/>`;
+    return _svgTag(VW, VH, g);
+  }
+
+  if (type === 'line') {
+    if (items.length < 2) return '';
+    const max = Math.max(...items.map(d => +d.value || 0), 0.001);
+    const VW = 500, VH = 210, pL = 44, pR = 16, pT = 20, pB = 48, cW = VW - pL - pR, cH = VH - pT - pB, n = items.length;
+    const pts = items.map((it, i) => ({ x: pL + (i / (n - 1)) * cW, y: pT + cH - ((+it.value || 0) / max) * cH, label: it.label, value: +it.value || 0 }));
+    let g = '';
+    [0.25, 0.5, 0.75, 1].forEach(f => { const y = pT + cH * (1 - f), v = Math.round(max * f); g += `<line x1="${pL}" y1="${y}" x2="${VW - pR}" y2="${y}" stroke="${_XC.rule}" stroke-width="0.5" stroke-dasharray="3,3"/><text x="${pL - 4}" y="${y + 3.5}" text-anchor="end" fill="${_XC.mute}" font-size="8" font-family="${_MO}">${_nf(v)}</text>`; });
+    g += `<polyline points="${pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="${_XC.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    pts.forEach(p => { g += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="${_XC.accent}" stroke="${_XC.paper}" stroke-width="1.5"/><text x="${p.x.toFixed(1)}" y="${(p.y - 8).toFixed(1)}" text-anchor="middle" fill="${_XC.ink}" font-size="8" font-family="${_MO}" font-weight="700">${_nf(p.value)}</text><text x="${p.x.toFixed(1)}" y="${pT + cH + 14}" text-anchor="middle" fill="${_XC.soft}" font-size="9" font-family="${_CN}">${_esc(String(p.label || '').slice(0, 5))}</text>`; });
+    g += `<line x1="${pL}" y1="${pT + cH}" x2="${VW - pR}" y2="${pT + cH}" stroke="${_XC.ink}" stroke-width="1"/><line x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT + cH}" stroke="${_XC.ink}" stroke-width="0.5"/>`;
+    return _svgTag(VW, VH, g);
+  }
+
+  if (type === 'donut') {
+    const total = items.reduce((s, d) => s + (+d.value || 0), 0) || 1;
+    const VW = 460, VH = 200, cx = 105, cy = 100, R = 80, r = 50;
+    let angle = -Math.PI / 2, g = '';
+    items.forEach((it, i) => {
+      const sweep = ((+it.value || 0) / total) * 2 * Math.PI, sa = angle, ea = angle + sweep; angle = ea;
+      const large = sweep > Math.PI ? 1 : 0, c1 = Math.cos(sa), s1 = Math.sin(sa), c2 = Math.cos(ea), s2 = Math.sin(ea);
+      g += `<path d="M${(cx + R * c1).toFixed(2)},${(cy + R * s1).toFixed(2)} A${R},${R},0,${large},1,${(cx + R * c2).toFixed(2)},${(cy + R * s2).toFixed(2)} L${(cx + r * c2).toFixed(2)},${(cy + r * s2).toFixed(2)} A${r},${r},0,${large},0,${(cx + r * c1).toFixed(2)},${(cy + r * s1).toFixed(2)} Z" fill="${_XPAL[i % _XPAL.length]}" opacity="0.9"/>`;
+    });
+    g += `<text x="${cx}" y="${cy - 7}" text-anchor="middle" fill="${_XC.ink}" font-size="16" font-family="${_MO}" font-weight="700">${_nf(total)}</text><text x="${cx}" y="${cy + 10}" text-anchor="middle" fill="${_XC.mute}" font-size="8" font-family="${_MO}">${_esc(cd.unit || 'TOTAL')}</text>`;
+    items.forEach((it, i) => { const pct = Math.round(((+it.value || 0) / total) * 100), y = 10 + i * 23; g += `<rect x="225" y="${y}" width="10" height="10" fill="${_XPAL[i % _XPAL.length]}" rx="2"/><text x="240" y="${y + 9}" fill="${_XC.soft}" font-size="10" font-family="${_CN}">${_esc(String(it.label || ''))}</text><text x="445" y="${y + 9}" text-anchor="end" fill="${_XC.ink}" font-size="9" font-family="${_MO}" font-weight="700">${pct}%</text>`; });
+    return _svgTag(VW, VH, g);
+  }
+
+  if (type === 'scatter') {
+    const xs = items.map(d => +d.x || 0), ys = items.map(d => +d.y || 0);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys), rX = maxX - minX || 1, rY = maxY - minY || 1;
+    const VW = 500, VH = 230, pL = 52, pR = 20, pT = 20, pB = 52, cW = VW - pL - pR, cH = VH - pT - pB;
+    const toX = v => pL + ((v - minX) / rX) * cW, toY = v => pT + cH - ((v - minY) / rY) * cH;
+    let g = '';
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => { g += `<line x1="${pL}" y1="${pT + cH * (1 - f)}" x2="${VW - pR}" y2="${pT + cH * (1 - f)}" stroke="${_XC.rule}" stroke-width="0.5" stroke-dasharray="2,3"/><line x1="${pL + cW * f}" y1="${pT}" x2="${pL + cW * f}" y2="${pT + cH}" stroke="${_XC.rule}" stroke-width="0.5" stroke-dasharray="2,3"/>`; });
+    g += `<line x1="${pL}" y1="${pT + cH}" x2="${VW - pR}" y2="${pT + cH}" stroke="${_XC.ink}" stroke-width="1"/><line x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT + cH}" stroke="${_XC.ink}" stroke-width="1"/>`;
+    g += `<text x="${pL}" y="${pT + cH + 14}" text-anchor="middle" fill="${_XC.mute}" font-size="8" font-family="${_MO}">${_nf(minX)}</text><text x="${VW - pR}" y="${pT + cH + 14}" text-anchor="middle" fill="${_XC.mute}" font-size="8" font-family="${_MO}">${_nf(maxX)}</text><text x="${pL - 4}" y="${pT + 3}" text-anchor="end" fill="${_XC.mute}" font-size="8" font-family="${_MO}">${_nf(maxY)}</text>`;
+    if (cd.xUnit) g += `<text x="${VW / 2}" y="${VH - 4}" text-anchor="middle" fill="${_XC.mute}" font-size="8" font-family="${_MO}">${_esc(cd.xUnit)}</text>`;
+    if (cd.yUnit) g += `<text x="${pL - 44}" y="${pT - 6}" text-anchor="start" fill="${_XC.mute}" font-size="8" font-family="${_MO}">${_esc(cd.yUnit)}</text>`;
+    items.forEach((it, i) => { const px = toX(+it.x || 0), py = toY(+it.y || 0); g += `<circle cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" r="5" fill="${_XPAL[i % _XPAL.length]}" opacity="0.85" stroke="${_XC.paper}" stroke-width="1.5"/>`; if (it.label) g += `<text x="${px.toFixed(2)}" y="${(py - 9).toFixed(2)}" text-anchor="middle" fill="${_XC.soft}" font-size="8" font-family="${_CN}">${_esc(String(it.label))}</text>`; });
+    return _svgTag(VW, VH, g);
+  }
+
+  if (type === 'radar') {
+    if (items.length < 3) return '';
+    const max = cd.maxValue || Math.max(...items.map(d => +d.value || 0), 0.001), n = items.length;
+    const VW = 360, VH = 300, cx = VW / 2, cy = VH / 2 + 4, R = 108;
+    const ang = i => -Math.PI / 2 + (i / n) * 2 * Math.PI, px = (i, rr) => cx + rr * Math.cos(ang(i)), py = (i, rr) => cy + rr * Math.sin(ang(i));
+    let g = '';
+    [0.25, 0.5, 0.75, 1].forEach(f => { g += `<polygon points="${items.map((_, i) => `${px(i, R * f).toFixed(2)},${py(i, R * f).toFixed(2)}`).join(' ')}" fill="none" stroke="${_XC.rule}" stroke-width="${f === 1 ? 1 : 0.5}"/>`; });
+    items.forEach((_, i) => { g += `<line x1="${cx}" y1="${cy}" x2="${px(i, R).toFixed(2)}" y2="${py(i, R).toFixed(2)}" stroke="${_XC.rule}" stroke-width="0.5"/>`; });
+    g += `<polygon points="${items.map((it, i) => { const rr = ((+it.value || 0) / max) * R; return `${px(i, rr).toFixed(2)},${py(i, rr).toFixed(2)}`; }).join(' ')}" fill="${_XC.accentLite}" stroke="${_XC.accent}" stroke-width="2"/>`;
+    items.forEach((it, i) => { const rr = ((+it.value || 0) / max) * R; g += `<circle cx="${px(i, rr).toFixed(2)}" cy="${py(i, rr).toFixed(2)}" r="3.5" fill="${_XC.accent}" stroke="${_XC.paper}" stroke-width="1.5"/>`; });
+    items.forEach((it, i) => { const lx = px(i, R + 20), ly = py(i, R + 20), anchor = lx < cx - 10 ? 'end' : lx > cx + 10 ? 'start' : 'middle'; g += `<text x="${lx.toFixed(2)}" y="${(ly + 3).toFixed(2)}" text-anchor="${anchor}" fill="${_XC.soft}" font-size="9" font-family="${_CN}">${_esc(String(it.label || ''))}</text>`; });
+    items.forEach((it, i) => { const rr = ((+it.value || 0) / max) * R; g += `<text x="${px(i, rr).toFixed(2)}" y="${(py(i, rr) - 9).toFixed(2)}" text-anchor="middle" fill="${_XC.ink}" font-size="8" font-family="${_MO}" font-weight="700">${_nf(it.value)}</text>`; });
+    return _svgTag(VW, VH, g);
+  }
+
+  if (type === 'combo') {
+    const barVals = items.map(d => +d.bar || 0), lineVals = items.map(d => +d.line || 0);
+    const maxBar = Math.max(...barVals, 0.001), maxLine = Math.max(...lineVals, 0.001);
+    const VW = 500, VH = 210, pL = 48, pR = 48, pT = 20, pB = 48, cW = VW - pL - pR, cH = VH - pT - pB, n = items.length, slotW = cW / n, barW = Math.min(slotW * 0.5, 44);
+    const lx = i => pL + i * slotW + slotW / 2, ly = i => pT + cH - (lineVals[i] / maxLine) * cH;
+    let g = '';
+    [0.25, 0.5, 0.75, 1].forEach(f => { const y = pT + cH * (1 - f); g += `<line x1="${pL}" y1="${y}" x2="${VW - pR}" y2="${y}" stroke="${_XC.rule}" stroke-width="0.5" stroke-dasharray="3,3"/><text x="${pL - 4}" y="${y + 3.5}" text-anchor="end" fill="${_XC.mute}" font-size="8" font-family="${_MO}">${_nf(Math.round(maxBar * f))}</text><text x="${VW - pR + 4}" y="${y + 3.5}" text-anchor="start" fill="${_XC.accent}" font-size="8" font-family="${_MO}">${(+(maxLine * f).toFixed(1))}</text>`; });
+    items.forEach((it, i) => { const bh = (barVals[i] / maxBar) * cH, x = pL + i * slotW + (slotW - barW) / 2; g += `<rect x="${x.toFixed(1)}" y="${(pT + cH - bh).toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="${_XC.ink}" opacity="0.72"/><text x="${lx(i).toFixed(1)}" y="${pT + cH + 14}" text-anchor="middle" fill="${_XC.soft}" font-size="9" font-family="${_CN}">${_esc(String(it.label || '').slice(0, 6))}</text>`; });
+    g += `<polyline points="${items.map((_, i) => `${lx(i).toFixed(1)},${ly(i).toFixed(1)}`).join(' ')}" fill="none" stroke="${_XC.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    items.forEach((_, i) => { g += `<circle cx="${lx(i).toFixed(2)}" cy="${ly(i).toFixed(2)}" r="3.5" fill="${_XC.accent}" stroke="${_XC.paper}" stroke-width="1.5"/>`; });
+    g += `<line x1="${pL}" y1="${pT + cH}" x2="${VW - pR}" y2="${pT + cH}" stroke="${_XC.ink}" stroke-width="1"/><line x1="${pL}" y1="${pT}" x2="${pL}" y2="${pT + cH}" stroke="${_XC.ink}" stroke-width="0.5"/><line x1="${VW - pR}" y1="${pT}" x2="${VW - pR}" y2="${pT + cH}" stroke="${_XC.accent}" stroke-width="0.5"/>`;
+    return _svgTag(VW, VH, g);
+  }
+
+  return ''; // bar / unknown → caller uses HTML bars
+}
+
 function _buildInlineChartHTML(cd) {
   if (!cd?.data?.length) return '';
-  const max = Math.max(...cd.data.map(x => x.value), 0.001);
-  const bars = cd.data.map(it => {
-    const pct = Math.round((it.value / max) * 100);
-    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-      <span style="width:90px;text-align:right;font-size:11px;color:#666;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${_esc(it.label)}</span>
-      <div style="flex:1;height:15px;background:#e8e6e0;position:relative">
-        <div style="position:absolute;left:0;top:0;height:100%;width:${pct}%;background:#0f0f0f"></div>
-      </div>
-      <span style="width:50px;font-size:11px;font-weight:700;text-align:right;flex-shrink:0">${it.value}${cd.unit?' '+cd.unit:''}</span>
-    </div>`;
-  }).join('');
+  const svg = _chartSVG(cd);
+  let inner;
+  if (svg) {
+    inner = svg;
+  } else {
+    // bar / default → horizontal HTML bars (renders cleanly in html2canvas)
+    const max = Math.max(...cd.data.map(x => +x.value || 0), 0.001);
+    inner = cd.data.map(it => {
+      const pct = Math.round(((+it.value || 0) / max) * 100);
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <span style="width:90px;text-align:right;font-size:11px;color:#666;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${_esc(it.label)}</span>
+        <div style="flex:1;height:15px;background:#e8e6e0;position:relative">
+          <div style="position:absolute;left:0;top:0;height:100%;width:${pct}%;background:#0f0f0f"></div>
+        </div>
+        <span style="width:50px;font-size:11px;font-weight:700;text-align:right;flex-shrink:0">${_nf(it.value)}${cd.unit?' '+cd.unit:''}</span>
+      </div>`;
+    }).join('');
+  }
   return `<div style="margin:10px 0;padding:14px 16px;border:1.5px solid #0f0f0f;background:#fff">
-    ${cd.title?`<div style="font-size:11.5px;font-weight:700;margin-bottom:9px">▪ ${_esc(cd.title)}${cd.unit?'（'+cd.unit+'）':''}</div>`:''}
-    ${bars}
+    ${cd.title?`<div style="font-size:11.5px;font-weight:700;margin-bottom:9px">▪ ${_esc(cd.title)}${cd.unit&&(cd.type==='bar'||!cd.type)?'（'+cd.unit+'）':''}</div>`:''}
+    ${inner}
+    ${cd.source?`<div style="font-size:9px;color:#999;margin-top:8px">来源：${_esc(cd.source)}</div>`:''}
   </div>`;
 }
 
@@ -9886,15 +9999,51 @@ async function _exportPDFDownload(d, {pageSize='A4', includeCover=true}={}) {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pgW, pgH] });
 
-    const imgW = pgW;
-    const imgH = (canvas.height / canvas.width) * imgW;
-    let y = 0, pg = 0;
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-    while (y < imgH) {
+    const cw = canvas.width;
+    // canvas px that map to one PDF page height (preserve aspect ratio: cw px == pgW mm)
+    const pageSlicePx = Math.floor((pgH / pgW) * cw);
+
+    // Scan a band near the naive cut for a near-blank (background) row, so we never
+    // slice through a line of text. Returns an adjusted cut y (canvas px).
+    const ctx = canvas.getContext('2d');
+    const isBlankRow = (y) => {
+      if (y <= 0 || y >= canvas.height) return false;
+      const { data: px } = ctx.getImageData(0, y, cw, 1);
+      // sample every 4th pixel; row is blank if all sampled pixels are near-white
+      for (let i = 0; i < cw; i += 4) {
+        const o = i * 4;
+        if (px[o] < 245 || px[o + 1] < 245 || px[o + 2] < 245) return false;
+      }
+      return true;
+    };
+    const findCut = (ideal) => {
+      const minCut = ideal - Math.floor(pageSlicePx * 0.18); // don't waste >18% of a page
+      for (let y = ideal; y >= minCut; y--) {
+        if (isBlankRow(y)) return y;
+      }
+      return ideal; // no whitespace found → fall back to hard cut
+    };
+
+    let top = 0, pg = 0;
+    while (top < canvas.height) {
+      let bottom = Math.min(top + pageSlicePx, canvas.height);
+      if (bottom < canvas.height) bottom = findCut(bottom);
+      const sliceH = bottom - top;
+      if (sliceH <= 0) break;
+
+      // Crop this slice onto a temp canvas, then place on the page
+      const slice = document.createElement('canvas');
+      slice.width = cw;
+      slice.height = sliceH;
+      slice.getContext('2d').drawImage(canvas, 0, top, cw, sliceH, 0, 0, cw, sliceH);
+      const sliceUrl = slice.toDataURL('image/jpeg', 0.92);
+      const sliceMM = (sliceH / cw) * pgW; // slice height in mm
+
       if (pg++ > 0) pdf.addPage();
-      pdf.addImage(dataUrl, 'JPEG', 0, -y, imgW, imgH);
-      y += pgH;
-      if (pg > 50) break; // safety cap
+      pdf.addImage(sliceUrl, 'JPEG', 0, 0, pgW, sliceMM);
+
+      top = bottom;
+      if (pg > 80) break; // safety cap
     }
 
     pdf.save(_slug(d.title) + '.pdf');
@@ -9931,14 +10080,21 @@ function _buildMarkdown(d) {
 
 function _chartPrintHTML(cd) {
   if (!cd?.data?.length) return '';
-  const max = Math.max(...cd.data.map(x=>x.value), 0.001);
+  const svg = _chartSVG(cd);
+  if (svg) {
+    return `<div style="margin:8pt 0;border:1pt solid #0f0f0f;padding:10pt;break-inside:avoid">
+      <p style="font-size:8.5pt;font-weight:bold;margin:0 0 6pt 0">▪ ${_esc(cd.title||'')}</p>
+      ${svg}
+      ${cd.source?`<p style="font-size:7pt;color:#999;margin:6pt 0 0">来源：${_esc(cd.source)}</p>`:''}</div>`;
+  }
+  const max = Math.max(...cd.data.map(x=>+x.value||0), 0.001);
   const rows = cd.data.map(it=>{
-    const pct = Math.round((it.value/max)*100);
+    const pct = Math.round(((+it.value||0)/max)*100);
     return `<tr><td style="text-align:right;padding:2pt 6pt 2pt 0;width:90pt;font-size:8.5pt;color:#555">${_esc(it.label)}</td>
     <td style="padding:2pt 4pt"><div style="background:#e8e6e0;height:13pt;position:relative"><div style="background:#0f0f0f;height:100%;width:${pct}%"></div></div></td>
-    <td style="padding:2pt 0 2pt 4pt;width:55pt;font-size:8.5pt;font-weight:bold">${it.value}${cd.unit?' '+cd.unit:''}</td></tr>`;
+    <td style="padding:2pt 0 2pt 4pt;width:55pt;font-size:8.5pt;font-weight:bold">${_nf(it.value)}${cd.unit?' '+cd.unit:''}</td></tr>`;
   }).join('');
-  return `<div style="margin:8pt 0;border:1pt solid #0f0f0f;padding:10pt">
+  return `<div style="margin:8pt 0;border:1pt solid #0f0f0f;padding:10pt;break-inside:avoid">
     <p style="font-size:8.5pt;font-weight:bold;margin:0 0 6pt 0">▪ ${_esc(cd.title||'')}${cd.unit?'（'+cd.unit+'）':''}</p>
     <table style="width:100%;border-collapse:collapse">${rows}</table></div>`;
 }
