@@ -183,19 +183,40 @@ MCP 有两类传输，当前「纯 Web 应用 + Vercel Serverless」架构只能
 
 ---
 
+## OAuth 类 MCP 支持（v3.1.0 · 已实现，⚠️ 真实环境未验证）
+
+支持 OAuth 2.1 远程 MCP（**Linear / Notion / Sentry / Atlassian** 等）。
+
+### 流程（折叠进 `api/search.js`，零新增函数）
+```
+McpServersConfig「OAuth 授权」按钮
+  ↓ action=mcp_oauth_discover（后端代理，绕 CORS）
+后端 mcpOAuthDiscover：/.well-known/oauth-protected-resource → 授权服务器元数据
+  → 动态客户端注册(DCR, RFC 7591) → {authorization_endpoint, token_endpoint, client_id}
+  ↓ 前端生成 PKCE(code_verifier/challenge) + state，存 pending，跳转授权页
+用户授权 → 回调 origin?code=&state=
+  ↓ App 启动 completeMcpOAuth：state 命中 pending 才处理（避开 Supabase 的 ?code）
+  ↓ action=mcp_oauth_token（后端代理）换 access/refresh token → 存 localStorage
+mcpProxy 自动带上该 server 的 access_token（优先于静态 Bearer）
+```
+
+### 核心代码
+- `api/_lib/mcp.js` — `mcpOAuthDiscover()` / `mcpOAuthToken()`
+- `api/search.js` — `mcp_oauth_discover` / `mcp_oauth_token` action
+- `src/App.jsx` — `_pkce()` / `startMcpOAuth()` / `completeMcpOAuth()` / token 存取；`mcpProxy` 带 token；`McpServersConfig` 授权按钮 + 「● 已授权」状态；App 启动回调
+
+### 验证状态
+- ✅ **后端 discovery + DCR + PKCE + token 兑换**：对本地 mock OAuth 服务器实测全部正确（`mcpOAuthDiscover`/`mcpOAuthToken`、PKCE challenge 为合法 base64url-sha256、token 端点收到正确 grant/verifier）
+- ⚠️ **未验证（无法在 CI/沙箱内）**：真实 OAuth provider 的浏览器跳转授权 + 回调、provider 各自的 redirect_uri 注册要求、与 Supabase `?code` 的真实共存。**需在线上用真实 OAuth MCP（如 Linear）走一遍确认。**
+
+### 已知风险
+- 部分 provider 不支持动态注册(DCR) → 需预注册 client_id（当前未做预注册配置）
+- redirect_uri 用 `origin + '/'`，provider 需允许该回调
+- token 存 localStorage（非最高安全等级；未来可移后端）
+
+---
+
 ## 待办（Roadmap）
-
-### OAuth 类 MCP 支持 `未做`
-
-当前 MCP 配置仅支持「URL + 静态 Bearer Token」。大量 SaaS 远程 MCP（**Linear / Notion / Sentry / Atlassian / Stripe / Asana** 等）走 **OAuth 2.1 授权流程**（PKCE + 授权码 + 动态客户端注册），填静态 token 接不了。
-
-落地需要：
-1. MCP 鉴权发现：读取 server 的 `WWW-Authenticate` / `.well-known/oauth-protected-resource`，定位 authorization server
-2. OAuth 2.1 授权码 + PKCE 流程，含浏览器跳转授权页 + 回调接收 code
-3. 换取 access/refresh token，安全存储（敏感，建议存后端而非 localStorage）+ 自动刷新
-4. `mcpProxy` 携带动态 access token（替代静态 Bearer）
-
-难度：高（前端跳转 + Serverless 回调 + token 安全存储）。优先级：中——先覆盖免鉴权与静态 token 类，OAuth 类按需再做。
 
 ### stdio MCP 支持 `待桌面客户端`
 

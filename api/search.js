@@ -1,5 +1,5 @@
 import { withAuth } from './_lib/auth.js';
-import { mcpOperation } from './_lib/mcp.js';
+import { mcpOperation, mcpOAuthDiscover, mcpOAuthToken } from './_lib/mcp.js';
 
 async function handleMcp(req, res) {
   const { serverUrl, token, method, params } = req.body || {};
@@ -13,6 +13,20 @@ async function handleMcp(req, res) {
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e).slice(0, 200) });
   }
+}
+
+async function handleMcpOAuthDiscover(req, res) {
+  const { serverUrl, redirectUri } = req.body || {};
+  if (!serverUrl || !redirectUri) return res.status(400).json({ error: 'serverUrl and redirectUri required' });
+  try { return res.json(await mcpOAuthDiscover(serverUrl, redirectUri)); }
+  catch (e) { return res.status(502).json({ error: String(e.message || e).slice(0, 200) }); }
+}
+
+async function handleMcpOAuthToken(req, res) {
+  const { tokenEndpoint, params } = req.body || {};
+  if (!tokenEndpoint || !params) return res.status(400).json({ error: 'tokenEndpoint and params required' });
+  try { return res.json(await mcpOAuthToken(tokenEndpoint, params)); }
+  catch (e) { return res.status(502).json({ error: String(e.message || e).slice(0, 200) }); }
 }
 
 // ── Tavily search (default action) ───────────────────────────────────────────
@@ -55,5 +69,7 @@ export default withAuth(async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const action = req.body?.action || 'search';
   if (action === 'mcp') return handleMcp(req, res);
+  if (action === 'mcp_oauth_discover') return handleMcpOAuthDiscover(req, res);
+  if (action === 'mcp_oauth_token') return handleMcpOAuthToken(req, res);
   return handleSearch(req, res);
 });

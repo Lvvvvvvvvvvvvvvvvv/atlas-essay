@@ -80,3 +80,50 @@ export async function mcpOperation(serverUrl, token, method, params) {
   if (out.message?.error) throw new Error(out.message.error.message || `${method} failed`);
   return out.message?.result || null;
 }
+
+// ── MCP OAuth 2.1 support (remote HTTP servers) ──────────────────────────────
+// Discovery: protected-resource metadata → authorization-server metadata →
+// (best-effort) Dynamic Client Registration. Returns endpoints + client_id.
+export async function mcpOAuthDiscover(serverUrl, redirectUri) {
+  const origin = new URL(serverUrl).origin;
+  let authServer = null, resource = serverUrl;
+  try {
+    const prm = await fetch(`${origin}/.well-known/oauth-protected-resource`, { signal: AbortSignal.timeout(12000) });
+    if (prm.ok) { const j = await prm.json(); authServer = (j.authorization_servers || [])[0]; resource = j.resource || serverUrl; }
+  } catch {}
+  if (!authServer) authServer = origin; // fallback: the MCP server is its own AS
+
+  let meta = null;
+  for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/openid-configuration']) {
+    try {
+      const r = await fetch(authServer.replace(/\/$/, '') + path, { signal: AbortSignal.timeout(12000) });
+      if (r.ok) { meta = await r.json(); break; }
+    } catch {}
+  }
+  if (!meta?.authorization_endpoint || !meta?.token_endpoint) throw new Error('无法发现 OAuth 授权服务器元数据');
+
+  // Dynamic Client Registration (RFC 7591) — best effort
+  let clientId = null;
+  if (meta.registration_endpoint) {
+    try {
+      const reg = await fetch(meta.registration_endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_name: 'Atlas Report Agent', redirect_uris: [redirectUri], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (reg.ok) { const j = await reg.json(); clientId = j.client_id; }
+    } catch {}
+  }
+  return { authorization_endpoint: meta.authorization_endpoint, token_endpoint: meta.token_endpoint, client_id: clientId, resource, scopes_supported: meta.scopes_supported || [] };
+}
+
+// Token endpoint exchange (authorization_code or refresh_token grant; public PKCE client).
+export async function mcpOAuthToken(tokenEndpoint, params) {
+  const r = await fetch(tokenEndpoint, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: new URLSearchParams(params).toString(), signal: AbortSignal.timeout(15000),
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`token ${r.status}: ${text.slice(0, 150)}`);
+  try { return JSON.parse(text); } catch { return Object.fromEntries(new URLSearchParams(text)); }
+}

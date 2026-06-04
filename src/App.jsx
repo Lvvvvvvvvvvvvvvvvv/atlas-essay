@@ -959,6 +959,7 @@ function McpServersConfig({ t, secHdr }) {
   });
   const [adding, setAdding] = React.useState(false);
   const [form, setForm] = React.useState({ name: '', url: '', token: '' });
+  const [tokens, setTokens] = React.useState(getMcpTokens);
 
   const persist = (next) => {
     setServers(next);
@@ -985,15 +986,20 @@ function McpServersConfig({ t, secHdr }) {
       <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 10, lineHeight: 1.6 }}>
         仅支持远程 HTTP / Streamable HTTP 类型。配置后，开启「自主研究模式」时这些工具会一并提供给模型。stdio 本地服务器需桌面客户端，暂不支持。
       </div>
-      {servers.map(s => (
+      {servers.map(s => {
+        const authed = !!tokens[s.url];
+        return (
         <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: `1px solid ${t.rule}`, marginBottom: 6 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink }}>{s.name}</div>
+            <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink }}>{s.name}{authed && <span style={{ color: '#2a8c5c', marginLeft: 6, fontFamily: t.fontMono, fontSize: 9 }}>● 已授权</span>}</div>
             <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.url}{s.token ? ' · 已配置 token' : ''}</div>
           </div>
+          {authed
+            ? <button onClick={() => { removeMcpToken(s.url); setTokens(getMcpTokens()); }} style={{ ...btn, flexShrink: 0 }}>撤销授权</button>
+            : <button onClick={() => startMcpOAuth(s)} title="若服务器需要 OAuth（如 Linear/Notion）" style={{ ...btn, flexShrink: 0 }}>OAuth 授权</button>}
           <button onClick={() => remove(s.id)} style={{ ...btn, border: `1px solid #e5251d`, color: '#e5251d', flexShrink: 0 }}>删除</button>
         </div>
-      ))}
+      ); })}
       {/* Recommended no-auth presets */}
       <div style={{ fontFamily: t.fontMono, fontSize: 8.5, color: t.mute, letterSpacing: 1, margin: '10px 0 6px' }}>推荐（免鉴权，一键添加）</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
@@ -4584,13 +4590,87 @@ function getMcpServers() {
   try { return JSON.parse(localStorage.getItem('atlas_mcp_servers') || '[]'); } catch { return []; }
 }
 
-async function mcpProxy(server, method, params) {
+// ── MCP OAuth 2.1 (remote HTTP servers) ──────────────────────────────────────
+// NOTE: untested end-to-end (no reachable OAuth MCP server in CI). Fully
+// gracefully degrades: no token → behaves exactly like the no-auth path.
+function getMcpTokens() {
+  try { return JSON.parse(localStorage.getItem('atlas_mcp_tokens') || '{}'); } catch { return {}; }
+}
+function saveMcpToken(url, tok) {
+  const all = getMcpTokens(); all[url] = { ...tok, savedAt: Date.now() };
+  try { localStorage.setItem('atlas_mcp_tokens', JSON.stringify(all)); } catch {}
+}
+function removeMcpToken(url) {
+  const all = getMcpTokens(); delete all[url];
+  try { localStorage.setItem('atlas_mcp_tokens', JSON.stringify(all)); } catch {}
+}
+const _b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+async function _pkce() {
+  const verifier = _b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = _b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  return { verifier, challenge };
+}
+async function _sessionToken() {
   const { supabase } = await import('./lib/supabase.js');
   const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || '';
+}
+
+// Kick off the OAuth authorization-code + PKCE redirect for a server.
+async function startMcpOAuth(server) {
+  const redirectUri = window.location.origin + '/';
+  const auth = await _sessionToken();
+  const res = await fetch('/api/search', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` },
+    body: JSON.stringify({ action: 'mcp_oauth_discover', serverUrl: server.url, redirectUri }),
+  });
+  if (!res.ok) { alert('OAuth 发现失败：' + (await res.text()).slice(0, 120)); return; }
+  const disc = await res.json();
+  if (!disc.authorization_endpoint || !disc.client_id) {
+    alert('该服务器不支持自动 OAuth（缺少授权端点或动态客户端注册）。'); return;
+  }
+  const { verifier, challenge } = await _pkce();
+  const state = _b64url(crypto.getRandomValues(new Uint8Array(16)));
+  let pending; try { pending = JSON.parse(localStorage.getItem('atlas_mcp_oauth_pending') || '{}'); } catch { pending = {}; }
+  pending[state] = { url: server.url, verifier, client_id: disc.client_id, token_endpoint: disc.token_endpoint, redirectUri };
+  localStorage.setItem('atlas_mcp_oauth_pending', JSON.stringify(pending));
+  const p = new URLSearchParams({ response_type: 'code', client_id: disc.client_id, redirect_uri: redirectUri, code_challenge: challenge, code_challenge_method: 'S256', state });
+  if (disc.resource) p.set('resource', disc.resource);
+  if ((disc.scopes_supported || []).length) p.set('scope', disc.scopes_supported.join(' '));
+  window.location.href = disc.authorization_endpoint + (disc.authorization_endpoint.includes('?') ? '&' : '?') + p.toString();
+}
+
+// On app load: if the URL carries an OAuth code matching a pending MCP state,
+// exchange it for a token. Returns true if it handled an MCP callback.
+async function completeMcpOAuth() {
+  const q = new URLSearchParams(window.location.search);
+  const code = q.get('code'), state = q.get('state');
+  if (!code || !state) return false;
+  let pending; try { pending = JSON.parse(localStorage.getItem('atlas_mcp_oauth_pending') || '{}'); } catch { pending = {}; }
+  const p = pending[state];
+  if (!p) return false; // not an MCP callback (e.g. Supabase) — leave it alone
+  try {
+    const auth = await _sessionToken();
+    const res = await fetch('/api/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` },
+      body: JSON.stringify({ action: 'mcp_oauth_token', tokenEndpoint: p.token_endpoint, params: { grant_type: 'authorization_code', code, redirect_uri: p.redirectUri, client_id: p.client_id, code_verifier: p.verifier } }),
+    });
+    if (res.ok) { saveMcpToken(p.url, await res.json()); alert('MCP 授权成功'); }
+    else alert('MCP 令牌兑换失败：' + (await res.text()).slice(0, 120));
+  } catch (e) { alert('MCP 授权失败：' + (e?.message || '')); }
+  delete pending[state]; localStorage.setItem('atlas_mcp_oauth_pending', JSON.stringify(pending));
+  window.history.replaceState({}, '', window.location.pathname);
+  return true;
+}
+
+async function mcpProxy(server, method, params) {
+  const auth = await _sessionToken();
+  const oauth = getMcpTokens()[server.url];
+  const token = oauth?.access_token || server.token || '';
   const resp = await fetch('/api/search', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-    body: JSON.stringify({ action: 'mcp', serverUrl: server.url, token: server.token || '', method, params }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` },
+    body: JSON.stringify({ action: 'mcp', serverUrl: server.url, token, method, params }),
   });
   if (!resp.ok) {
     let msg = `MCP ${resp.status}`;
@@ -11538,6 +11618,14 @@ function App() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [deepLinkId, savedReports.reports]);
+
+  // MCP OAuth callback (untested e2e) — exchange ?code if it matches a pending MCP state
+  const mcpOAuthHandled = React.useRef(false);
+  React.useEffect(() => {
+    if (mcpOAuthHandled.current || !user) return;
+    mcpOAuthHandled.current = true;
+    completeMcpOAuth().catch(() => {});
+  }, [user]);
 
   const inviteHandled = React.useRef(false);
   React.useEffect(() => {
