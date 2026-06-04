@@ -4292,10 +4292,53 @@ function StartWritingBtn({ t, disabled, onStart, onWorkflow, onBackground, bgTas
   );
 }
 
+// G-2 · approximate per-provider pricing (USD per 1M tokens). Rough public list
+// prices for a runaway-spend guard, NOT billing-accurate.
+const MODEL_PRICING = {
+  mimo:      { in: 0.15, out: 0.55 },
+  deepseek:  { in: 0.27, out: 1.10 },
+  openai:    { in: 2.50, out: 10.0 },
+  anthropic: { in: 3.00, out: 15.0 },
+  _default:  { in: 1.00, out: 4.00 },
+};
+
+// Rough token + cost estimate for a planned generation.
+function estimateGeneration(promptChars, targetLength, provider) {
+  const estIn = Math.round((promptChars + 2000) * 1.3);     // prompt + system scaffold
+  const estOut = Math.round((targetLength || 2500) * 1.7);  // CN chars → tokens
+  const p = MODEL_PRICING[provider] || MODEL_PRICING._default;
+  const usd = (estIn * p.in + estOut * p.out) / 1e6;
+  return { tokens: estIn + estOut, usd };
+}
+
+// G-3 · daily generation soft limit. Warns past the threshold; user may proceed.
+// Returns false if the user cancels. Increments today's count on proceed.
+const DAILY_GEN_LIMIT = 30;
+function allowDailyGen() {
+  const today = new Date().toISOString().slice(0, 10);
+  let rec;
+  try { rec = JSON.parse(localStorage.getItem('atlas_daily_gen') || '{}'); } catch { rec = {}; }
+  if (rec.date !== today) rec = { date: today, count: 0 };
+  if (rec.count >= DAILY_GEN_LIMIT) {
+    if (!window.confirm(`今日已生成 ${rec.count} 次，已达软上限 ${DAILY_GEN_LIMIT} 次。\n频繁生成可能产生较多 API 费用，确认继续？`)) return false;
+  }
+  rec.count++;
+  try { localStorage.setItem('atlas_daily_gen', JSON.stringify(rec)); } catch {}
+  return true;
+}
+
 function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, modelStore, toolbarStore, onNavigateSources }) {
   const charCount = prompt.length;
   const placeholder = '比如，"梳理一下 2025 年 Q1 咖啡赛道的融资动态…"';
   const taRef = React.useRef(null);
+  const { can } = usePermission();
+  const canGenerate = can('generate');
+
+  // G-2 · cost estimate (only meaningful in live mode with a selected model)
+  const est = React.useMemo(() => {
+    if (!prompt.trim() || !modelStore?.selected) return null;
+    return estimateGeneration(prompt.length, toolbarStore?.effectiveLength, modelStore.selected.provider);
+  }, [prompt, modelStore?.selected, toolbarStore?.effectiveLength]);
 
   // auto-grow
   React.useEffect(() => {
@@ -4306,7 +4349,7 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
   }, [prompt]);
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && prompt.trim()) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && prompt.trim() && canGenerate) {
       e.preventDefault();
       onStart();
     }
@@ -4372,13 +4415,23 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
         )}
         {modelStore && <ModelSelector t={t} store={modelStore}/>}
         <span style={{ flex: 1 }}/>
+        {est && canGenerate && (
+          <span title="粗估，仅用于防止意外超支，非账单级精确" style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
+            粗估 ~{est.tokens.toLocaleString()} tok · ≈${est.usd < 0.01 ? est.usd.toFixed(4) : est.usd.toFixed(3)}
+          </span>
+        )}
         <Btn t={t} size="sm"
           onClick={() => setPrompt(SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)])}>
           ✦ Surprise me
         </Btn>
-        <StartWritingBtn t={t} disabled={!prompt.trim()}
-          onStart={onStart} onWorkflow={onWorkflow} onBackground={onBackground} bgTaskStatus={bgTaskStatus}/>
+        <StartWritingBtn t={t} disabled={!prompt.trim() || !canGenerate}
+          onStart={onStart} onWorkflow={canGenerate ? onWorkflow : null} onBackground={canGenerate ? onBackground : null} bgTaskStatus={bgTaskStatus}/>
       </div>
+      {!canGenerate && (
+        <div style={{ padding: '8px 14px', borderTop: `1px solid ${t.rule}`, background: 'rgba(118,115,104,0.06)', fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.4 }}>
+          只读成员 · 当前团队角色无生成权限，仅可查看报告库
+        </div>
+      )}
     </div>
   );
 }
@@ -7388,6 +7441,8 @@ function SectionRefineBar({ t, section, topic, model, onApply }) {
 }
 
 function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport, rating, onRate, modelStore, onShareToTeam }) {
+  const { can } = usePermission();
+  const canExport = can('export');
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
   const [editMode, setEditMode] = React.useState(false);
@@ -7810,7 +7865,9 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
               display: 'flex', flexDirection: 'column', gap: 8,
             }}>
               <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4 }}>SHARE · 分享</span>
-              <Btn t={t} size="sm" onClick={onExport} primary accent>↗ 导出 / 分享</Btn>
+              {canExport
+                ? <Btn t={t} size="sm" onClick={onExport} primary accent>↗ 导出 / 分享</Btn>
+                : <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>只读成员 · 无导出权限</span>}
               <CopyLinkBtn t={t} reportData={reportData}/>
             </div>
           </aside>
@@ -7818,7 +7875,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
         <div/>
       </div>
       {/* Floating export fallback when right-rail (marginalia) is hidden */}
-      {!marginaliaOn && (
+      {!marginaliaOn && canExport && (
         <button type="button" onClick={onExport} style={{
           position: 'absolute', right: 24, bottom: 24, zIndex: 20,
           padding: '9px 16px', border: `1.5px solid ${t.ink}`, background: t.accent, color: '#fff',
@@ -11464,6 +11521,7 @@ function App() {
   };
 
   const goRun = () => {
+    if (!allowDailyGen()) return;
     setActiveReportId(null); setRunKey(k => k + 1); setRunDone(false);
     setParallelSections(null);
     const hasTemplate = !!toolbarStore.activeTemplate;
@@ -11476,6 +11534,7 @@ function App() {
 
   const goBackground = React.useCallback(async () => {
     if (!prompt.trim()) return;
+    if (!allowDailyGen()) return;
     setBgTaskStatus('queued');
     try {
       const { supabase } = await import('./lib/supabase.js');
@@ -11523,6 +11582,7 @@ function App() {
 
   const goWorkflow = () => {
     if (!prompt.trim()) return;
+    if (!allowDailyGen()) return;
     setRoute('workflow');
   };
 

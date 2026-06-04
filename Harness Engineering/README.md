@@ -38,7 +38,7 @@ Harness（线束）= 围绕模型构建的"外壳"工程。模型权重不变，
 | P3 | L · Lifecycle | ~90% | ✅ 大纲先行 → 分节并行 → 节点工作流 → 章节精修 |
 | P4 | T · Tooling | ~90% | ✅ Jina 注入 + Tavily 搜索 + 模型自主研究（Tool Use）+ **远程 HTTP MCP 集成**；stdio MCP 待桌面端 |
 | P5 | O · Observability | ~80% | ✅ 元数据完整记录 + 报告库统计面板；prompt 版本追踪（方案C）待办 |
-| P6 | G · Governance | ~60% | 当前规模不是瓶颈 |
+| P6 | G · Governance | ~90% | ✅ 角色客户端强制 + 成本粗估 + 每日软限制 + 分享链接安全（实测） |
 
 ---
 
