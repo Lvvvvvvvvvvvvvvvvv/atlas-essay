@@ -5313,7 +5313,7 @@ ${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}${build
 
 function TeamPanel({ t, onBack }) {
   const { user, team, role, refreshTeam } = useAuth();
-  const [activeTab, setActiveTab] = React.useState('members');
+  const [activeTab, setActiveTab] = React.useState('overview');
   const [members, setMembers] = React.useState([]);
   const [teamKeys, setTeamKeys] = React.useState([]);
   const [knowledge, setKnowledge] = React.useState([]);
@@ -5354,7 +5354,8 @@ function TeamPanel({ t, onBack }) {
 
   React.useEffect(() => {
     if (!team) return;
-    if (activeTab === 'members') loadMembers();
+    if (activeTab === 'overview') { loadMembers(); loadReports(); loadKeys(); loadKnowledge(); }
+    else if (activeTab === 'members') loadMembers();
     else if (activeTab === 'keys') loadKeys();
     else if (activeTab === 'knowledge') loadKnowledge();
     else if (activeTab === 'reports') loadReports();
@@ -5379,10 +5380,11 @@ function TeamPanel({ t, onBack }) {
   const secHdr = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 10, marginTop: 20 };
 
   const TABS = [
+    { k: 'overview', label: '概览' },
+    { k: 'reports', label: '报告库' },
     { k: 'members', label: '成员' },
     { k: 'keys', label: '共享密钥' },
     { k: 'knowledge', label: '知识库' },
-    { k: 'reports', label: '报告库' },
     ...(isAdmin ? [{ k: 'settings', label: '团队设置' }] : []),
   ];
 
@@ -5414,61 +5416,143 @@ function TeamPanel({ t, onBack }) {
     );
   }
 
-  // ── Has team: show tabs ──────────────────────────────
+  // ── Has team: editorial workspace ────────────────────
+  const roleLabel = role === 'admin' ? '管理员' : role === 'editor' ? '编辑' : '只读';
+  const initial = (team.name || '?')[0].toUpperCase();
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: t.paper, color: t.ink }}>
-      {/* Header */}
-      <div style={{ padding: '12px 36px', borderBottom: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
-        <button onClick={onBack} style={{ ...btnBase, background: 'transparent', color: t.mute, border: `1px solid ${t.rule}`, padding: '5px 12px' }}>← 返回</button>
-        <span style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 14, color: t.ink }}>{team.name}</span>
-        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, border: `1px solid ${t.accent}`, padding: '2px 8px', letterSpacing: 1 }}>
-          {role === 'admin' ? '管理员' : role === 'editor' ? '编辑' : '只读'}
-        </span>
-        <span style={{ flex: 1 }}/>
-        {status && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#16a34a' }}>{status}</span>}
-        {error && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#e5251d' }}>{error}</span>}
-        {!isAdmin && (
-          <button onClick={async () => {
-            if (!confirm('确认退出团队？')) return;
-            try {
-              await apiFetch(`/api/teams/members?userId=${user?.id}`, { method: 'DELETE' });
-              await refreshTeam?.();
-              onBack?.();
-            } catch (e) { showStatus(e.message, true); }
-          }} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '5px 12px' }}>退出团队</button>
-        )}
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, background: t.paper, color: t.ink, overflow: 'auto' }}>
+      {/* Masthead */}
+      <div style={{ padding: '24px 44px 20px', borderBottom: `2px solid ${t.ink}`, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+          <button onClick={onBack} style={{ ...btnBase, background: 'transparent', color: t.mute, border: `1px solid ${t.rule}`, padding: '5px 12px' }}>← 返回</button>
+          <Tag t={t} accent>◆ TEAM WORKSPACE · 团队协作</Tag>
+          <span style={{ flex: 1 }}/>
+          {status && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#2a8c5c' }}>✓ {status}</span>}
+          {error && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#e5251d' }}>{error}</span>}
+          {!isAdmin && (
+            <button onClick={async () => {
+              if (!confirm('确认退出团队？')) return;
+              try { await apiFetch(`/api/teams/members?userId=${user?.id}`, { method: 'DELETE' }); await refreshTeam?.(); onBack?.(); }
+              catch (e) { showStatus(e.message, true); }
+            }} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '5px 12px' }}>退出团队</button>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+          <div style={{ width: 60, height: 60, background: t.ink, color: t.paper, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 30, flexShrink: 0, boxShadow: `4px 4px 0 ${t.accent}` }}>{initial}</div>
+          <div>
+            <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 42, lineHeight: 1, letterSpacing: -1.5, color: t.ink }}>{team.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.5 }}>
+              <span style={{ color: t.accent, border: `1px solid ${t.accent}`, padding: '1px 8px', letterSpacing: 1 }}>{roleLabel}</span>
+              <span>{members.length} 成员</span><span>·</span><span>{teamReports.length} 共享报告</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: `1px solid ${t.rule}`, flexShrink: 0 }}>
+      <div style={{ display: 'flex', borderBottom: `1px solid ${t.rule}`, flexShrink: 0, padding: '0 44px', gap: 4 }}>
         {TABS.map(tab => (
           <button key={tab.k} onClick={() => setActiveTab(tab.k)} style={{
-            padding: '10px 24px', fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1.2,
-            background: 'transparent', border: 'none', cursor: 'pointer',
+            padding: '12px 18px', fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 1,
+            background: 'transparent', border: 'none', cursor: 'pointer', textTransform: 'uppercase',
             color: activeTab === tab.k ? t.ink : t.mute,
-            borderBottom: activeTab === tab.k ? `2px solid ${t.accent}` : '2px solid transparent',
+            borderBottom: activeTab === tab.k ? `2.5px solid ${t.accent}` : '2.5px solid transparent',
             marginBottom: -1,
-          }}>{tab.label.toUpperCase()}</button>
+          }}>{tab.label}</button>
         ))}
       </div>
 
       {/* Tab content */}
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '28px 36px', maxWidth: 760 }}>
-
-        {/* ── 成员 Tab ──────────────────────────────── */}
+      <div style={{ flex: 1, minHeight: 0, padding: '28px 44px 56px', maxWidth: 1120, width: '100%' }}>
+        {activeTab === 'overview' && <TeamOverviewTab t={t} team={team} role={role} isAdmin={isAdmin} members={members} reports={teamReports} teamKeys={teamKeys} knowledge={knowledge} setActiveTab={setActiveTab} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefreshMembers={loadMembers} showStatus={showStatus}/>}
         {activeTab === 'members' && <MembersTab t={t} members={members} role={role} team={team} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadMembers} showStatus={showStatus} currentUserId={user?.id}/>}
-
-        {/* ── 共享密钥 Tab ──────────────────────────── */}
         {activeTab === 'keys' && <KeysTab t={t} teamKeys={teamKeys} isAdmin={isAdmin} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadKeys} showStatus={showStatus}/>}
-
-        {/* ── 知识库 Tab ────────────────────────────── */}
         {activeTab === 'knowledge' && <KnowledgeTab t={t} knowledge={knowledge} canEdit={isEditorOrAdmin} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadKnowledge} showStatus={showStatus}/>}
-
-        {/* ── 报告库 Tab ────────────────────────────── */}
         {activeTab === 'reports' && <TeamReportsTab t={t} reports={teamReports} isAdmin={isAdmin} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadReports} showStatus={showStatus}/>}
-
-        {/* ── 团队设置 Tab ──────────────────────────── */}
         {activeTab === 'settings' && isAdmin && <TeamSettingsTab t={t} team={team} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={refreshTeam} showStatus={showStatus} onBack={onBack}/>}
+      </div>
+    </div>
+  );
+}
+
+// Team overview — at-a-glance dashboard (the practical landing)
+function TeamOverviewTab({ t, team, role, isAdmin, members, reports, teamKeys, knowledge, setActiveTab, inp, btnBase, secHdr, apiFetch, onRefreshMembers, showStatus }) {
+  const [email, setEmail] = React.useState('');
+  const [inviting, setInviting] = React.useState(false);
+  const ROLE_COLORS = { admin: t.accent, editor: '#1d4ed8', viewer: t.mute };
+
+  const stats = [
+    { n: members.length, label: '成员 · MEMBERS', tab: 'members' },
+    { n: reports.length, label: '共享报告 · REPORTS', tab: 'reports' },
+    { n: teamKeys.length, label: '共享密钥 · KEYS', tab: 'keys' },
+    { n: knowledge.length, label: '知识库 · KNOWLEDGE', tab: 'knowledge' },
+  ];
+  const recentReports = reports.slice(0, 4);
+
+  const quickInvite = async () => {
+    if (!email.trim()) return;
+    setInviting(true);
+    try { await apiFetch('/api/teams/members', { method: 'POST', body: JSON.stringify({ email: email.trim(), role: 'editor' }) }); setEmail(''); await onRefreshMembers(); showStatus('成员已添加'); }
+    catch (e) { showStatus(e.message, true); }
+    setInviting(false);
+  };
+
+  const card = { padding: '16px 18px', border: `1px solid ${t.rule}`, background: t.faint, cursor: 'pointer' };
+  return (
+    <div>
+      {/* Stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 28 }}>
+        {stats.map(s => (
+          <div key={s.label} onClick={() => setActiveTab(s.tab)} style={card}
+            onMouseEnter={e => e.currentTarget.style.background = t.cardOn} onMouseLeave={e => e.currentTarget.style.background = t.faint}>
+            <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 32, letterSpacing: -1, color: t.ink, lineHeight: 1 }}>{s.n}</div>
+            <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1, marginTop: 6 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 28 }}>
+        {/* Recent reports */}
+        <div>
+          <div style={{ ...secHdr, marginTop: 0, display: 'flex', alignItems: 'center' }}>
+            <span>最近共享报告 · RECENT</span><span style={{ flex: 1 }}/>
+            <span onClick={() => setActiveTab('reports')} style={{ cursor: 'pointer', color: t.accent }}>查看全部 →</span>
+          </div>
+          {recentReports.length === 0
+            ? <div style={{ padding: '24px 16px', border: `1px dashed ${t.rule}`, fontFamily: t.fontCN, fontSize: 13, color: t.mute, textAlign: 'center' }}>还没有共享报告。在任意报告页点「分享到团队」即可共享给成员。</div>
+            : recentReports.map(r => (
+              <div key={r.id} onClick={() => setActiveTab('reports')} style={{ padding: '12px 14px', border: `1px solid ${t.rule}`, marginBottom: 8, cursor: 'pointer' }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = t.ink} onMouseLeave={e => e.currentTarget.style.borderColor = t.rule}>
+                <div style={{ fontFamily: t.fontCN, fontWeight: 600, fontSize: 14, color: t.ink, marginBottom: 4 }}>{r.title || '无标题'}</div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{r.shared_by_email || '成员'} · {new Date(r.created_at).toLocaleDateString('zh-CN')} · {(r.word_count || 0).toLocaleString()} 字</div>
+              </div>
+            ))}
+        </div>
+
+        {/* Members + quick invite */}
+        <div>
+          <div style={{ ...secHdr, marginTop: 0, display: 'flex', alignItems: 'center' }}>
+            <span>团队成员 · {members.length}</span><span style={{ flex: 1 }}/>
+            <span onClick={() => setActiveTab('members')} style={{ cursor: 'pointer', color: t.accent }}>管理 →</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+            {members.slice(0, 10).map(m => (
+              <div key={m.userId} title={`${m.displayName || m.email} · ${m.role}`}
+                style={{ width: 38, height: 38, borderRadius: '50%', background: ROLE_COLORS[m.role] || t.ink, color: '#fff', fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {(m.displayName || m.email || '?')[0].toUpperCase()}
+              </div>
+            ))}
+          </div>
+          {isAdmin && (
+            <div>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 6, letterSpacing: 0.5 }}>快速邀请（编辑角色）</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && quickInvite()} placeholder="对方邮箱" style={{ ...inp, flex: 1 }}/>
+                <button onClick={quickInvite} disabled={inviting || !email.trim()} style={{ ...btnBase, background: t.ink, color: t.paper, opacity: inviting || !email.trim() ? 0.5 : 1 }}>{inviting ? '…' : '邀请'}</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -5859,31 +5943,51 @@ function TeamReportsTab({ t, reports, isAdmin, btnBase, secHdr, apiFetch, onRefr
     } catch (e) { showStatus(e.message, true); }
   };
 
+  // Copy a team report into the personal localStorage library (readable/exportable there)
+  const importToMine = (r) => {
+    try {
+      const list = JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]');
+      if (list.some(x => x.meta?.teamReportId === r.id)) { showStatus('已在你的报告库中', true); return; }
+      const sections = r.content?.sections || [];
+      const id = Date.now().toString();
+      list.unshift({
+        id, prompt: r.prompt || '', text: r.content?.text || '',
+        sections, refs: [], selectedSources: [], attachments: [], favorited: false,
+        meta: { titleEn: r.title || '团队报告', title: { en: r.title || '团队报告', cn: '' }, subtitle: (r.prompt || '').slice(0, 80),
+          date: new Date(r.created_at).toLocaleDateString('zh-CN'), words: (r.word_count || 0).toLocaleString(), sources: 0,
+          reading: `${Math.max(1, Math.ceil((r.word_count || 0) / 300))} min`, category: `团队 · ${r.shared_by_email || ''}`,
+          issue: 'TEAM', model: '团队共享', teamReportId: r.id },
+      });
+      localStorage.setItem('atlas_saved_reports', JSON.stringify(list));
+      showStatus('已导入到你的报告库');
+    } catch { showStatus('导入失败', true); }
+  };
+
   if (viewing) {
     const sections = viewing.content?.sections || [];
     const fullText = viewing.content?.text || '';
     return (
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <button onClick={() => setViewing(null)} style={{ ...btnBase, background: 'transparent' }}>← 返回列表</button>
-          {isAdmin && <button onClick={() => handleDelete(viewing.id)} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, marginLeft: 'auto' }}>删除</button>}
+      <div style={{ maxWidth: 760 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+          <button onClick={() => setViewing(null)} style={{ ...btnBase, background: 'transparent', border: `1px solid ${t.rule}`, color: t.ink }}>← 返回列表</button>
+          <span style={{ flex: 1 }}/>
+          <button onClick={() => importToMine(viewing)} style={{ ...btnBase, background: t.ink, color: t.paper }}>↓ 导入到我的库</button>
+          {isAdmin && <button onClick={() => handleDelete(viewing.id)} style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d` }}>删除</button>}
         </div>
-        <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: 16, color: t.ink, marginBottom: 6 }}>{viewing.title || '无标题'}</div>
-        <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginBottom: 4 }}>
-          {viewing.prompt && <span>提示词：{viewing.prompt.slice(0, 100)}{viewing.prompt.length > 100 ? '…' : ''}</span>}
+        <div style={{ fontFamily: t.fontDisplay, fontWeight: 800, fontSize: 24, color: t.ink, marginBottom: 8, lineHeight: 1.2 }}>{viewing.title || '无标题'}</div>
+        <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${t.rule}` }}>
+          分享者 {viewing.shared_by_email || '成员'} · {new Date(viewing.created_at).toLocaleDateString('zh-CN')} · {(viewing.word_count || 0).toLocaleString()} 字
+          {viewing.prompt && <div style={{ marginTop: 6, color: t.inkSoft }}>提示词：{viewing.prompt.slice(0, 140)}{viewing.prompt.length > 140 ? '…' : ''}</div>}
         </div>
-        <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginBottom: 20 }}>
-          分享者：{viewing.shared_by_email} · {new Date(viewing.created_at).toLocaleDateString('zh-CN')}
-        </div>
-        <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, lineHeight: 1.9, whiteSpace: 'pre-wrap', background: t.faint, padding: 16, maxHeight: 600, overflowY: 'auto' }}>
+        <div style={{ fontFamily: t.fontCN, fontSize: 14, color: t.ink, lineHeight: 1.95 }}>
           {sections.length > 0
             ? sections.map((s, i) => (
-                <div key={i} style={{ marginBottom: 20 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{s.en || s.title}</div>
-                  {(s.blocks || []).map((b, j) => <div key={j} style={{ marginBottom: 6, fontSize: 13 }}>{b.text}</div>)}
+                <div key={i} style={{ marginBottom: 24 }}>
+                  <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 16, marginBottom: 10, paddingTop: 8, borderTop: i > 0 ? `1px solid ${t.rule}` : 'none' }}>{s.en || s.title}</div>
+                  {(s.blocks || []).map((b, j) => <div key={j} style={{ marginBottom: 10, fontWeight: b.kind === 'lede' ? 600 : 400 }}>{b.text}</div>)}
                 </div>
               ))
-            : fullText || '（无内容）'}
+            : <div style={{ whiteSpace: 'pre-wrap' }}>{fullText || '（无内容）'}</div>}
         </div>
       </div>
     );
@@ -5891,30 +5995,33 @@ function TeamReportsTab({ t, reports, isAdmin, btnBase, secHdr, apiFetch, onRefr
 
   return (
     <div>
-      <div style={secHdr}>团队报告库 · {reports.length} 篇</div>
+      <div style={{ ...secHdr, marginTop: 0 }}>团队报告库 · {reports.length} 篇</div>
       {reports.length === 0 && (
-        <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>暂无共享报告。在报告查看页点击「分享到团队」可将报告添加到此处。</div>
-      )}
-      {reports.map(r => (
-        <div key={r.id} style={{ padding: '12px 14px', border: `1px solid ${t.rule}`, marginBottom: 6, cursor: 'pointer' }}
-          onClick={() => setViewing(r)}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: t.fontCN, fontWeight: 600, fontSize: 13, color: t.ink, marginBottom: 3 }}>{r.title || '无标题'}</div>
-              {r.prompt && <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, marginBottom: 3 }}>{r.prompt.slice(0, 80)}{r.prompt.length > 80 ? '…' : ''}</div>}
-              <div style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>
-                {r.shared_by_email} · {new Date(r.created_at).toLocaleDateString('zh-CN')} · {(r.word_count || 0).toLocaleString()} 字
-              </div>
-            </div>
-            {isAdmin && (
-              <button onClick={e => { e.stopPropagation(); handleDelete(r.id); }}
-                style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '3px 10px', fontSize: 9, flexShrink: 0 }}>
-                删除
-              </button>
-            )}
-          </div>
+        <div style={{ padding: '40px 16px', border: `1px dashed ${t.rule}`, fontFamily: t.fontCN, fontSize: 14, color: t.mute, textAlign: 'center' }}>
+          暂无共享报告<br/><span style={{ fontSize: 12 }}>在任意报告查看页点击「⊕ 分享到团队」即可共享给成员</span>
         </div>
-      ))}
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+        {reports.map(r => (
+          <div key={r.id} onClick={() => setViewing(r)} style={{ display: 'flex', flexDirection: 'column', padding: '16px 18px', border: `1px solid ${t.rule}`, background: t.paper, cursor: 'pointer', minHeight: 130 }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = t.ink; e.currentTarget.style.boxShadow = `3px 3px 0 ${t.accent}`; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = t.rule; e.currentTarget.style.boxShadow = 'none'; }}>
+            <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 16, color: t.ink, marginBottom: 8, lineHeight: 1.25 }}>{r.title || '无标题'}</div>
+            {r.prompt && <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, lineHeight: 1.55, marginBottom: 'auto', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.prompt}</div>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${t.faint}` }}>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {r.shared_by_email || '成员'} · {new Date(r.created_at).toLocaleDateString('zh-CN')} · {(r.word_count || 0).toLocaleString()}字
+              </span>
+              <button onClick={e => { e.stopPropagation(); importToMine(r); }} title="导入到我的报告库"
+                style={{ ...btnBase, background: 'transparent', border: `1px solid ${t.rule}`, color: t.ink, padding: '3px 8px', fontSize: 9 }}>↓ 导入</button>
+              {isAdmin && (
+                <button onClick={e => { e.stopPropagation(); handleDelete(r.id); }}
+                  style={{ ...btnBase, background: 'transparent', color: '#e5251d', border: `1px solid #e5251d`, padding: '3px 8px', fontSize: 9 }}>删除</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
