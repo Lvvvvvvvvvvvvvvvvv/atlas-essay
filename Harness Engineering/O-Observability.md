@@ -6,14 +6,21 @@
 
 ---
 
+## 开发状态
+
+| 方案 | 状态 | 完成版本 |
+|------|------|---------|
+| A：报告元数据扩展 | **已完成** | v2.9.0 |
+| B：报告库统计面板 | **已完成** | v2.9.0 |
+| C：prompt 版本效果追踪 | 待办 | — |
+
 ## 当前状态
 
 - 报告存储：localStorage + 云端 `/api/reports` 同步完整内容
-- 🟡 **部分元数据已记录**（方案 A 部分完成）：`meta` 已含 `model` / `words` / `sources` / `tokens` / `tone` / `warnings` / `retried`，v2.7.0 起新增 `research`（自主研究轮数与工具调用轨迹）
-- ✅ 用户评分：`meta.userRating`（good/bad，P2-V3 已实现）
-- ⬜ 无聚合统计面板（方案 B）
-- ⬜ 无 prompt 版本效果追踪（方案 C）
-- ⬜ 缺 `durationMs` / `generationMode` / `promptHash` 等字段
+- ✅ **元数据（方案 A 完成）**：`meta` 含 `model` / `provider` / `generationMode` / `durationMs` / `sectionCount` / `words` / `sources` / `tokens` / `tone` / `warnings` / `retried` / `research`（自主研究轨迹）
+- ✅ 用户评分：报告层 `rating`（good/bad，P2-V3）
+- ✅ **聚合统计面板（方案 B 完成）**：报告库顶部「STATS · 数据概览」
+- ⬜ prompt 版本效果追踪（方案 C，待样本积累后做）
 
 ---
 
@@ -58,8 +65,29 @@
 
 ---
 
+## 实现记录（v2.9.0 · 方案 A + B）
+
+**完成日期**：2026-06-04
+
+**方案 A — 元数据扩展**
+- 在 `Running` 的 `doSave` 与 `ParallelDraft` 保存路径补：`provider` / `generationMode` / `durationMs`（`Date.now()-startTime`）/ `sectionCount`
+- 旧报告无这些字段，统计端按缺失优雅跳过
+
+**方案 B — 报告库统计面板**
+- `LibraryStats` 组件（`src/App.jsx`），报告库顶部可折叠「STATS · 数据概览」，纯客户端从 `savedReports` 的 meta 聚合，零后端
+- 含：总览（报告数/总字数/平均字数/平均耗时/研究启用数）、按模型（篇数/平均字数/平均耗时）、评分分布条、生成模式分布
+
+**核心代码位置**
+- `src/App.jsx` — `doSave` / `ParallelDraft` meta 字段
+- `src/App.jsx` — `LibraryStats` 组件 + `Library` 内渲染
+
+## 待办
+
+### 方案 C：prompt 版本效果追踪
+对 system prompt 版本做 hash 标记，记录每版本平均评分做 A/B。当前样本量小、收益低，待报告积累后再做。
+
 ## 实现难度
 
-- 方案 A（元数据记录）：低
-- 方案 B（统计面板）：中
-- 方案 C（prompt 版本追踪）：中
+- 方案 A（元数据记录）：低（已完成）
+- 方案 B（统计面板）：中（已完成）
+- 方案 C（prompt 版本追踪）：中（待办）

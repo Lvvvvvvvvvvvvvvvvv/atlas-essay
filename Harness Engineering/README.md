@@ -37,7 +37,7 @@ Harness（线束）= 围绕模型构建的"外壳"工程。模型权重不变，
 | P2 | V · Verification | ~80% | ✅ 结构校验 / 截断检测 / 评分 / 自动重试 |
 | P3 | L · Lifecycle | ~90% | ✅ 大纲先行 → 分节并行 → 节点工作流 → 章节精修 |
 | P4 | T · Tooling | ~90% | ✅ Jina 注入 + Tavily 搜索 + 模型自主研究（Tool Use）+ **远程 HTTP MCP 集成**；stdio MCP 待桌面端 |
-| P5 | O · Observability | ~35% | 🟡 元数据部分记录；统计面板/版本追踪未做 |
+| P5 | O · Observability | ~80% | ✅ 元数据完整记录 + 报告库统计面板；prompt 版本追踪（方案C）待办 |
 | P6 | G · Governance | ~60% | 当前规模不是瓶颈 |
 
 ---

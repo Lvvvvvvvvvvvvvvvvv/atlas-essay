@@ -5782,6 +5782,7 @@ function ParallelDraft({ t, topic, sections, modelStore, toolbarConfig, onSaveRe
   const completedRef = React.useRef(0);
   const [doneCount, setDoneCount] = React.useState(0);
   const savedRef = React.useRef(false);
+  const [startTime] = React.useState(Date.now);
 
   React.useEffect(() => {
     sections.forEach(section => {
@@ -5829,6 +5830,10 @@ function ParallelDraft({ t, topic, sections, modelStore, toolbarConfig, onSaveRe
         words: wordCount.toLocaleString(), sources: 0, reading: `${readMins} min`,
         category: 'AI · 并行生成', issue: 'AI',
         model: modelStore.selected?.name || 'AI', tone: '', tokens: 0,
+        provider: modelStore.selected?.provider || '',
+        generationMode: modelStore?.generationMode || '',
+        durationMs: Date.now() - startTime,
+        sectionCount: parsedSections.length,
       },
       favorited: false,
     });
@@ -6495,6 +6500,10 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
               category: `AI · ${selectedModel?.name || '生成'}`,
               issue: 'AI',
               model: selectedModel?.name || 'AI',
+              provider: selectedModel?.provider || '',
+              generationMode: modelStore?.generationMode || '',
+              durationMs: Date.now() - liveStartTime,
+              sectionCount: sections.length,
               tone: toolbarConfig?.tone?.cn || '',
               tokens: totalTokens,
               warnings: warnings.length > 0 ? warnings : undefined,
@@ -8398,6 +8407,128 @@ function inferTagFromReport(r) {
   return 'INDUSTRY';
 }
 
+// P5 Observability — aggregate stats over AI-generated reports
+function LibraryStats({ t, reports }) {
+  const [open, setOpen] = React.useState(false);
+  const parseW = (w) => Number(String(w ?? '').replace(/,/g, '')) || 0;
+
+  const stats = React.useMemo(() => {
+    const n = reports.length;
+    if (!n) return null;
+    const words = reports.map(r => parseW(r.meta?.words));
+    const totalWords = words.reduce((a, b) => a + b, 0);
+    const durs = reports.map(r => r.meta?.durationMs).filter(d => d > 0);
+    const avgDur = durs.length ? durs.reduce((a, b) => a + b, 0) / durs.length : 0;
+
+    const byModel = {};
+    reports.forEach(r => {
+      const m = r.meta?.model || '未知';
+      (byModel[m] ||= { count: 0, words: 0, durs: [] });
+      byModel[m].count++; byModel[m].words += parseW(r.meta?.words);
+      if (r.meta?.durationMs > 0) byModel[m].durs.push(r.meta.durationMs);
+    });
+    const models = Object.entries(byModel).map(([name, v]) => ({
+      name, count: v.count, avgWords: Math.round(v.words / v.count),
+      avgDur: v.durs.length ? v.durs.reduce((a, b) => a + b, 0) / v.durs.length : 0,
+    })).sort((a, b) => b.count - a.count);
+
+    const ratings = { good: 0, bad: 0, none: 0 };
+    reports.forEach(r => { ratings[r.rating === 'good' ? 'good' : r.rating === 'bad' ? 'bad' : 'none']++; });
+
+    const modeCount = {};
+    reports.forEach(r => { const gm = r.meta?.generationMode; if (gm) modeCount[gm] = (modeCount[gm] || 0) + 1; });
+    const modes = Object.entries(modeCount).map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
+
+    const withResearch = reports.filter(r => r.meta?.research);
+    const totalCalls = withResearch.reduce((a, r) => a + (r.meta.research.log?.length || 0), 0);
+
+    return { n, totalWords, avgWords: Math.round(totalWords / n), avgDur, models, ratings, modes,
+      researchN: withResearch.length, avgCalls: withResearch.length ? (totalCalls / withResearch.length) : 0 };
+  }, [reports]);
+
+  if (!stats) return null;
+  const fmtDur = (ms) => ms ? (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`) : '—';
+  const card = { flex: 1, minWidth: 120, padding: '12px 14px', border: `1px solid ${t.rule}`, background: t.faint };
+  const bigNum = { fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 26, letterSpacing: -0.5, color: t.ink, lineHeight: 1 };
+  const capLbl = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1, marginTop: 5 };
+  const secLbl = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.2, margin: '14px 0 8px' };
+  const ratingTotal = stats.ratings.good + stats.ratings.bad + stats.ratings.none || 1;
+
+  return (
+    <div style={{ borderBottom: `1px solid ${t.rule}`, background: t.paper }}>
+      <button type="button" onClick={() => setOpen(o => !o)} style={{
+        width: '100%', textAlign: 'left', padding: '12px 36px', background: 'transparent',
+        border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+        fontFamily: t.fontMono, fontSize: 10, letterSpacing: 1.2, color: t.ink,
+      }}>
+        <span style={{ color: t.accent }}>▪ STATS · 数据概览</span>
+        <span style={{ color: t.mute }}>{stats.n} 篇生成报告</span>
+        <span style={{ flex: 1 }}/>
+        <span style={{ color: t.mute }}>{open ? '收起 ▲' : '展开 ▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '0 36px 22px' }}>
+          {/* Overview cards */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={card}><div style={bigNum}>{stats.n}</div><div style={capLbl}>报告数 · REPORTS</div></div>
+            <div style={card}><div style={bigNum}>{stats.totalWords.toLocaleString()}</div><div style={capLbl}>总字数 · TOTAL WORDS</div></div>
+            <div style={card}><div style={bigNum}>{stats.avgWords.toLocaleString()}</div><div style={capLbl}>平均字数 · AVG WORDS</div></div>
+            <div style={card}><div style={bigNum}>{fmtDur(stats.avgDur)}</div><div style={capLbl}>平均耗时 · AVG TIME</div></div>
+            {stats.researchN > 0 && (
+              <div style={card}><div style={bigNum}>{stats.researchN}</div><div style={capLbl}>启用研究 · 均 {stats.avgCalls.toFixed(1)} 次调用</div></div>
+            )}
+          </div>
+
+          {/* By model */}
+          <div style={secLbl}>按模型 · BY MODEL</div>
+          <div style={{ border: `1px solid ${t.rule}` }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px', padding: '6px 12px', background: t.faint, fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.5 }}>
+              <span>模型</span><span style={{ textAlign: 'right' }}>篇数</span><span style={{ textAlign: 'right' }}>平均字数</span><span style={{ textAlign: 'right' }}>平均耗时</span>
+            </div>
+            {stats.models.map(m => (
+              <div key={m.name} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 90px', padding: '7px 12px', borderTop: `1px solid ${t.rule}`, fontFamily: t.fontCN, fontSize: 12, color: t.ink, alignItems: 'center' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                <span style={{ textAlign: 'right', fontFamily: t.fontMono, fontSize: 11 }}>{m.count}</span>
+                <span style={{ textAlign: 'right', fontFamily: t.fontMono, fontSize: 11 }}>{m.avgWords.toLocaleString()}</span>
+                <span style={{ textAlign: 'right', fontFamily: t.fontMono, fontSize: 11 }}>{fmtDur(m.avgDur)}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Rating distribution */}
+          <div style={secLbl}>评分分布 · RATINGS</div>
+          <div style={{ display: 'flex', height: 22, border: `1px solid ${t.rule}`, overflow: 'hidden', fontFamily: t.fontMono, fontSize: 9 }}>
+            {[['good', '#2a8c5c', '好评'], ['bad', '#b04040', '差评'], ['none', t.rule, '未评']].map(([k, col, lbl]) => {
+              const pct = (stats.ratings[k] / ratingTotal) * 100;
+              if (pct === 0) return null;
+              return (
+                <div key={k} title={`${lbl} ${stats.ratings[k]}`} style={{ width: `${pct}%`, background: col, color: k === 'none' ? t.mute : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}>
+                  {pct > 12 ? `${lbl} ${stats.ratings[k]}` : ''}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Generation modes */}
+          {stats.modes.length > 0 && (
+            <>
+              <div style={secLbl}>生成模式 · MODES</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {stats.modes.map(m => (
+                  <span key={m.k} style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, padding: '4px 10px', border: `1px solid ${t.rule}`, background: t.faint }}>
+                    {m.k} · {m.v}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Library({ t, onOpen, savedReports = [], onToggleFavorite, onRate }) {
   const [filter, setFilter] = React.useState('ALL');
   const [sort, setSort] = React.useState('date');
@@ -8463,6 +8594,9 @@ function Library({ t, onOpen, savedReports = [], onToggleFavorite, onRate }) {
           <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{total} issues</span>
         </div>
       </div>
+
+      {/* P5 · aggregate stats over generated reports */}
+      <LibraryStats t={t} reports={savedReports}/>
 
       {/* Filters bar */}
       <div style={{ padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${t.rule}`, background: t.paper, flexWrap: 'wrap' }}>
