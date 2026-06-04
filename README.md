@@ -2,18 +2,22 @@
 
 **AI-powered, browser-based report generation tool.**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue)](https://lvvvvvvvvvvvvvvvvv.github.io/atlas-essay/)
-[![Version](https://img.shields.io/badge/version-2.1.0-informational)](docs/CHANGELOG.md)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black)](https://atlas-essay.vercel.app/)
+[![Version](https://img.shields.io/badge/version-3.2.0-informational)](docs/CHANGELOG.md)
 [![React](https://img.shields.io/badge/React-18-61dafb)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-5-646cff)](https://vitejs.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+> **Live app:** https://atlas-essay.vercel.app/ — the full app (auth, team
+> collaboration, live generation, MCP) runs on Vercel. The old GitHub Pages
+> link now just redirects here, since static hosting can't run the backend.
 
 ---
 
 **AI 驱动的浏览器端报告生成工具。**
 
-[![在线演示](https://img.shields.io/badge/在线演示-GitHub%20Pages-blue)](https://lvvvvvvvvvvvvvvvvv.github.io/atlas-essay/)
-[![版本](https://img.shields.io/badge/版本-2.1.0-informational)](docs/CHANGELOG.md)
+[![在线演示](https://img.shields.io/badge/在线演示-Vercel-black)](https://atlas-essay.vercel.app/)
+[![版本](https://img.shields.io/badge/版本-3.2.0-informational)](docs/CHANGELOG.md)
 
 ---
 
