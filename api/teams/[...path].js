@@ -92,7 +92,26 @@ async function handleKeys(req, res, user) {
   if (m.role !== 'admin') throw { status: 403, message: 'Admin required' };
 
   if (req.method === 'POST') {
-    const { provider, apiKey, apiUrl, label } = req.body || {};
+    const { provider, apiKey, apiUrl, label, fromPersonalId } = req.body || {};
+
+    // Import a server-side personal key into the team: copy the already-encrypted
+    // blob (same SECRET) — no decryption needed, plaintext never leaves the server.
+    if (fromPersonalId) {
+      const { data: src } = await supabaseAdmin
+        .from('api_keys')
+        .select('provider, api_url, key_enc, label')
+        .eq('id', fromPersonalId)
+        .eq('user_id', user.id)
+        .single();
+      if (!src) throw { status: 404, message: 'Personal key not found' };
+      const { data, error } = await supabaseAdmin
+        .from('api_keys')
+        .insert({ team_id: m.team_id, created_by: user.id, provider: src.provider, api_url: src.api_url, key_enc: src.key_enc, label: label || src.label || src.provider })
+        .select('id').single();
+      if (error) throw { status: 500, message: error.message };
+      return res.status(201).json({ id: data.id });
+    }
+
     if (!provider || !apiKey) throw { status: 400, message: 'provider and apiKey required' };
 
     const key_enc = encrypt(apiKey);

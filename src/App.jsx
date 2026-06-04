@@ -5716,14 +5716,22 @@ function KeysTab({ t, teamKeys, isAdmin, modelStore, inp, btnBase, secHdr, apiFe
     } catch (e) { showStatus(e.message, true); }
   };
 
-  // Import candidates = my client-side model keys (plaintext available), deduped vs team keys
+  // My server-side personal keys (encrypted; imported by copying the blob)
+  const [personalKeys, setPersonalKeys] = React.useState([]);
+  React.useEffect(() => {
+    apiFetch('/api/keys').then(d => setPersonalKeys(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [apiFetch]);
+
+  // Import candidates = client-side model keys (plaintext) + server-side personal keys
   const importCandidates = React.useMemo(() => {
     const existing = new Set(teamKeys.map(k => `${(k.provider || '').toLowerCase()}|${k.label || ''}`));
-    return (modelStore?.allModels || [])
+    const client = (modelStore?.allModels || [])
       .filter(m => m.apiKey && m.apiKey.trim())
-      .map(m => ({ id: m.id, provider: (m.provider || 'custom').toLowerCase(), apiKey: m.apiKey, apiUrl: m.apiUrl || '', label: m.name || m.provider || '密钥' }))
-      .filter(m => !existing.has(`${m.provider}|${m.label}`));
-  }, [modelStore, teamKeys]);
+      .map(m => ({ id: 'c:' + m.id, src: 'client', provider: (m.provider || 'custom').toLowerCase(), apiKey: m.apiKey, apiUrl: m.apiUrl || '', label: m.name || m.provider || '密钥', hint: '本机模型 · ****' + m.apiKey.slice(-4) }));
+    const server = personalKeys
+      .map(k => ({ id: 's:' + k.id, src: 'server', personalId: k.id, provider: (k.provider || 'custom').toLowerCase(), apiUrl: k.api_url || '', label: k.label || k.provider || '密钥', hint: '个人密钥（服务端加密）' }));
+    return [...server, ...client].filter(m => !existing.has(`${m.provider}|${m.label}`));
+  }, [modelStore, teamKeys, personalKeys]);
 
   const handleImport = async () => {
     const sel = importCandidates.filter(c => importSel[c.id]);
@@ -5731,7 +5739,10 @@ function KeysTab({ t, teamKeys, isAdmin, modelStore, inp, btnBase, secHdr, apiFe
     setImporting(true);
     try {
       for (const c of sel) {
-        await apiFetch('/api/teams/keys', { method: 'POST', body: JSON.stringify({ provider: c.provider, apiKey: c.apiKey, apiUrl: c.apiUrl, label: c.label }) });
+        const body = c.src === 'server'
+          ? { fromPersonalId: c.personalId, label: c.label }
+          : { provider: c.provider, apiKey: c.apiKey, apiUrl: c.apiUrl, label: c.label };
+        await apiFetch('/api/teams/keys', { method: 'POST', body: JSON.stringify(body) });
       }
       setShowImport(false); setImportSel({});
       await onRefresh();
@@ -5758,16 +5769,16 @@ function KeysTab({ t, teamKeys, isAdmin, modelStore, inp, btnBase, secHdr, apiFe
           {showImport && (
             <div style={{ padding: 16, border: `1px solid ${t.rule}`, marginBottom: 20, background: t.faint }}>
               <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 10 }}>
-                把你本机模型里已填的密钥共享给团队（已在团队中的不显示）
+                把你的密钥共享给团队 · 含本机模型密钥与个人服务端密钥（已在团队中的不显示）
               </div>
               {importCandidates.length === 0
-                ? <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>没有可导入的本机密钥</div>
+                ? <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>没有可导入的密钥（请先在 设置→模型 添加个人密钥）</div>
                 : <>
                     {importCandidates.map(c => (
                       <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
                         <input type="checkbox" checked={!!importSel[c.id]} onChange={e => setImportSel(s => ({ ...s, [c.id]: e.target.checked }))}/>
                         <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{c.label}</span>
-                        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{c.provider} · ****{c.apiKey.slice(-4)}</span>
+                        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{c.provider} · {c.hint}</span>
                       </label>
                     ))}
                     <button onClick={handleImport} disabled={importing || !Object.values(importSel).some(Boolean)}
