@@ -1024,6 +1024,8 @@ function McpServersConfig({ t, secHdr }) {
 }
 
 function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, onClose }) {
+  const { can } = usePermission();
+  const canModelConfig = can('model_config');
   const [tab, setTab] = React.useState('model');
   const [modalReports, setModalReports] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; }
@@ -1243,6 +1245,12 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
 
             {tab === 'model' && modelStore && (
               <React.Fragment>
+                {!canModelConfig && (
+                  <div style={{ padding: '8px 12px', marginBottom: 12, border: `1px solid ${t.rule}`, background: 'rgba(118,115,104,0.06)', fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.3 }}>
+                    只读 · 当前团队角色无权修改模型 / 参数
+                  </div>
+                )}
+                <div style={{ pointerEvents: canModelConfig ? 'auto' : 'none', opacity: canModelConfig ? 1 : 0.55 }}>
                 <div>
                   <div style={secHdr}>生成流程</div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', border: `1px solid ${t.rule}`, marginBottom: 6 }}>
@@ -1424,10 +1432,15 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
                     </div>
                   )}
                 </div>
+                </div>
               </React.Fragment>
             )}
 
-            {tab === 'model' && modelStore && <ServerKeySection t={t} inp={inp} secHdr={secHdr}/>}
+            {tab === 'model' && modelStore && (
+              <div style={{ pointerEvents: canModelConfig ? 'auto' : 'none', opacity: canModelConfig ? 1 : 0.55 }}>
+                <ServerKeySection t={t} inp={inp} secHdr={secHdr}/>
+              </div>
+            )}
 
             {tab === 'prompt' && (
               <React.Fragment>
@@ -3337,6 +3350,15 @@ combo（组合图，同一时间轴上叠加柱形+折线两组数据）：
 - 末尾有 [REFS]...[/REFS]，条数与正文 §N 标注一致
 - 无开场白、结尾客套话、免责声明
 </quality_check>`;
+
+// O-C · prompt version tracking — short stable hash of the base system prompt.
+// Changes whenever BASE_SYSTEM_PROMPT is edited, enabling per-version A/B on ratings.
+function _hashStr(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(16).slice(0, 6);
+}
+const PROMPT_VERSION = _hashStr(BASE_SYSTEM_PROMPT);
 
 const LENGTH_PRESETS = [
   { id: 'brief',    cn: '简报', chars: 800 },
@@ -5887,6 +5909,7 @@ function ParallelDraft({ t, topic, sections, modelStore, toolbarConfig, onSaveRe
         generationMode: modelStore?.generationMode || '',
         durationMs: Date.now() - startTime,
         sectionCount: parsedSections.length,
+        promptHash: PROMPT_VERSION,
       },
       favorited: false,
     });
@@ -6557,6 +6580,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
               generationMode: modelStore?.generationMode || '',
               durationMs: Date.now() - liveStartTime,
               sectionCount: sections.length,
+              promptHash: PROMPT_VERSION,
               tone: toolbarConfig?.tone?.cn || '',
               tokens: totalTokens,
               warnings: warnings.length > 0 ? warnings : undefined,
@@ -8499,7 +8523,20 @@ function LibraryStats({ t, reports }) {
     const withResearch = reports.filter(r => r.meta?.research);
     const totalCalls = withResearch.reduce((a, r) => a + (r.meta.research.log?.length || 0), 0);
 
-    return { n, totalWords, avgWords: Math.round(totalWords / n), avgDur, models, ratings, modes,
+    // O-C · per prompt-version: count + avg rating score (good=1, bad=0)
+    const verMap = {};
+    reports.forEach(r => {
+      const h = r.meta?.promptHash; if (!h) return;
+      (verMap[h] ||= { count: 0, rated: 0, score: 0 });
+      verMap[h].count++;
+      if (r.rating === 'good') { verMap[h].rated++; verMap[h].score++; }
+      else if (r.rating === 'bad') { verMap[h].rated++; }
+    });
+    const versions = Object.entries(verMap).map(([h, v]) => ({
+      h, count: v.count, rated: v.rated, approval: v.rated ? Math.round((v.score / v.rated) * 100) : null,
+    })).sort((a, b) => b.count - a.count);
+
+    return { n, totalWords, avgWords: Math.round(totalWords / n), avgDur, models, ratings, modes, versions,
       researchN: withResearch.length, avgCalls: withResearch.length ? (totalCalls / withResearch.length) : 0 };
   }, [reports]);
 
@@ -8575,6 +8612,20 @@ function LibraryStats({ t, reports }) {
                 {stats.modes.map(m => (
                   <span key={m.k} style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, padding: '4px 10px', border: `1px solid ${t.rule}`, background: t.faint }}>
                     {m.k} · {m.v}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Prompt versions (O-C) — approval = good/(good+bad) */}
+          {stats.versions.length > 0 && (
+            <>
+              <div style={secLbl}>提示词版本 · PROMPT VERSIONS</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {stats.versions.map(v => (
+                  <span key={v.h} title={`${v.rated} 篇已评分`} style={{ fontFamily: t.fontMono, fontSize: 10, color: t.ink, padding: '4px 10px', border: `1px solid ${v.h === PROMPT_VERSION ? t.accent : t.rule}`, background: t.faint }}>
+                    {v.h}{v.h === PROMPT_VERSION ? ' (当前)' : ''} · {v.count} 篇{v.approval !== null ? ` · 好评率 ${v.approval}%` : ''}
                   </span>
                 ))}
               </div>
@@ -9650,6 +9701,9 @@ function EditAccessModal({ t, src, onClose, onSave }) {
 }
 
 function Sources({ t }) {
+  const { can } = usePermission();
+  const canManage = can('source_manage');
+  const canSync = can('sync');
   const [cat, setCat] = React.useState('all');
   const [sourceList, setSourceList] = React.useState(SOURCES);
   const [syncingAll, setSyncingAll] = React.useState(false);
@@ -9731,11 +9785,15 @@ function Sources({ t }) {
           </button>
         ))}
         <span style={{ flex: 1 }}/>
-        <Btn t={t} size="sm" onClick={handleSyncAll} disabled={syncingAll}
-          style={syncAllDone ? { color: '#10b981', borderColor: '#10b981' } : {}}>
-          {syncingAll ? '⟳ 同步中…' : syncAllDone ? '✓ 全部同步完成' : '⟳ SYNC ALL · 全部同步'}
-        </Btn>
-        <Btn t={t} size="sm" primary accent onClick={() => setShowAdd(true)}>＋ ADD SOURCE · 添加</Btn>
+        {canSync && (
+          <Btn t={t} size="sm" onClick={handleSyncAll} disabled={syncingAll}
+            style={syncAllDone ? { color: '#10b981', borderColor: '#10b981' } : {}}>
+            {syncingAll ? '⟳ 同步中…' : syncAllDone ? '✓ 全部同步完成' : '⟳ SYNC ALL · 全部同步'}
+          </Btn>
+        )}
+        {canManage
+          ? <Btn t={t} size="sm" primary accent onClick={() => setShowAdd(true)}>＋ ADD SOURCE · 添加</Btn>
+          : <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>只读 · 无数据源管理权限</span>}
       </div>
 
       {/* Table */}
