@@ -4458,6 +4458,17 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
     return estimateGeneration(prompt.length, toolbarStore?.effectiveLength, modelStore.selected.provider);
   }, [prompt, modelStore?.selected, toolbarStore?.effectiveLength]);
 
+  // Historical approval for the current model+mode (rating feedback surfaced)
+  const approval = React.useMemo(() => {
+    const name = modelStore?.selected?.name, mode = modelStore?.generationMode;
+    if (!name) return null;
+    let reports = []; try { reports = JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch {}
+    const rel = reports.filter(r => r.meta?.model === name && (!mode || r.meta?.generationMode === mode) && (r.rating === 'good' || r.rating === 'bad'));
+    if (rel.length < 3) return null; // not enough signal
+    const good = rel.filter(r => r.rating === 'good').length;
+    return { rate: Math.round((good / rel.length) * 100), n: rel.length };
+  }, [modelStore?.selected, modelStore?.generationMode, prompt]);
+
   // auto-grow
   React.useEffect(() => {
     if (taRef.current) {
@@ -4533,6 +4544,11 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
         )}
         {modelStore && <ModelSelector t={t} store={modelStore}/>}
         <span style={{ flex: 1 }}/>
+        {approval && canGenerate && (
+          <span title="该模型+模式的历史好评率（基于你的评分）" style={{ fontFamily: t.fontMono, fontSize: 9, color: approval.rate >= 60 ? '#2a8c5c' : approval.rate >= 30 ? t.mute : '#b04040', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
+            好评率 {approval.rate}%（{approval.n}篇）
+          </span>
+        )}
         {est && canGenerate && (
           <span title="粗估，仅用于防止意外超支，非账单级精确" style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
             粗估 ~{est.tokens.toLocaleString()} tok · ≈${est.usd < 0.01 ? est.usd.toFixed(4) : est.usd.toFixed(3)}
@@ -7683,9 +7699,11 @@ function SectionRefineBar({ t, section, topic, model, onApply }) {
   );
 }
 
-function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, toolbarStore, onSaveReport, rating, onRate, modelStore, onShareToTeam }) {
+function Report({ t, onExport, marginaliaOn = true, density = 'editorial', reportData, isFavorited, onToggleFavorite, onRerun, onFollowUp, onUpdate, toolbarStore, onSaveReport, rating, onRate, modelStore, onShareToTeam }) {
   const { can } = usePermission();
   const canExport = can('export');
+  const [badReasons, setBadReasons] = React.useState(false);
+  const [savedReason, setSavedReason] = React.useState('');
   const [activeSec, setActiveSec] = React.useState('s1');
   const containerRef = React.useRef(null);
   const [editMode, setEditMode] = React.useState(false);
@@ -7785,6 +7803,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
         </span>
         <span style={{ flex: 1 }}/>
         <Btn t={t} size="sm" onClick={onRerun || undefined} style={!onRerun ? { opacity: 0.4 } : {}}>▸ 重跑</Btn>
+        {!isStatic && onUpdate && <Btn t={t} size="sm" onClick={onUpdate}>↻ 基于此更新</Btn>}
         <Btn t={t} size="sm" onClick={onToggleFavorite || undefined}
           style={isFavorited ? { background: '#c8a84b', borderColor: '#c8a84b', color: '#fff' } : (!onToggleFavorite ? { opacity: 0.4 } : {})}>
           {isFavorited ? '★ 已收藏' : '☆ 收藏'}
@@ -7795,7 +7814,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
               style={rating === 'good' ? { background: '#2a8c5c', borderColor: '#2a8c5c', color: '#fff' } : {}}>
               + 好
             </Btn>
-            <Btn t={t} size="sm" onClick={() => onRate('bad')}
+            <Btn t={t} size="sm" onClick={() => { onRate('bad'); setBadReasons(v => !v); }}
               style={rating === 'bad' ? { background: '#b04040', borderColor: '#b04040', color: '#fff' } : {}}>
               - 差
             </Btn>
@@ -7812,6 +7831,18 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
           <Btn t={t} size="sm" onClick={onShareToTeam}>⊕ 分享到团队</Btn>
         )}
       </div>
+
+      {/* Bad-rating reasons → feed into Memory avoid-list (closes the V→M loop) */}
+      {badReasons && (
+        <div style={{ padding: '8px 36px', borderBottom: `1px solid ${t.rule}`, background: t.faint, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.5 }}>哪里不满意？(记入「避免项」，下次自动规避)</span>
+          {['内容太浅', '结构混乱', '数据不足', '语气不符', '不够具体', '过度营销'].map(r => (
+            <button key={r} onClick={() => { addProfileAvoid(r); setSavedReason(r); setTimeout(() => { setSavedReason(''); setBadReasons(false); }, 1200); }}
+              style={{ fontFamily: t.fontCN, fontSize: 11, color: t.ink, padding: '3px 10px', border: `1px solid ${t.rule}`, background: t.paper, cursor: 'pointer' }}>{r}</button>
+          ))}
+          {savedReason && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: '#2a8c5c' }}>✓ 已记入：{savedReason}</span>}
+        </div>
+      )}
 
       {/* Validation warning banner */}
       {!warnDismissed && reportData?.meta?.warnings?.length > 0 && (
@@ -12018,6 +12049,11 @@ function App() {
               toolbarStore={toolbarStore}
               onSaveReport={activeReport ? (updated) => savedReports.save({ ...updated, id: activeReport.id }) : null}
               onShareToTeam={activeReport && team ? handleShareToTeam : null}
+              onUpdate={activeReport ? () => {
+                const outline = (activeReport.sections || []).map(s => `- ${s.en}`).join('\n');
+                setPrompt(`【增量更新】请基于下面这篇已有报告，用最新数据/进展更新，保留原章节结构，并在相应处明确标注「新增」或「变化」。\n\n原主题：${activeReport.prompt || ''}\n原章节结构：\n${outline}`);
+                goRun();
+              } : null}
               onFollowUp={(followText) => {
                 const base = activeReport?.prompt || prompt;
                 setPrompt(`【追问】在下面的报告基础上：${base}\n\n【新要求】${followText}`);

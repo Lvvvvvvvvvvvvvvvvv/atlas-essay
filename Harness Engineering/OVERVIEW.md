@@ -32,6 +32,7 @@ Harness（线束）= 围绕模型构建的「外壳」工程。模型权重不�
 | T | Tooling | 能用什么工具？ | P4 | ~92% | 完成（stdio 待桌面端） |
 | O | Observability | 能观察到什么？ | P5 | ~85% | 完成 |
 | G | Governance | 谁能做什么、花多少？ | P6 | ~92% | 完成 |
+| M | Memory | 模型记得你什么？ | 附加 | ~85% | 完成（localStorage） |
 
 ---
 
@@ -115,6 +116,15 @@ Harness（线束）= 围绕模型构建的「外壳」工程。模型权重不�
 - 报告元数据：`model / provider / generationMode / durationMs / sectionCount / tokens / research（工具轨迹）/ promptHash`
 - 报告库「STATS · 数据概览」面板：总览（数/字数/均值/均耗时/研究启用）、按模型、评分分布、生成模式、**prompt 版本好评率 A/B**
 **验证**：headless 浏览器注入样本实测，聚合数值逐项算对、好评率正确。
+
+### M · Memory（附加层 · ~85%）
+**目标**：从历史学习并主动反哺下一次生成（ETCLOVG 未含，按业务补充）。
+**已落地**（全 localStorage，注入 `<user_memory>`）：
+- 写作画像：偏好/避免项（手动 + 差评原因自动累积），历史归纳只读视图（好评加权）
+- 实体记忆：领域关键词命中 → 注入重点对象
+- 评分反哺闭环：差评一键原因 → avoid 注入；生成页显示模型+模式历史好评率
+- 增量更新：报告页「↻ 基于此更新」用旧结构+主题组装更新 prompt
+**验证**：`buildMemoryBlock`/`deriveProfileStats` node 实测；端到端需线上走查。
 
 ### G · Governance（P6 · ~92%）
 **目标**：谁能做什么、花多少、风险怎么控。

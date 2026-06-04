@@ -39,8 +39,9 @@ Harness（线束）= 围绕模型构建的"外壳"工程。模型权重不变，
 | P4 | T · Tooling | ~92% | ✅ Jina 注入 + Tavily 搜索 + 模型自主研究（Tool Use）+ 远程 HTTP MCP（含 OAuth 2.1）；stdio MCP 待桌面端 |
 | P5 | O · Observability | ~85% | ✅ 元数据完整 + 报告库统计面板 + prompt 版本追踪 |
 | P6 | G · Governance | ~92% | ✅ 角色客户端强制 + 成本粗估 + 每日软限制 + 分享链接安全 |
+| 附加 | M · Memory | ~85% | ✅ 写作画像 + 实体记忆 + 评分反哺 + 增量更新（`<user_memory>` 注入） |
 
-**七层框架已全部闭环。** 剩余均为低优先级深化或受架构限制项（见各层文档待办）。
+**七层框架已全部闭环，并补充 M·Memory 附加层。** 剩余均为低优先级深化或受架构限制项（见各层文档待办）。
 
 ---
 
@@ -82,6 +83,7 @@ Harness（线束）= 围绕模型构建的"外壳"工程。模型权重不变，
 | [T-Tooling.md](T-Tooling.md) | Tooling | P4 |
 | [O-Observability.md](O-Observability.md) | Observability | P5 |
 | [G-Governance.md](G-Governance.md) | Governance | P6 |
+| [M-Memory.md](M-Memory.md) | Memory | 附加 |
 
 ---
 
