@@ -1029,6 +1029,91 @@ function McpServersConfig({ t, secHdr }) {
   );
 }
 
+// M · Memory settings — writing profile (notes/avoid + derived view) + entity memory
+function MemorySettings({ t, inp, lbl, secHdr }) {
+  const [profile, setProfile] = React.useState(getWritingProfile);
+  const [entities, setEntities] = React.useState(getEntityMemory);
+  const [noteDraft, setNoteDraft] = React.useState('');
+  const [avoidDraft, setAvoidDraft] = React.useState('');
+  const [entForm, setEntForm] = React.useState({ area: '', keywords: '', entities: '' });
+
+  const reports = React.useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch { return []; }
+  }, []);
+  const derived = React.useMemo(() => deriveProfileStats(reports), [reports]);
+
+  const persistProfile = (p) => { setProfile(p); saveWritingProfile(p); };
+  const addItem = (key, val, clear) => { if (!val.trim()) return; const p = { ...profile, [key]: [...new Set([...(profile[key] || []), val.trim()])] }; persistProfile(p); clear(''); };
+  const delItem = (key, i) => { const p = { ...profile, [key]: (profile[key] || []).filter((_, j) => j !== i) }; persistProfile(p); };
+
+  const persistEnts = (list) => { setEntities(list); saveEntityMemory(list); };
+  const addEntity = () => {
+    if (!entForm.area.trim()) return;
+    persistEnts([...entities, { id: Date.now().toString(), area: entForm.area.trim(),
+      keywords: entForm.keywords.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean),
+      entities: entForm.entities.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean) }]);
+    setEntForm({ area: '', keywords: '', entities: '' });
+  };
+
+  const btn = { padding: '5px 12px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, border: `1px solid ${t.ink}`, background: 'transparent', color: t.ink, cursor: 'pointer' };
+  const chip = (txt, onDel) => (
+    <span key={txt} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: t.fontCN, fontSize: 12, color: t.ink, padding: '3px 8px', border: `1px solid ${t.rule}`, background: t.faint, marginRight: 6, marginBottom: 6 }}>
+      {txt}<button onClick={onDel} style={{ border: 'none', background: 'none', cursor: 'pointer', color: t.mute, fontSize: 12, lineHeight: 1, padding: 0 }}>×</button>
+    </span>
+  );
+
+  return (
+    <React.Fragment>
+      <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, marginBottom: 8, lineHeight: 1.6 }}>
+        记忆会在生成时注入 &lt;user_memory&gt;，引导模型贴合你的偏好与重点对象。全部存于本机。
+      </div>
+
+      {/* Writing profile — preferences */}
+      <div style={secHdr}>写作偏好（注入：希望模型做到）</div>
+      <div>{(profile.notes || []).map((n, i) => chip(n, () => delItem('notes', i)))}</div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4, marginBottom: 16 }}>
+        <input value={noteDraft} onChange={e => setNoteDraft(e.target.value)} onKeyDown={e => e.key === 'Enter' && addItem('notes', noteDraft, setNoteDraft)} placeholder="如：多用数据和案例、结论先行" style={{ ...inp, flex: 1 }}/>
+        <button onClick={() => addItem('notes', noteDraft, setNoteDraft)} style={{ ...btn, background: t.ink, color: t.paper }}>添加</button>
+      </div>
+
+      <div style={secHdr}>避免项（注入：希望模型避免 · 差评会自动累积到这里）</div>
+      <div>{(profile.avoid || []).map((n, i) => chip(n, () => delItem('avoid', i)))}</div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4, marginBottom: 16 }}>
+        <input value={avoidDraft} onChange={e => setAvoidDraft(e.target.value)} onKeyDown={e => e.key === 'Enter' && addItem('avoid', avoidDraft, setAvoidDraft)} placeholder="如：避免空话套话、避免过度营销语气" style={{ ...inp, flex: 1 }}/>
+        <button onClick={() => addItem('avoid', avoidDraft, setAvoidDraft)} style={{ ...btn, background: t.ink, color: t.paper }}>添加</button>
+      </div>
+
+      {/* Derived view */}
+      <div style={secHdr}>历史归纳（只读 · 基于{derived.basis === 'good' ? '好评' : '全部'} {derived.n} 篇）</div>
+      <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.inkSoft, lineHeight: 1.9, marginBottom: 18 }}>
+        {derived.n === 0 ? '暂无生成历史' : <>
+          常用模型：{derived.model || '—'}　·　模式：{derived.generationMode || '—'}<br/>
+          语气：{derived.tone || '—'}　·　语言：{derived.language || '—'}　·　风格：{derived.style || '—'}
+        </>}
+      </div>
+
+      {/* Entity memory */}
+      <div style={secHdr}>实体记忆（topic 命中关键词时，注入重点对象）</div>
+      {entities.map(e => (
+        <div key={e.id} style={{ padding: '8px 10px', border: `1px solid ${t.rule}`, marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: t.fontCN, fontWeight: 600, fontSize: 13, color: t.ink, flex: 1 }}>{e.area}</span>
+            <button onClick={() => persistEnts(entities.filter(x => x.id !== e.id))} style={{ ...btn, border: `1px solid #e5251d`, color: '#e5251d' }}>删除</button>
+          </div>
+          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 3 }}>关键词：{(e.keywords || []).join('、') || '—'}</div>
+          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.accent, marginTop: 2 }}>重点对象：{(e.entities || []).join('、') || '—'}</div>
+        </div>
+      ))}
+      <div style={{ padding: 10, border: `1px solid ${t.rule}`, background: t.faint, marginTop: 6 }}>
+        <input value={entForm.area} onChange={e => setEntForm(f => ({ ...f, area: e.target.value }))} placeholder="领域名（如 咖啡赛道）" style={{ ...inp, marginBottom: 6 }}/>
+        <input value={entForm.keywords} onChange={e => setEntForm(f => ({ ...f, keywords: e.target.value }))} placeholder="触发关键词（逗号分隔，如 咖啡,咖啡馆,Manner）" style={{ ...inp, marginBottom: 6 }}/>
+        <input value={entForm.entities} onChange={e => setEntForm(f => ({ ...f, entities: e.target.value }))} placeholder="重点对象（逗号分隔，如 Manner,库迪,挪瓦）" style={{ ...inp, marginBottom: 8 }}/>
+        <button onClick={addEntity} disabled={!entForm.area.trim()} style={{ ...btn, background: t.accent, color: '#fff', opacity: entForm.area.trim() ? 1 : 0.5 }}>＋ 添加领域</button>
+      </div>
+    </React.Fragment>
+  );
+}
+
 function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, onClose }) {
   const { can } = usePermission();
   const canModelConfig = can('model_config');
@@ -1177,6 +1262,7 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
   const TABS = [
     { k: 'model',      label: '模型',  sub: '参数 & 管理' },
     { k: 'prompt',     label: '提示词', sub: 'System Prompt' },
+    { k: 'memory',     label: '记忆',  sub: '画像 & 实体'  },
     { k: 'export',     label: '导出',  sub: '多格式导出'  },
     { k: 'clear',      label: '清除',  sub: '本地数据'    },
     { k: 'permission', label: '权限',  sub: '角色管理'    },
@@ -1467,6 +1553,10 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
                 </div>
                 <LanguageManager t={t} inp={inp} secHdr={secHdr} toolbarStore={toolbarStore}/>
               </React.Fragment>
+            )}
+
+            {tab === 'memory' && (
+              <MemorySettings t={t} inp={inp} lbl={lbl} secHdr={secHdr}/>
             )}
 
             {tab === 'export' && (
@@ -4952,6 +5042,52 @@ async function streamOutline({ model, prompt, language, onChunk, onDone, onError
   }
 }
 
+// ── M · Memory layer (localStorage-backed, injected via <user_memory>) ────────
+function getWritingProfile() {
+  try { return JSON.parse(localStorage.getItem('atlas_writing_profile') || '{}'); } catch { return {}; }
+}
+function saveWritingProfile(p) {
+  try { localStorage.setItem('atlas_writing_profile', JSON.stringify(p)); } catch {}
+}
+function addProfileAvoid(item) {
+  const p = getWritingProfile();
+  p.avoid = [...new Set([...(p.avoid || []), item])].slice(0, 12);
+  saveWritingProfile(p);
+}
+function getEntityMemory() {
+  try { return JSON.parse(localStorage.getItem('atlas_entity_memory') || '[]'); } catch { return []; }
+}
+function saveEntityMemory(list) {
+  try { localStorage.setItem('atlas_entity_memory', JSON.stringify(list)); } catch {}
+}
+
+// Build the <user_memory> system-prompt block from profile + topic-matched entities.
+// Returns '' when there is nothing to inject (→ identical to no-memory behaviour).
+function buildMemoryBlock(topic) {
+  const lines = [];
+  const prof = getWritingProfile();
+  if (prof.notes?.length)  lines.push('用户写作偏好：' + prof.notes.join('；'));
+  if (prof.avoid?.length)  lines.push('需主动避免（基于历史差评）：' + prof.avoid.join('；'));
+  const t = String(topic || '');
+  const matched = getEntityMemory().filter(e => (e.keywords || []).some(k => k && t.includes(k)));
+  const ents = [...new Set(matched.flatMap(e => e.entities || []))].filter(Boolean);
+  if (ents.length) lines.push('涉及相关主题时，重点关注并尽量覆盖以下对象：' + ents.join('、'));
+  return lines.length ? `\n<user_memory>\n${lines.join('\n')}\n</user_memory>` : '';
+}
+
+// Derive a read-only profile view from history (dominant settings, good-rated weighted).
+function deriveProfileStats(reports) {
+  const good = reports.filter(r => r.rating === 'good');
+  const pool = good.length >= 3 ? good : reports;
+  const top = (key) => {
+    const c = {};
+    pool.forEach(r => { const v = r.meta?.[key]; if (v) c[v] = (c[v] || 0) + 1; });
+    const e = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
+    return e ? e[0] : null;
+  };
+  return { basis: good.length >= 3 ? 'good' : 'all', n: pool.length, model: top('model'), generationMode: top('generationMode'), tone: top('tone'), language: top('language'), style: top('style') };
+}
+
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError, onStatus }) {
   const { tone, language, style, length, selectedSources, attachments, urlContexts, searchContexts, gatheredContext, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
   const toneCN = tone?.cn || '分析性';
@@ -5060,7 +5196,7 @@ ${lengthInstr}（总字数分配到以上 ${templateSections.length} 个章节�
 [/REFS]
 条数与正文 §N 标注一致。${sourceNote}
 </citations>
-${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}
+${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}${buildMemoryBlock(prompt)}
 
 输出格式：第一行必须是 [TITLE: 精炼标题（20字以内）]，然后空行，再输出各章节，最后输出 [REFS]...[/REFS]。不要任何其他前言后记。`;
 
@@ -6093,7 +6229,7 @@ async function streamSection({ section, topic, researchCtx, allSections, model, 
 报告其他章节：
 ${otherSections}
 
-只写分配给你的这一章节，不要写其他章节。不要写章节编号，以 ## 开头写章节标题。${lengthInstr}。`;
+只写分配给你的这一章节，不要写其他章节。不要写章节编号，以 ## 开头写章节标题。${lengthInstr}。${buildMemoryBlock(topic)}`;
 
   const userMsg = `请撰写以下章节：
 标题：${section.title}
@@ -6662,6 +6798,9 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
               sectionCount: sections.length,
               promptHash: PROMPT_VERSION,
               tone: toolbarConfig?.tone?.cn || '',
+              language: toolbarConfig?.language?.label || '',
+              style: toolbarConfig?.style?.label || '',
+              length: toolbarConfig?.length || 0,
               tokens: totalTokens,
               warnings: warnings.length > 0 ? warnings : undefined,
               retried: retried || undefined,
