@@ -5311,7 +5311,7 @@ ${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}${build
 
 // ── TeamPanel ────────────────────────────────────────────────────────────────
 
-function TeamPanel({ t, onBack }) {
+function TeamPanel({ t, modelStore, onBack }) {
   const { user, team, role, refreshTeam } = useAuth();
   const [activeTab, setActiveTab] = React.useState('overview');
   const [members, setMembers] = React.useState([]);
@@ -5466,9 +5466,9 @@ function TeamPanel({ t, onBack }) {
       <div style={{ flex: 1, minHeight: 0, padding: '28px 44px 56px', maxWidth: 1120, width: '100%' }}>
         {activeTab === 'overview' && <TeamOverviewTab t={t} team={team} role={role} isAdmin={isAdmin} members={members} reports={teamReports} teamKeys={teamKeys} knowledge={knowledge} setActiveTab={setActiveTab} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefreshMembers={loadMembers} showStatus={showStatus}/>}
         {activeTab === 'members' && <MembersTab t={t} members={members} role={role} team={team} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadMembers} showStatus={showStatus} currentUserId={user?.id}/>}
-        {activeTab === 'keys' && <KeysTab t={t} teamKeys={teamKeys} isAdmin={isAdmin} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadKeys} showStatus={showStatus}/>}
+        {activeTab === 'keys' && <KeysTab t={t} teamKeys={teamKeys} isAdmin={isAdmin} modelStore={modelStore} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadKeys} showStatus={showStatus}/>}
         {activeTab === 'knowledge' && <KnowledgeTab t={t} knowledge={knowledge} canEdit={isEditorOrAdmin} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadKnowledge} showStatus={showStatus}/>}
-        {activeTab === 'reports' && <TeamReportsTab t={t} reports={teamReports} isAdmin={isAdmin} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={loadReports} showStatus={showStatus}/>}
+        {activeTab === 'reports' && <TeamReportsTab t={t} reports={teamReports} isAdmin={isAdmin} canShare={isEditorOrAdmin} userEmail={user?.email} btnBase={btnBase} secHdr={secHdr} inp={inp} apiFetch={apiFetch} onRefresh={loadReports} showStatus={showStatus}/>}
         {activeTab === 'settings' && isAdmin && <TeamSettingsTab t={t} team={team} inp={inp} btnBase={btnBase} secHdr={secHdr} apiFetch={apiFetch} onRefresh={refreshTeam} showStatus={showStatus} onBack={onBack}/>}
       </div>
     </div>
@@ -5672,10 +5672,13 @@ function MembersTab({ t, members, role, team, inp, btnBase, secHdr, apiFetch, on
   );
 }
 
-function KeysTab({ t, teamKeys, isAdmin, inp, btnBase, secHdr, apiFetch, onRefresh, showStatus }) {
+function KeysTab({ t, teamKeys, isAdmin, modelStore, inp, btnBase, secHdr, apiFetch, onRefresh, showStatus }) {
   const [form, setForm] = React.useState({ provider: 'anthropic', apiKey: '', apiUrl: '', label: '' });
   const [adding, setAdding] = React.useState(false);
   const [showForm, setShowForm] = React.useState(false);
+  const [showImport, setShowImport] = React.useState(false);
+  const [importSel, setImportSel] = React.useState({});
+  const [importing, setImporting] = React.useState(false);
 
   const PROVIDERS = [
     { v: 'anthropic', label: 'Anthropic (Claude)',  url: 'https://api.anthropic.com/v1' },
@@ -5713,6 +5716,30 @@ function KeysTab({ t, teamKeys, isAdmin, inp, btnBase, secHdr, apiFetch, onRefre
     } catch (e) { showStatus(e.message, true); }
   };
 
+  // Import candidates = my client-side model keys (plaintext available), deduped vs team keys
+  const importCandidates = React.useMemo(() => {
+    const existing = new Set(teamKeys.map(k => `${(k.provider || '').toLowerCase()}|${k.label || ''}`));
+    return (modelStore?.allModels || [])
+      .filter(m => m.apiKey && m.apiKey.trim())
+      .map(m => ({ id: m.id, provider: (m.provider || 'custom').toLowerCase(), apiKey: m.apiKey, apiUrl: m.apiUrl || '', label: m.name || m.provider || '密钥' }))
+      .filter(m => !existing.has(`${m.provider}|${m.label}`));
+  }, [modelStore, teamKeys]);
+
+  const handleImport = async () => {
+    const sel = importCandidates.filter(c => importSel[c.id]);
+    if (!sel.length) return;
+    setImporting(true);
+    try {
+      for (const c of sel) {
+        await apiFetch('/api/teams/keys', { method: 'POST', body: JSON.stringify({ provider: c.provider, apiKey: c.apiKey, apiUrl: c.apiUrl, label: c.label }) });
+      }
+      setShowImport(false); setImportSel({});
+      await onRefresh();
+      showStatus(`已导入 ${sel.length} 个密钥`);
+    } catch (e) { showStatus(e.message, true); }
+    setImporting(false);
+  };
+
   return (
     <div>
       <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute, marginBottom: 16, lineHeight: 1.7, padding: '10px 14px', border: `1px solid ${t.rule}`, background: t.faint }}>
@@ -5720,9 +5747,36 @@ function KeysTab({ t, teamKeys, isAdmin, inp, btnBase, secHdr, apiFetch, onRefre
       </div>
       {isAdmin && (
         <>
-          <button onClick={() => setShowForm(f => !f)} style={{ ...btnBase, background: t.ink, color: t.paper, marginBottom: 16 }}>
-            {showForm ? '取消' : '＋ 添加密钥'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            <button onClick={() => { setShowForm(f => !f); setShowImport(false); }} style={{ ...btnBase, background: t.ink, color: t.paper }}>
+              {showForm ? '取消' : '＋ 添加密钥'}
+            </button>
+            <button onClick={() => { setShowImport(v => !v); setShowForm(false); }} style={{ ...btnBase, background: 'transparent', border: `1px solid ${t.rule}`, color: t.ink }}>
+              ↑ 从我的密钥导入
+            </button>
+          </div>
+          {showImport && (
+            <div style={{ padding: 16, border: `1px solid ${t.rule}`, marginBottom: 20, background: t.faint }}>
+              <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 10 }}>
+                把你本机模型里已填的密钥共享给团队（已在团队中的不显示）
+              </div>
+              {importCandidates.length === 0
+                ? <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>没有可导入的本机密钥</div>
+                : <>
+                    {importCandidates.map(c => (
+                      <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!!importSel[c.id]} onChange={e => setImportSel(s => ({ ...s, [c.id]: e.target.checked }))}/>
+                        <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{c.label}</span>
+                        <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{c.provider} · ****{c.apiKey.slice(-4)}</span>
+                      </label>
+                    ))}
+                    <button onClick={handleImport} disabled={importing || !Object.values(importSel).some(Boolean)}
+                      style={{ ...btnBase, background: t.accent, color: '#fff', marginTop: 6, opacity: importing ? 0.5 : 1 }}>
+                      {importing ? '导入中…' : `导入选中 (${Object.values(importSel).filter(Boolean).length})`}
+                    </button>
+                  </>}
+            </div>
+          )}
           {showForm && (
             <div style={{ padding: '16px', border: `1px solid ${t.rule}`, marginBottom: 20, background: t.faint }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
@@ -5930,8 +5984,38 @@ function KnowledgeTab({ t, knowledge, canEdit, inp, btnBase, secHdr, apiFetch, o
   );
 }
 
-function TeamReportsTab({ t, reports, isAdmin, btnBase, secHdr, apiFetch, onRefresh, showStatus }) {
+function TeamReportsTab({ t, reports, isAdmin, canShare, userEmail, btnBase, secHdr, inp, apiFetch, onRefresh, showStatus }) {
   const [viewing, setViewing] = React.useState(null);
+  const [showImport, setShowImport] = React.useState(false);
+  const [importSel, setImportSel] = React.useState({});
+  const [importing, setImporting] = React.useState(false);
+
+  // Import candidates = my personal saved reports, deduped against team titles
+  const importCandidates = React.useMemo(() => {
+    let mine = [];
+    try { mine = JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch {}
+    const existingTitles = new Set(reports.map(r => (r.title || '').trim()));
+    return mine.map(r => {
+      const title = r.meta?.titleEn || r.meta?.title?.en || (r.prompt || '').slice(0, 40) || '无标题';
+      const wordCount = parseInt(String(r.meta?.words || '0').replace(/,/g, ''), 10) || 0;
+      return { id: r.id, title, prompt: r.prompt || '', wordCount, content: { text: r.text || '', sections: r.sections || [] } };
+    }).filter(r => !existingTitles.has(r.title.trim()));
+  }, [reports, showImport]);
+
+  const handleImport = async () => {
+    const sel = importCandidates.filter(c => importSel[c.id]);
+    if (!sel.length) return;
+    setImporting(true);
+    try {
+      for (const c of sel) {
+        await apiFetch('/api/teams/reports', { method: 'POST', body: JSON.stringify({ title: c.title, prompt: c.prompt, content: c.content, wordCount: c.wordCount, sharedByEmail: userEmail || '' }) });
+      }
+      setShowImport(false); setImportSel({});
+      await onRefresh();
+      showStatus(`已共享 ${sel.length} 篇报告`);
+    } catch (e) { showStatus(e.message, true); }
+    setImporting(false);
+  };
 
   const handleDelete = async (id) => {
     if (!confirm('确认从团队报告库中删除该报告？')) return;
@@ -5995,10 +6079,42 @@ function TeamReportsTab({ t, reports, isAdmin, btnBase, secHdr, apiFetch, onRefr
 
   return (
     <div>
-      <div style={{ ...secHdr, marginTop: 0 }}>团队报告库 · {reports.length} 篇</div>
-      {reports.length === 0 && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <div style={{ ...secHdr, marginTop: 0, marginBottom: 0 }}>团队报告库 · {reports.length} 篇</div>
+        <span style={{ flex: 1 }}/>
+        {canShare && (
+          <button onClick={() => setShowImport(v => !v)} style={{ ...btnBase, background: showImport ? t.ink : 'transparent', color: showImport ? t.paper : t.ink, border: `1px solid ${t.ink}` }}>
+            {showImport ? '取消' : '↑ 从我的报告库导入'}
+          </button>
+        )}
+      </div>
+      {showImport && (
+        <div style={{ padding: 16, border: `1px solid ${t.rule}`, marginBottom: 18, background: t.faint }}>
+          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 10 }}>
+            把你个人报告库里的报告共享给团队（标题已在团队中的不显示）
+          </div>
+          {importCandidates.length === 0
+            ? <div style={{ fontFamily: t.fontMono, fontSize: 11, color: t.mute }}>没有可导入的个人报告</div>
+            : <>
+                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                  {importCandidates.map(c => (
+                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!importSel[c.id]} onChange={e => setImportSel(s => ({ ...s, [c.id]: e.target.checked }))} style={{ flexShrink: 0 }}/>
+                      <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
+                      <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0, marginLeft: 'auto' }}>{c.wordCount.toLocaleString()}字</span>
+                    </label>
+                  ))}
+                </div>
+                <button onClick={handleImport} disabled={importing || !Object.values(importSel).some(Boolean)}
+                  style={{ ...btnBase, background: t.accent, color: '#fff', marginTop: 8, opacity: importing ? 0.5 : 1 }}>
+                  {importing ? '共享中…' : `共享选中 (${Object.values(importSel).filter(Boolean).length})`}
+                </button>
+              </>}
+        </div>
+      )}
+      {reports.length === 0 && !showImport && (
         <div style={{ padding: '40px 16px', border: `1px dashed ${t.rule}`, fontFamily: t.fontCN, fontSize: 14, color: t.mute, textAlign: 'center' }}>
-          暂无共享报告<br/><span style={{ fontSize: 12 }}>在任意报告查看页点击「⊕ 分享到团队」即可共享给成员</span>
+          暂无共享报告<br/><span style={{ fontSize: 12 }}>点上方「↑ 从我的报告库导入」或在报告页点「⊕ 分享到团队」</span>
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
@@ -12092,7 +12208,7 @@ function App() {
             teamTemplates={teamKnowledge.templates}/>
         )}
         {route === 'team' && (
-          <TeamPanel t={t} onBack={() => setRoute('home')}/>
+          <TeamPanel t={t} modelStore={modelStore} onBack={() => setRoute('home')}/>
         )}
         {route === 'outline' && (
           <OutlineStep t={t} prompt={prompt} modelStore={modelStore}
