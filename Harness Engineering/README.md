@@ -74,6 +74,7 @@ Harness（线束）= 围绕模型构建的"外壳"工程。模型权重不变，
 
 | 文件 | 层 | 优先级 |
 |------|----|--------|
+| **[OVERVIEW.md](OVERVIEW.md)** | **单页总览（推荐先读）** | — |
 | [C-Context.md](C-Context.md) | Context | P0 |
 | [E-Execution.md](E-Execution.md) | Execution | P1 |
 | [V-Verification.md](V-Verification.md) | Verification | P2 |
