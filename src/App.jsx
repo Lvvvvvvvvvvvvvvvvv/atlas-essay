@@ -639,6 +639,7 @@ function essayTokens({ theme = 'cream', accent = 'red' }) {
 const NAV_ITEMS = [
   { k: 'home',    en: 'NEW',     cn: '新建' },
   { k: 'library', en: 'LIBRARY', cn: '报告库' },
+  { k: 'benchmark', en: 'BENCH', cn: '评测' },
   { k: 'sources', en: 'SOURCES', cn: '数据源' },
 ];
 
@@ -4987,6 +4988,30 @@ function validateReport(text, { effectiveLength, templateSections } = {}) {
   }
 
   return warnings;
+}
+
+// Benchmark scoring — objective 0-100 quality score for a generated report.
+function scoreReport(text, targetLength) {
+  if (!text) return { words: 0, sections: 0, citations: 0, truncated: true, structureOk: false, adherence: 0, score: 0 };
+  const warnings = validateReport(text, { effectiveLength: targetLength });
+  const clean = text.replace(/^\[TITLE:[^\]]*\]\s*/m, '').replace(/\[REFS\][\s\S]*?(?:\[\/REFS\]|$)/g, '').trim();
+  const words = clean.replace(/\s+/g, '').length;
+  const sections = (clean.match(/^##\s/gm) || []).length;
+  const citations = new Set(text.match(/§\d+/g) || []).size;
+  const truncated = warnings.some(w => w.includes('截断'));
+  const structureOk = !warnings.some(w => w.includes('标题') || w.includes('章节'));
+  let adherence = 1;
+  if (targetLength) {
+    const ratio = words / targetLength;
+    adherence = ratio >= 1 ? Math.max(0, 1 - (ratio - 1) * 0.6) : ratio / 0.9; // penalise both short & bloated
+    adherence = Math.max(0, Math.min(1, adherence));
+  }
+  let score = 0;
+  score += structureOk ? 30 : 10;                              // structure
+  score += truncated ? 0 : 20;                                 // completeness
+  score += Math.round(adherence * 30);                          // length adherence
+  score += citations >= 3 ? 20 : citations > 0 ? 12 : 0;        // sourcing
+  return { words, sections, citations, truncated, structureOk, adherence, score: Math.max(0, Math.min(100, score)) };
 }
 
 function parseOutlineFromText(text) {
@@ -12007,6 +12032,216 @@ class ReportErrorBoundary extends React.Component {
   }
 }
 
+// ── Benchmark ────────────────────────────────────────────────────────────────
+const BENCH_PROMPTS = [
+  { id: 'industry', tag: '行业研究', target: 2000, prompt: '梳理 2025 年中国新能源汽车行业的竞争格局与关键趋势，给一份结构完整、数据可溯源的深度分析。' },
+  { id: 'compete',  tag: '竞品对比', target: 2000, prompt: '对比 Notion 与飞书在团队协作场景下的产品策略、定价与适用团队，并给出选型建议。' },
+  { id: 'data',     tag: '数据洞察', target: 2000, prompt: '分析国内咖啡连锁赛道近两年的门店扩张与单店模型变化，指出关键信号与拐点。' },
+  { id: 'strategy', tag: '战略建议', target: 2000, prompt: '为一家中型 SaaS 公司制定进入东南亚市场的进入策略、节奏与主要风险评估。' },
+  { id: 'weekly',   tag: '内部周报', target: 1200, prompt: '把以下零散信息整理成结构清晰的部门周报：本周完成 A、B；遇到 C 问题；下周计划 D、E。' },
+];
+
+function scoreColor(s, t) { return s >= 75 ? '#2a8c5c' : s >= 50 ? '#b45309' : s > 0 ? '#b04040' : t.mute; }
+
+function BenchmarkPanel({ t, modelStore }) {
+  const [tab, setTab] = React.useState('leaderboard');
+  const [runs, setRuns] = React.useState(() => { try { return JSON.parse(localStorage.getItem('atlas_benchmark_runs') || '[]'); } catch { return []; } });
+  const [selModels, setSelModels] = React.useState({});
+  const [selPrompts, setSelPrompts] = React.useState(() => Object.fromEntries(BENCH_PROMPTS.map(p => [p.id, true])));
+  const [mode, setMode] = React.useState('balanced');
+  const [running, setRunning] = React.useState(false);
+  const [progress, setProgress] = React.useState({ done: 0, total: 0, current: '' });
+
+  const usableModels = (modelStore?.allModels || []).filter(m => m.apiKey || m.provider);
+
+  // ── Passive leaderboard from saved reports ──────────────────────────────
+  const leaderboard = React.useMemo(() => {
+    let reports = []; try { reports = JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]'); } catch {}
+    const by = {};
+    reports.forEach(r => {
+      const name = r.meta?.model || '未知'; if (!r.text) return;
+      const sc = scoreReport(r.text, r.meta?.length || parseInt(String(r.meta?.words || '0').replace(/,/g, ''), 10) || 2000);
+      (by[name] ||= { name, n: 0, score: 0, words: 0, dur: [], good: 0, rated: 0, struct: 0, trunc: 0 });
+      const b = by[name];
+      b.n++; b.score += sc.score; b.words += sc.words; b.struct += sc.structureOk ? 1 : 0; b.trunc += sc.truncated ? 1 : 0;
+      if (r.meta?.durationMs > 0) b.dur.push(r.meta.durationMs);
+      if (r.rating === 'good') { b.good++; b.rated++; } else if (r.rating === 'bad') b.rated++;
+    });
+    return Object.values(by).map(b => ({
+      name: b.name, n: b.n, avgScore: Math.round(b.score / b.n), avgWords: Math.round(b.words / b.n),
+      avgDur: b.dur.length ? b.dur.reduce((a, c) => a + c, 0) / b.dur.length : 0,
+      structRate: Math.round((b.struct / b.n) * 100), truncRate: Math.round((b.trunc / b.n) * 100),
+      goodRate: b.rated ? Math.round((b.good / b.rated) * 100) : null,
+    })).sort((a, b) => b.avgScore - a.avgScore);
+  }, [tab]);
+
+  // ── Active bake-off ─────────────────────────────────────────────────────
+  const chosenModels = usableModels.filter(m => selModels[m.id]);
+  const chosenPrompts = BENCH_PROMPTS.filter(p => selPrompts[p.id]);
+  const estCost = React.useMemo(() => chosenModels.reduce((sum, m) => sum + chosenPrompts.reduce((s, p) => s + estimateGeneration(p.prompt.length, p.target, m.provider).usd, 0), 0), [chosenModels, chosenPrompts]);
+
+  const runOne = (model, p) => new Promise(resolve => {
+    let text = ''; const start = Date.now();
+    const mp = GENERATION_MODES.find(g => g.id === mode) || {};
+    streamReport({
+      model, prompt: p.prompt,
+      toolbarConfig: { length: p.target, temperature: mp.temperature, topP: mp.topP, frequencyPenalty: mp.frequencyPenalty },
+      onChunk: c => { text += c; },
+      onDone: (tokens) => resolve({ ok: true, text, tokens: tokens || 0, durationMs: Date.now() - start }),
+      onError: (msg) => resolve({ ok: false, error: msg, text, durationMs: Date.now() - start }),
+      onStatus: () => {},
+    });
+  });
+
+  const runBenchmark = async () => {
+    if (!chosenModels.length || !chosenPrompts.length) return;
+    if (!confirm(`将运行 ${chosenModels.length} 模型 × ${chosenPrompts.length} 题 = ${chosenModels.length * chosenPrompts.length} 次真实生成，粗估成本 ≈$${estCost.toFixed(3)}。确认开始？`)) return;
+    setRunning(true);
+    const total = chosenModels.length * chosenPrompts.length;
+    let done = 0; const fresh = [];
+    for (const m of chosenModels) {
+      for (const p of chosenPrompts) {
+        setProgress({ done, total, current: `${m.name} · ${p.tag}` });
+        const res = await runOne(m, p);
+        const sc = res.ok ? scoreReport(res.text, p.target) : { score: 0, words: 0, sections: 0, citations: 0, truncated: true, structureOk: false };
+        fresh.push({ at: Date.now(), model: m.name, provider: m.provider || '', promptId: p.id, promptTag: p.tag, mode, ok: res.ok, error: res.error || '', durationMs: res.durationMs, tokens: res.tokens || 0, ...sc });
+        done++; setProgress({ done, total, current: `${m.name} · ${p.tag}` });
+      }
+    }
+    const next = [...fresh, ...runs].slice(0, 200);
+    setRuns(next); try { localStorage.setItem('atlas_benchmark_runs', JSON.stringify(next)); } catch {}
+    setRunning(false); setTab('results');
+  };
+
+  // results grid: latest run per (model, promptId)
+  const latestByCell = React.useMemo(() => {
+    const map = {}; runs.forEach(r => { const k = r.model + '|' + r.promptId; if (!map[k]) map[k] = r; }); return map;
+  }, [runs]);
+  const resultModels = [...new Set(runs.map(r => r.model))];
+
+  const cardBtn = { padding: '6px 14px', fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 10, letterSpacing: 1, cursor: 'pointer', border: 'none', textTransform: 'uppercase' };
+  const th = { fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.5, textAlign: 'left', padding: '7px 10px', borderBottom: `1.5px solid ${t.ink}` };
+  const td = { fontFamily: t.fontMono, fontSize: 11, color: t.ink, padding: '7px 10px', borderBottom: `1px solid ${t.rule}` };
+  const fmtDur = (ms) => ms ? (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`) : '—';
+
+  return (
+    <div style={{ flex: 1, background: t.paper, color: t.ink, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
+      {/* Masthead */}
+      <div style={{ padding: '32px 44px 22px', borderBottom: `2px solid ${t.ink}` }}>
+        <Tag t={t} accent>◆ BENCHMARK · 模型评测</Tag>
+        <div style={{ fontFamily: t.fontDisplay, fontWeight: 900, fontSize: 46, letterSpacing: -1.5, lineHeight: 1, marginTop: 12 }}>
+          Which model writes <span style={{ fontFamily: t.fontSerif, fontStyle: 'italic', color: t.accent }}>better</span>?
+        </div>
+        <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.mute, marginTop: 8 }}>客观打分(结构 / 字数达标 / 截断 / 引用)横评模型,叠加你的好评率,得出最适合你的配置。</div>
+      </div>
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${t.rule}`, padding: '0 44px', gap: 4 }}>
+        {[['leaderboard', '历史榜单'], ['run', '主动横评'], ['results', '评测结果']].map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ padding: '12px 18px', fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 1, background: 'transparent', border: 'none', cursor: 'pointer', textTransform: 'uppercase', color: tab === k ? t.ink : t.mute, borderBottom: tab === k ? `2.5px solid ${t.accent}` : '2.5px solid transparent', marginBottom: -1 }}>{label}</button>
+        ))}
+      </div>
+
+      <div style={{ padding: '26px 44px 56px', maxWidth: 1120, width: '100%' }}>
+        {/* ── Leaderboard (passive) ───────────────────────────── */}
+        {tab === 'leaderboard' && (
+          leaderboard.length === 0
+            ? <div style={{ padding: '40px 16px', border: `1px dashed ${t.rule}`, fontFamily: t.fontCN, fontSize: 14, color: t.mute, textAlign: 'center' }}>暂无历史数据 · 生成几篇报告后,这里会按模型给出质量榜单</div>
+            : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr><th style={th}>#</th><th style={th}>模型</th><th style={{ ...th, textAlign: 'right' }}>质量分</th><th style={{ ...th, textAlign: 'right' }}>篇数</th><th style={{ ...th, textAlign: 'right' }}>平均字数</th><th style={{ ...th, textAlign: 'right' }}>平均耗时</th><th style={{ ...th, textAlign: 'right' }}>结构合格</th><th style={{ ...th, textAlign: 'right' }}>好评率</th></tr></thead>
+                <tbody>{leaderboard.map((r, i) => (
+                  <tr key={r.name}>
+                    <td style={{ ...td, color: t.mute }}>{i + 1}</td>
+                    <td style={{ ...td, fontFamily: t.fontCN, fontSize: 13, fontWeight: 600 }}>{r.name}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: scoreColor(r.avgScore, t), fontSize: 14 }}>{r.avgScore}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{r.n}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{r.avgWords.toLocaleString()}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{fmtDur(r.avgDur)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{r.structRate}%</td>
+                    <td style={{ ...td, textAlign: 'right', color: r.goodRate == null ? t.mute : scoreColor(r.goodRate, t) }}>{r.goodRate == null ? '—' : r.goodRate + '%'}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+        )}
+
+        {/* ── Run (active bake-off) ───────────────────────────── */}
+        {tab === 'run' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 28 }}>
+              <div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, marginBottom: 10 }}>选择模型 · MODELS</div>
+                {usableModels.length === 0 && <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.mute }}>没有可用模型,请先在 设置→模型 配置密钥</div>}
+                {usableModels.map(m => (
+                  <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!selModels[m.id]} onChange={e => setSelModels(s => ({ ...s, [m.id]: e.target.checked }))}/>
+                    <span style={{ fontFamily: t.fontCN, fontSize: 13 }}>{m.name}</span>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 9, color: m.apiKey ? '#2a8c5c' : t.mute }}>{m.apiKey ? 'KEY ✓' : '服务端密钥'}</span>
+                  </label>
+                ))}
+              </div>
+              <div>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, marginBottom: 10 }}>评测题 · PROMPTS</div>
+                {BENCH_PROMPTS.map(p => (
+                  <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!selPrompts[p.id]} onChange={e => setSelPrompts(s => ({ ...s, [p.id]: e.target.checked }))}/>
+                    <span style={{ fontFamily: t.fontCN, fontSize: 13 }}>{p.tag}</span>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{p.target}字</span>
+                  </label>
+                ))}
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 1.4, margin: '14px 0 8px' }}>生成模式</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {GENERATION_MODES.map(g => (
+                    <button key={g.id} onClick={() => setMode(g.id)} style={{ padding: '4px 12px', fontFamily: t.fontMono, fontSize: 10, border: `1px solid ${mode === g.id ? t.accent : t.rule}`, background: mode === g.id ? t.accent : 'transparent', color: mode === g.id ? '#fff' : t.ink, cursor: 'pointer' }}>{g.cn}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: 24, paddingTop: 18, borderTop: `1px solid ${t.rule}`, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <button onClick={runBenchmark} disabled={running || !chosenModels.length || !chosenPrompts.length}
+                style={{ ...cardBtn, background: t.accent, color: '#fff', padding: '10px 22px', opacity: (running || !chosenModels.length || !chosenPrompts.length) ? 0.5 : 1 }}>
+                {running ? `评测中… ${progress.done}/${progress.total}` : '▶ 开始评测'}
+              </button>
+              {!running && chosenModels.length > 0 && chosenPrompts.length > 0 && (
+                <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>{chosenModels.length}×{chosenPrompts.length} = {chosenModels.length * chosenPrompts.length} 次 · 粗估 ≈${estCost.toFixed(3)}</span>
+              )}
+              {running && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>正在生成：{progress.current}</span>}
+            </div>
+          </div>
+        )}
+
+        {/* ── Results grid ────────────────────────────────────── */}
+        {tab === 'results' && (
+          runs.length === 0
+            ? <div style={{ padding: '40px 16px', border: `1px dashed ${t.rule}`, fontFamily: t.fontCN, fontSize: 14, color: t.mute, textAlign: 'center' }}>还没有评测结果 · 去「主动横评」跑一轮</div>
+            : <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+                  <thead><tr><th style={th}>评测题</th>{resultModels.map(m => <th key={m} style={{ ...th, textAlign: 'center' }}>{m}</th>)}</tr></thead>
+                  <tbody>
+                    {BENCH_PROMPTS.filter(p => runs.some(r => r.promptId === p.id)).map(p => (
+                      <tr key={p.id}>
+                        <td style={{ ...td, fontFamily: t.fontCN, fontSize: 12 }}>{p.tag}</td>
+                        {resultModels.map(m => { const c = latestByCell[m + '|' + p.id]; return (
+                          <td key={m} style={{ ...td, textAlign: 'center' }} title={c ? `${c.words}字 · ${c.sections}章 · ${c.citations}引用 · ${fmtDur(c.durationMs)}${c.error ? ' · ' + c.error : ''}` : ''}>
+                            {c ? <span style={{ fontWeight: 700, color: scoreColor(c.score, t) }}>{c.score}</span> : <span style={{ color: t.mute }}>—</span>}
+                          </td>
+                        ); })}
+                      </tr>
+                    ))}
+                    <tr>
+                      <td style={{ ...td, fontFamily: t.fontMono, fontSize: 10, color: t.mute, fontWeight: 700 }}>平均分</td>
+                      {resultModels.map(m => { const rs = runs.filter(r => r.model === m); const avg = rs.length ? Math.round(rs.reduce((a, c) => a + c.score, 0) / rs.length) : 0; return (
+                        <td key={m} style={{ ...td, textAlign: 'center', fontWeight: 800, color: scoreColor(avg, t), fontSize: 14 }}>{avg}</td>
+                      ); })}
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 10 }}>格子为综合质量分(0–100),悬停看字数/章节/引用/耗时。</div>
+              </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const { user, team, loading: authLoading } = useAuth();
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
@@ -12329,6 +12564,7 @@ function App() {
             onBack={(dest) => { setRoute(dest || 'home'); }}/>
         )}
         {route === 'sources' && <Sources t={t}/>}
+        {route === 'benchmark' && <BenchmarkPanel t={t} modelStore={modelStore}/>}
         {showExport && (
           <ExportModal t={t} onClose={() => setShowExport(false)}
             exportData={activeReport ? {
