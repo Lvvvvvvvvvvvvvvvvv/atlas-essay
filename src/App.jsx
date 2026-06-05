@@ -5337,7 +5337,12 @@ function TeamPanel({ t, modelStore, onBack }) {
     const text = await res.text();
     let json = null;
     try { json = text ? JSON.parse(text) : {}; } catch { json = {}; }
-    if (!res.ok) throw new Error(json?.error || json?.message || `服务器错误 ${res.status}`);
+    if (!res.ok) {
+      const detail = json?.error || json?.message || (text ? text.slice(0, 80) : '');
+      const e = new Error(`${opts.method || 'GET'} ${path.replace('/api/teams', '')} → ${res.status}${detail ? ' · ' + detail : ''}`);
+      e.status = res.status; e.detail = detail;
+      throw e;
+    }
     return json;
   }, [getToken]);
 

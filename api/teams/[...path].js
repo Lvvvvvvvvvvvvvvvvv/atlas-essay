@@ -247,7 +247,10 @@ async function handleReports(req, res, user) {
       .from('team_reports')
       .insert({ team_id: m.team_id, created_by: user.id, title, prompt, content, word_count: wordCount || 0, shared_by_email: sharedByEmail || '' })
       .select('id').single();
-    if (error) throw { status: 500, message: error.message };
+    if (error) {
+      const missing = /team_reports/.test(error.message || '') && /(exist|schema cache|relation)/i.test(error.message || '');
+      throw { status: 500, message: missing ? '团队报告表未创建：请在 Supabase 执行 team_reports 建表 SQL' : error.message };
+    }
     return res.status(201).json({ id: data.id });
   }
 
