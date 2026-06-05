@@ -6043,8 +6043,18 @@ function TeamReportsTab({ t, reports, isAdmin, canShare, userEmail, btnBase, sec
     } catch (e) { showStatus(e.message, true); }
   };
 
+  // The list endpoint omits `content` (lightweight); fetch the full report by id when needed.
+  const fetchFull = async (r) => {
+    if (r && r.content) return r;
+    try { return await apiFetch(`/api/teams/reports?id=${r.id}`); }
+    catch (e) { showStatus(e.message, true); return null; }
+  };
+  const openReport = async (r) => { const full = await fetchFull(r); if (full) setViewing(full); };
+
   // Copy a team report into the personal localStorage library (readable/exportable there)
-  const importToMine = (r) => {
+  const importToMine = async (rIn) => {
+    const r = await fetchFull(rIn);
+    if (!r) return;
     try {
       const list = JSON.parse(localStorage.getItem('atlas_saved_reports') || '[]');
       if (list.some(x => x.meta?.teamReportId === r.id)) { showStatus('已在你的报告库中', true); return; }
@@ -6135,7 +6145,7 @@ function TeamReportsTab({ t, reports, isAdmin, canShare, userEmail, btnBase, sec
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
         {reports.map(r => (
-          <div key={r.id} onClick={() => setViewing(r)} style={{ display: 'flex', flexDirection: 'column', padding: '16px 18px', border: `1px solid ${t.rule}`, background: t.paper, cursor: 'pointer', minHeight: 130 }}
+          <div key={r.id} onClick={() => openReport(r)} style={{ display: 'flex', flexDirection: 'column', padding: '16px 18px', border: `1px solid ${t.rule}`, background: t.paper, cursor: 'pointer', minHeight: 130 }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = t.ink; e.currentTarget.style.boxShadow = `3px 3px 0 ${t.accent}`; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = t.rule; e.currentTarget.style.boxShadow = 'none'; }}>
             <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 16, color: t.ink, marginBottom: 8, lineHeight: 1.25 }}>{r.title || '无标题'}</div>
