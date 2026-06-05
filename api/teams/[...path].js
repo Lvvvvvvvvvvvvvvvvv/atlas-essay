@@ -265,9 +265,21 @@ async function handleReports(req, res, user) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
+// Resolve the sub-resource robustly. Vercel does not always populate the
+// catch-all param (req.query.path), so fall back to parsing the request URL.
+function resolveResource(req) {
+  const q = req.query?.path;
+  if (Array.isArray(q) && q.length) return q[0];
+  if (typeof q === 'string' && q) return q.split('/').filter(Boolean)[0];
+  const pathOnly = String(req.url || '').split('?')[0].split('#')[0];
+  const m = pathOnly.match(/\/teams\/([^/]+)/);
+  if (m) return m[1];
+  const segs = pathOnly.split('/').filter(Boolean);
+  return segs[segs.length - 1] || null;
+}
+
 export default withAuth(async (req, res, user) => {
-  const segments = req.query.path || [];
-  const resource = Array.isArray(segments) ? segments[0] : segments;
+  const resource = resolveResource(req);
 
   if (resource === 'members') return handleMembers(req, res, user);
   if (resource === 'keys')    return handleKeys(req, res, user);
@@ -275,5 +287,5 @@ export default withAuth(async (req, res, user) => {
   if (resource === 'invite')  return handleInvite(req, res, user);
   if (resource === 'reports') return handleReports(req, res, user);
 
-  return res.status(404).json({ error: 'Not found' });
+  return res.status(404).json({ error: `Not found (resource=${resource ?? 'none'})` });
 });
