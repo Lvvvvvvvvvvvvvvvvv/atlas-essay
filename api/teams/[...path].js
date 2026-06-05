@@ -106,7 +106,7 @@ async function handleKeys(req, res, user) {
       if (!src) throw { status: 404, message: 'Personal key not found' };
       const { data, error } = await supabaseAdmin
         .from('api_keys')
-        .insert({ team_id: m.team_id, created_by: user.id, provider: src.provider, api_url: src.api_url, key_enc: src.key_enc, label: label || src.label || src.provider })
+        .insert({ team_id: m.team_id, provider: src.provider, api_url: src.api_url, key_enc: src.key_enc, label: label || src.label || src.provider })
         .select('id').single();
       if (error) throw { status: 500, message: error.message };
       return res.status(201).json({ id: data.id });
@@ -117,7 +117,7 @@ async function handleKeys(req, res, user) {
     const key_enc = encrypt(apiKey);
     const { data, error } = await supabaseAdmin
       .from('api_keys')
-      .insert({ team_id: m.team_id, created_by: user.id, provider, api_url: apiUrl || null, key_enc, label: label || provider })
+      .insert({ team_id: m.team_id, provider, api_url: apiUrl || null, key_enc, label: label || provider })
       .select('id').single();
     if (error) throw { status: 500, message: error.message };
     return res.status(201).json({ id: data.id });
