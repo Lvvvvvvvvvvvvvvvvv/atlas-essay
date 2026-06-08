@@ -2,6 +2,8 @@ import React from 'react';
 import './styles/globals.css';
 import { useAuth } from './hooks/useAuth.jsx';
 import LoginModal from './components/LoginModal.jsx';
+import WorkflowCanvas from './components/workflow/WorkflowCanvas.jsx';
+import { useWorkflow } from './hooks/useWorkflow.jsx';
 
 
 // tweaks-panel.jsx
@@ -12383,8 +12385,15 @@ function App() {
   const goWorkflow = () => {
     if (!prompt.trim()) return;
     if (!allowDailyGen()) return;
+    setWfMode('linear');
     setRoute('workflow');
   };
+  const goWorkflowCanvas = () => { setWfMode('canvas'); setRoute('workflow'); };
+
+  const { workflows, saving: wfSaving, running: wfRunning, runStatus: wfRunStatus,
+          saveWorkflow, runWorkflow } = useWorkflow();
+  const [wfMode, setWfMode] = React.useState('linear');
+  const [activeWfId, setActiveWfId] = React.useState(null);
 
   const handleOutlineConfirm = (sections) => {
     const withIds = sections.map((s, i) => ({ ...s, id: `outline_${i}` }));
@@ -12556,12 +12565,35 @@ function App() {
               setRoute('report');
             }}/>
         )}
-        {route === 'workflow' && (
+        {route === 'workflow' && wfMode === 'linear' && (
           <WorkflowView t={t} topic={prompt}
             modelStore={modelStore}
             toolbarConfig={{ language: toolbarStore.currentLanguage }}
             onSaveReport={handleSaveReport}
             onBack={(dest) => { setRoute(dest || 'home'); }}/>
+        )}
+        {route === 'workflow' && wfMode === 'canvas' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ padding: '8px 20px', borderBottom: '1px solid #e0ddd6', background: '#faf9f6', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+              <button onClick={() => setRoute('home')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'monospace', fontSize: 10, color: '#999', letterSpacing: 0.8 }}>← 返回</button>
+              <span style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 1.5, color: '#999' }}>WORKFLOW CANVAS</span>
+              <span style={{ flex: 1 }}/>
+              <button onClick={() => setWfMode('linear')} style={{ fontSize: 11, padding: '3px 10px', border: '1px solid #ddd', borderRadius: 4, background: '#fff', color: '#767368', cursor: 'pointer' }}>切换线性模式</button>
+            </div>
+            <WorkflowCanvas t={t}
+              workflow={activeWfId ? workflows.find(w => w.id === activeWfId) : null}
+              saving={wfSaving} running={wfRunning} runStatus={wfRunStatus}
+              onSave={async (def) => {
+                const id = await saveWorkflow({ id: activeWfId, ...def });
+                if (!activeWfId) setActiveWfId(id);
+              }}
+              onRun={async (def) => {
+                let id = activeWfId;
+                if (!id) { id = await saveWorkflow(def); setActiveWfId(id); }
+                runWorkflow(id);
+              }}
+            />
+          </div>
         )}
         {route === 'sources' && <Sources t={t}/>}
         {route === 'benchmark' && <BenchmarkPanel t={t} modelStore={modelStore}/>}
