@@ -1,0 +1,322 @@
+<svg width="1400" height="980" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Helvetica Neue',Arial,sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#A09888"/>
+    </marker>
+    <marker id="arr-r" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#E83425"/>
+    </marker>
+    <marker id="arr-g" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#3ECF8E"/>
+    </marker>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="1400" height="980" fill="#F7F4EE"/>
+
+  <!-- ══ 顶部标题 ══ -->
+  <rect x="0" y="0" width="1400" height="58" fill="#0A0A0A"/>
+  <text x="44" y="32" fill="#F7F4EE" font-size="17" font-weight="700" letter-spacing="3">ATLAS 报告智能体 · 业务流程图</text>
+  <text x="44" y="49" fill="#666" font-size="9.5" letter-spacing="2">v3.2.0 · 2026-06-08 · 维护规则：每次功能迭代同步更新</text>
+  <text x="1356" y="38" fill="#E83425" font-size="9.5" text-anchor="end">atlas-essay.vercel.app</text>
+
+  <!-- ══ 泳道分隔线 ══ -->
+  <line x1="360" y1="62" x2="360" y2="940" stroke="#D4CDBF" stroke-width="1" stroke-dasharray="5,4"/>
+  <line x1="1060" y1="62" x2="1060" y2="940" stroke="#D4CDBF" stroke-width="1" stroke-dasharray="5,4"/>
+
+  <!-- ══ 泳道标题 ══ -->
+  <rect x="32"   y="62" width="328" height="32" fill="#EDE8DF"/>
+  <rect x="360"  y="62" width="700" height="32" fill="#E8F0FE"/>
+  <rect x="1060" y="62" width="308" height="32" fill="#FFF0EE"/>
+  <text x="196"  y="82" fill="#0A0A0A" font-size="11" font-weight="700" letter-spacing="1.5" text-anchor="middle">① 用户认证</text>
+  <text x="710"  y="82" fill="#0A0A0A" font-size="11" font-weight="700" letter-spacing="1.5" text-anchor="middle">② 报告生成主流程</text>
+  <text x="1214" y="82" fill="#0A0A0A" font-size="11" font-weight="700" letter-spacing="1.5" text-anchor="middle">③ 团队协作</text>
+
+  <!-- ═══════════════════════════
+       泳道一：用户认证
+  ═══════════════════════════ -->
+
+  <!-- 开始 pill -->
+  <rect x="66" y="110" width="260" height="36" rx="18" fill="#0A0A0A"/>
+  <text x="196" y="133" fill="#F7F4EE" font-size="11" font-weight="600" text-anchor="middle">用户访问应用</text>
+  <line x1="196" y1="146" x2="196" y2="166" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 检查登录状态 -->
+  <rect x="66" y="168" width="260" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="196" y="192" fill="#0A0A0A" font-size="10.5" text-anchor="middle">检查登录状态</text>
+  <line x1="196" y1="206" x2="196" y2="226" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 已登录? diamond -->
+  <polygon points="196,228 316,254 196,280 76,254" fill="#F7F4EE" stroke="#A09888" stroke-width="1.2"/>
+  <text x="196" y="258" fill="#0A0A0A" font-size="10" font-weight="600" text-anchor="middle">已登录？</text>
+  <!-- Yes →右 -->
+  <line x1="316" y1="254" x2="356" y2="254" stroke="#3ECF8E" stroke-width="1.5" marker-end="url(#arr-g)"/>
+  <text x="333" y="248" fill="#3ECF8E" font-size="8.5" text-anchor="middle">是</text>
+  <!-- No ↓ -->
+  <line x1="196" y1="280" x2="196" y2="300" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="207" y="295" fill="#888" font-size="8.5">否</text>
+
+  <!-- 登录/注册界面 -->
+  <rect x="66" y="302" width="260" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="196" y="326" fill="#0A0A0A" font-size="10.5" text-anchor="middle">注册 / 登录界面</text>
+  <line x1="196" y1="340" x2="196" y2="360" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 输入邮箱密码 -->
+  <rect x="66" y="362" width="260" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="196" y="382" fill="#0A0A0A" font-size="10.5" text-anchor="middle">输入邮箱 + 密码</text>
+  <text x="196" y="395" fill="#999" font-size="8" text-anchor="middle">注册 → 邮箱验证</text>
+  <line x1="196" y1="400" x2="196" y2="420" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Supabase Auth -->
+  <rect x="66" y="422" width="260" height="38" rx="4" fill="#E8F8F1" stroke="#3ECF8E" stroke-width="1.2"/>
+  <text x="196" y="442" fill="#0A0A0A" font-size="10.5" font-weight="600" text-anchor="middle">Supabase Auth 验证</text>
+  <text x="196" y="456" fill="#3ECF8E" font-size="8" text-anchor="middle">邮箱 + 密码校验</text>
+  <line x1="196" y1="460" x2="196" y2="480" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- JWT颁发 -->
+  <rect x="66" y="482" width="260" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="196" y="502" fill="#0A0A0A" font-size="10.5" text-anchor="middle">JWT Token 颁发</text>
+  <text x="196" y="515" fill="#999" font-size="8" text-anchor="middle">Supabase Session</text>
+  <line x1="196" y1="520" x2="196" y2="540" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 加载资料 -->
+  <rect x="66" y="542" width="260" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="196" y="562" fill="#0A0A0A" font-size="10.5" text-anchor="middle">加载用户资料 &amp; 团队信息</text>
+  <text x="196" y="575" fill="#999" font-size="8" text-anchor="middle">profiles · team_members</text>
+  <line x1="196" y1="580" x2="196" y2="600" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 进入工作台 pill -->
+  <rect x="66" y="602" width="260" height="36" rx="18" fill="#0A0A0A"/>
+  <text x="196" y="625" fill="#F7F4EE" font-size="11" font-weight="600" text-anchor="middle">进入工作台 →</text>
+
+  <!-- ═══════════════════════════
+       泳道二：报告生成主流程
+  ═══════════════════════════ -->
+
+  <!-- 进入首页 pill （连接自认证 Yes 和 Auth 成功） -->
+  <!-- Yes 水平箭头从 x=356 y=254 到 lane2 的 x=420 y=254，但 lane2 start 在 y=110 -->
+  <!-- 改为：在 lane2 y=254 处有一个"已登录 → 直接进入"的标注 -->
+  <rect x="410" y="110" width="300" height="36" rx="18" fill="#0A0A0A"/>
+  <text x="560" y="133" fill="#F7F4EE" font-size="11" font-weight="600" text-anchor="middle">进入首页</text>
+  <!-- 小标注 -->
+  <rect x="410" y="152" width="300" height="22" rx="3" fill="#F2EDE3" stroke="#CCC6BA" stroke-width="1"/>
+  <text x="560" y="167" fill="#777" font-size="8.5" text-anchor="middle">认证成功 或 未登录（演示模式）均可进入</text>
+  <line x1="560" y1="174" x2="560" y2="194" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 输入主题+工具栏 -->
+  <rect x="410" y="196" width="300" height="48" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="560" y="216" fill="#0A0A0A" font-size="10.5" font-weight="600" text-anchor="middle">输入主题 · 配置工具栏</text>
+  <text x="560" y="230" fill="#888" font-size="8" text-anchor="middle">语气 · 字数 · 数据源 · 附件 · 生成模式预设</text>
+  <text x="560" y="240" fill="#888" font-size="8" text-anchor="middle">Harness C · 三区 System Prompt 组装</text>
+  <line x1="560" y1="244" x2="560" y2="264" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 研究模式? diamond -->
+  <polygon points="560,266 700,292 560,318 420,292" fill="#F7F4EE" stroke="#A09888" stroke-width="1.2"/>
+  <text x="560" y="296" fill="#0A0A0A" font-size="10" font-weight="600" text-anchor="middle">启用研究模式？</text>
+  <!-- Yes → 右侧分支 -->
+  <line x1="700" y1="292" x2="738" y2="292" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="717" y="286" fill="#888" font-size="8.5" text-anchor="middle">是</text>
+  <!-- No ↓ -->
+  <line x1="560" y1="318" x2="560" y2="338" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="571" y="333" fill="#888" font-size="8.5">否</text>
+
+  <!-- 研究模式分支框 -->
+  <rect x="740" y="260" width="188" height="92" rx="4" fill="#F7F4EE" stroke="#B0A898" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="834" y="280" fill="#555" font-size="8.5" font-weight="600" text-anchor="middle">Harness T · 研究增强</text>
+  <line x1="834" y1="285" x2="834" y2="293" stroke="#A09888" stroke-width="1"/>
+  <rect x="754" y="295" width="160" height="20" rx="3" fill="#FFFFFF" stroke="#D0CABB" stroke-width="1"/>
+  <text x="834" y="309" fill="#555" font-size="8" text-anchor="middle">Tavily 实时搜索</text>
+  <line x1="834" y1="315" x2="834" y2="323" stroke="#A09888" stroke-width="1"/>
+  <rect x="754" y="325" width="160" height="20" rx="3" fill="#FFFFFF" stroke="#D0CABB" stroke-width="1"/>
+  <text x="834" y="339" fill="#555" font-size="8" text-anchor="middle">Jina 正文抓取</text>
+  <!-- 分支结果连回 -->
+  <line x1="834" y1="345" x2="834" y2="360" stroke="#A09888" stroke-width="1"/>
+  <line x1="834" y1="360" x2="560" y2="360" stroke="#A09888" stroke-width="1" marker-end="url(#arr)"/>
+
+  <!-- 大纲先行? diamond -->
+  <polygon points="560,340 700,366 560,392 420,366" fill="#F7F4EE" stroke="#A09888" stroke-width="1.2"/>
+  <text x="560" y="370" fill="#0A0A0A" font-size="10" font-weight="600" text-anchor="middle">启用大纲先行？</text>
+  <!-- Yes → 右 -->
+  <line x1="700" y1="366" x2="738" y2="366" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="717" y="360" fill="#888" font-size="8.5" text-anchor="middle">是</text>
+  <!-- No ↓ -->
+  <line x1="560" y1="392" x2="560" y2="412" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="571" y="407" fill="#888" font-size="8.5">否</text>
+
+  <!-- 大纲先行分支框 -->
+  <rect x="740" y="335" width="188" height="106" rx="4" fill="#F7F4EE" stroke="#B0A898" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="834" y="354" fill="#555" font-size="8.5" font-weight="600" text-anchor="middle">Harness L · 大纲先行</text>
+  <rect x="754" y="360" width="160" height="20" rx="3" fill="#FFFFFF" stroke="#D0CABB" stroke-width="1"/>
+  <text x="834" y="374" fill="#555" font-size="8" text-anchor="middle">生成章节大纲</text>
+  <line x1="834" y1="380" x2="834" y2="388" stroke="#A09888" stroke-width="1"/>
+  <rect x="754" y="390" width="160" height="20" rx="3" fill="#FFFFFF" stroke="#D0CABB" stroke-width="1"/>
+  <text x="834" y="404" fill="#555" font-size="8" text-anchor="middle">用户确认/编辑大纲</text>
+  <line x1="834" y1="410" x2="834" y2="418" stroke="#A09888" stroke-width="1"/>
+  <rect x="754" y="420" width="160" height="18" rx="3" fill="#FFFFFF" stroke="#D0CABB" stroke-width="1"/>
+  <text x="834" y="433" fill="#555" font-size="8" text-anchor="middle">锁定结构 → 分节并行</text>
+  <!-- 连回 -->
+  <line x1="834" y1="441" x2="834" y2="454" stroke="#A09888" stroke-width="1"/>
+  <line x1="834" y1="454" x2="560" y2="454" stroke="#A09888" stroke-width="1" marker-end="url(#arr)"/>
+
+  <!-- 调用 AI 模型 — 红色高亮 -->
+  <rect x="410" y="414" width="300" height="42" rx="4" fill="#FFF6F5" stroke="#E83425" stroke-width="1.5"/>
+  <text x="560" y="432" fill="#E83425" font-size="11" font-weight="700" text-anchor="middle">调用 AI 模型</text>
+  <text x="560" y="448" fill="#888" font-size="8" text-anchor="middle">SSE 流式输出 · 实时 Markdown 渲染</text>
+  <line x1="560" y1="456" x2="560" y2="476" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Harness E/V -->
+  <rect x="410" y="478" width="300" height="42" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="560" y="496" fill="#0A0A0A" font-size="10.5" font-weight="600" text-anchor="middle">Harness E · 执行参数注入</text>
+  <text x="560" y="511" fill="#888" font-size="8" text-anchor="middle">temperature · top_p · frequency_penalty</text>
+  <line x1="560" y1="520" x2="560" y2="540" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 截断检测 diamond -->
+  <polygon points="560,542 700,566 560,590 420,566" fill="#F7F4EE" stroke="#A09888" stroke-width="1.2"/>
+  <text x="560" y="570" fill="#0A0A0A" font-size="10" font-weight="600" text-anchor="middle">Harness V · 截断检测</text>
+  <!-- 截断 → 右 -->
+  <line x1="700" y1="566" x2="738" y2="566" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="717" y="560" fill="#888" font-size="8.5" text-anchor="middle">截断</text>
+  <!-- 正常 ↓ -->
+  <line x1="560" y1="590" x2="560" y2="610" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="571" y="605" fill="#888" font-size="8.5">正常</text>
+
+  <!-- 自动续写 -->
+  <rect x="740" y="548" width="160" height="36" rx="4" fill="#FFF6F5" stroke="#E83425" stroke-width="1"/>
+  <text x="820" y="561" fill="#E83425" font-size="9" font-weight="600" text-anchor="middle">自动续写一次</text>
+  <text x="820" y="575" fill="#888" font-size="7.5" text-anchor="middle">继续 SSE 流式输出</text>
+  <!-- 续写结果连回 -->
+  <line x1="820" y1="584" x2="820" y2="598" stroke="#A09888" stroke-width="1"/>
+  <line x1="820" y1="598" x2="560" y2="598" stroke="#A09888" stroke-width="1" marker-end="url(#arr)"/>
+
+  <!-- 生成完成 -->
+  <rect x="410" y="612" width="300" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="560" y="630" fill="#0A0A0A" font-size="10.5" font-weight="600" text-anchor="middle">生成完成 · 结构校验通过</text>
+  <text x="560" y="643" fill="#888" font-size="8" text-anchor="middle">Warning Banner（如有异常）</text>
+  <line x1="560" y1="650" x2="560" y2="670" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 自动保存 — 绿色 -->
+  <rect x="410" y="672" width="300" height="42" rx="4" fill="#E8F8F1" stroke="#3ECF8E" stroke-width="1.2"/>
+  <text x="560" y="690" fill="#0A0A0A" font-size="10.5" font-weight="600" text-anchor="middle">自动保存报告</text>
+  <text x="560" y="703" fill="#3ECF8E" font-size="8" text-anchor="middle">个人 → localStorage + Supabase / 团队 → Supabase</text>
+  <line x1="560" y1="714" x2="560" y2="734" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Harness O -->
+  <rect x="410" y="736" width="300" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="560" y="754" fill="#0A0A0A" font-size="10.5" font-weight="600" text-anchor="middle">Harness O · 元数据写入</text>
+  <text x="560" y="768" fill="#888" font-size="8" text-anchor="middle">model · mode · tokens · 耗时 · 研究轨迹 · promptHash</text>
+  <line x1="560" y1="774" x2="560" y2="794" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 后续操作 diamond -->
+  <polygon points="560,796 700,818 560,840 420,818" fill="#F7F4EE" stroke="#A09888" stroke-width="1.2"/>
+  <text x="560" y="822" fill="#0A0A0A" font-size="10" font-weight="600" text-anchor="middle">后续操作</text>
+
+  <!-- 三个分支 ↓ -->
+  <!-- 行内编辑 -->
+  <line x1="470" y1="840" x2="470" y2="866" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="388" y="868" width="164" height="34" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="470" y="882" fill="#0A0A0A" font-size="9.5" text-anchor="middle">行内编辑 · 追问</text>
+  <text x="470" y="895" fill="#888" font-size="7.5" text-anchor="middle">章节精修 · 增量更新</text>
+
+  <!-- 导出 -->
+  <line x1="560" y1="840" x2="560" y2="866" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="488" y="868" width="144" height="34" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="560" y="882" fill="#0A0A0A" font-size="9.5" text-anchor="middle">导出报告</text>
+  <text x="560" y="895" fill="#888" font-size="7.5" text-anchor="middle">PDF / DOCX / MD / Notion</text>
+
+  <!-- 分享 -->
+  <line x1="648" y1="840" x2="648" y2="866" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+  <rect x="572" y="868" width="152" height="34" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="648" y="882" fill="#0A0A0A" font-size="9.5" text-anchor="middle">生成分享链接</text>
+  <text x="648" y="895" fill="#888" font-size="7.5" text-anchor="middle">仅含报告 ID，不含 Key</text>
+
+  <!-- ═══════════════════════════
+       泳道三：团队协作
+  ═══════════════════════════ -->
+
+  <!-- Admin 创建团队 pill -->
+  <rect x="1078" y="110" width="264" height="36" rx="18" fill="#0A0A0A"/>
+  <text x="1210" y="133" fill="#F7F4EE" font-size="11" font-weight="600" text-anchor="middle">Admin 创建团队</text>
+  <line x1="1210" y1="146" x2="1210" y2="166" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 邀请成员 -->
+  <rect x="1078" y="168" width="264" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="1210" y="188" fill="#0A0A0A" font-size="10.5" text-anchor="middle">邀请成员</text>
+  <text x="1210" y="200" fill="#888" font-size="8" text-anchor="middle">输入邮箱 · 指定角色</text>
+  <line x1="1210" y1="206" x2="1210" y2="226" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 分配角色 -->
+  <rect x="1078" y="228" width="264" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="1210" y="248" fill="#0A0A0A" font-size="10.5" text-anchor="middle">分配角色权限</text>
+  <text x="1210" y="260" fill="#888" font-size="8" text-anchor="middle">admin · editor · viewer</text>
+  <line x1="1210" y1="266" x2="1210" y2="286" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 配置共享密钥 -->
+  <rect x="1078" y="288" width="264" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="1210" y="308" fill="#0A0A0A" font-size="10.5" font-weight="600" text-anchor="middle">配置团队共享密钥</text>
+  <text x="1210" y="320" fill="#888" font-size="8" text-anchor="middle">Claude · GPT · Gemini · DeepSeek</text>
+  <line x1="1210" y1="326" x2="1210" y2="346" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- AES 加密存储 -->
+  <rect x="1078" y="348" width="264" height="38" rx="4" fill="#E8F8F1" stroke="#3ECF8E" stroke-width="1.2"/>
+  <text x="1210" y="368" fill="#0A0A0A" font-size="10.5" font-weight="600" text-anchor="middle">AES-256 加密存储</text>
+  <text x="1210" y="380" fill="#3ECF8E" font-size="8" text-anchor="middle">Supabase api_keys 表</text>
+  <line x1="1210" y1="386" x2="1210" y2="406" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 成员生成报告 -->
+  <rect x="1078" y="408" width="264" height="38" rx="4" fill="#FFF6F5" stroke="#E83425" stroke-width="1"/>
+  <text x="1210" y="428" fill="#E83425" font-size="10.5" font-weight="600" text-anchor="middle">成员生成报告</text>
+  <text x="1210" y="440" fill="#888" font-size="8" text-anchor="middle">无需各自配置 Key</text>
+  <line x1="1210" y1="446" x2="1210" y2="466" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- /api/generate 代理 -->
+  <rect x="1078" y="468" width="264" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="1210" y="488" fill="#0A0A0A" font-size="10.5" text-anchor="middle">/api/generate 密钥代理</text>
+  <text x="1210" y="500" fill="#888" font-size="8" text-anchor="middle">服务端解密 → 调用 AI 模型</text>
+  <line x1="1210" y1="506" x2="1210" y2="526" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 云端同步 -->
+  <rect x="1078" y="528" width="264" height="38" rx="4" fill="#E8F8F1" stroke="#3ECF8E" stroke-width="1.2"/>
+  <text x="1210" y="548" fill="#0A0A0A" font-size="10.5" font-weight="600" text-anchor="middle">报告云端同步</text>
+  <text x="1210" y="560" fill="#3ECF8E" font-size="8" text-anchor="middle">Supabase reports 表</text>
+  <line x1="1210" y1="566" x2="1210" y2="586" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 团队共享报告库 -->
+  <rect x="1078" y="588" width="264" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="1210" y="608" fill="#0A0A0A" font-size="10.5" text-anchor="middle">团队共享报告库</text>
+  <text x="1210" y="620" fill="#888" font-size="8" text-anchor="middle">全员可见</text>
+  <line x1="1210" y1="626" x2="1210" y2="646" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 按角色访问 -->
+  <rect x="1078" y="648" width="264" height="38" rx="4" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="1210" y="668" fill="#0A0A0A" font-size="10.5" text-anchor="middle">按角色权限访问</text>
+  <text x="1210" y="680" fill="#888" font-size="8" text-anchor="middle">editor 可编辑导出 · viewer 只读</text>
+  <line x1="1210" y1="686" x2="1210" y2="706" stroke="#A09888" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 批量导出 pill -->
+  <rect x="1078" y="708" width="264" height="36" rx="18" fill="#0A0A0A"/>
+  <text x="1210" y="731" fill="#F7F4EE" font-size="11" font-weight="600" text-anchor="middle">导出 · 协作完成</text>
+
+  <!-- ══ 图例 ══ -->
+  <rect x="32" y="920" width="1336" height="48" rx="4" fill="#EDE8DF"/>
+  <text x="56" y="937" fill="#888" font-size="9" font-weight="700" letter-spacing="1">图例</text>
+  <!-- 开始/结束 -->
+  <rect x="88" y="926" width="70" height="22" rx="11" fill="#0A0A0A"/>
+  <text x="123" y="941" fill="#F7F4EE" font-size="8" text-anchor="middle">开始 / 结束</text>
+  <!-- 流程 -->
+  <rect x="172" y="926" width="70" height="22" rx="3" fill="#FFFFFF" stroke="#D8D2C5" stroke-width="1"/>
+  <text x="207" y="941" fill="#0A0A0A" font-size="8" text-anchor="middle">流程步骤</text>
+  <!-- 决策 -->
+  <polygon points="293,937 316,948 293,959 270,948" fill="#F7F4EE" stroke="#A09888" stroke-width="1.2"/>
+  <text x="293" y="952" fill="#0A0A0A" font-size="7.5" text-anchor="middle">决策</text>
+  <!-- AI 调用 -->
+  <rect x="328" y="926" width="70" height="22" rx="3" fill="#FFF6F5" stroke="#E83425" stroke-width="1.2"/>
+  <text x="363" y="941" fill="#E83425" font-size="8" text-anchor="middle">AI 调用</text>
+  <!-- 数据库 -->
+  <rect x="412" y="926" width="70" height="22" rx="3" fill="#E8F8F1" stroke="#3ECF8E" stroke-width="1.2"/>
+  <text x="447" y="941" fill="#0A0A0A" font-size="8" text-anchor="middle">数据存储</text>
+  <!-- 可选分支 -->
+  <rect x="496" y="926" width="110" height="22" rx="3" fill="#F7F4EE" stroke="#B0A898" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="551" y="941" fill="#555" font-size="8" text-anchor="middle">可选功能分支</text>
+
+  <text x="660" y="941" fill="#888" font-size="8.5">Harness 层说明：C=上下文 · E=执行参数 · V=输出校验 · L=任务编排 · T=工具接入 · O=可观测性 · G=权限治理 · M=记忆层</text>
+</svg>
