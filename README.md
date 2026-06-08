@@ -23,6 +23,8 @@
 
 ![Atlas Report Agent preview](docs/preview.png)
 
+![System Architecture](docs/architecture.svg)
+
 ---
 
 ## Table of Contents
@@ -325,3 +327,4 @@ GitHub Pages 从 `gh-pages` 分支提供服务，访问地址：
 ## License
 
 MIT © 2026 Atlas
+
