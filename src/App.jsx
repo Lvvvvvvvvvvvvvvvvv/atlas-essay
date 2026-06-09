@@ -639,13 +639,14 @@ function essayTokens({ theme = 'cream', accent = 'red' }) {
 
 // ── Top nav: wordmark + section nav + meta -------------------------------
 const NAV_ITEMS = [
-  { k: 'home',    en: 'NEW',     cn: '新建' },
-  { k: 'library', en: 'LIBRARY', cn: '报告库' },
-  { k: 'benchmark', en: 'BENCH', cn: '评测' },
-  { k: 'sources', en: 'SOURCES', cn: '数据源' },
+  { k: 'home',      en: 'NEW',      cn: '新建' },
+  { k: 'library',   en: 'LIBRARY',  cn: '报告库' },
+  { k: 'workflow',  en: 'FLOW',     cn: '工作流' },
+  { k: 'benchmark', en: 'BENCH',    cn: '评测' },
+  { k: 'sources',   en: 'SOURCES',  cn: '数据源' },
 ];
 
-function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode }) {
+function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, onNavClick }) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -677,7 +678,7 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks,
       <nav style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'stretch' }}>
         {NAV_ITEMS.map(n => (
           <span key={n.k}
-            onClick={() => setRoute(n.k)}
+            onClick={() => onNavClick ? onNavClick(n.k) : setRoute(n.k)}
             style={{
               cursor: 'pointer',
               display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -12465,6 +12466,7 @@ function App() {
       background: t.paper, color: t.ink,
     }}>
       <TopBar t={t} route={route} setRoute={setRoute}
+        onNavClick={(k) => { if (k === 'workflow') { setWfMode('canvas'); setRoute('workflow'); } else setRoute(k); }}
         runState={route === 'running' && !runDone ? 'running' : 'idle'}
         tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore}
         outlineMode={outlineMode} setOutlineMode={setOutlineMode}
@@ -12591,6 +12593,7 @@ function App() {
             <WorkflowCanvas t={t}
               workflow={activeWfId ? workflows.find(w => w.id === activeWfId) : null}
               saving={wfSaving} running={wfRunning} runStatus={wfRunStatus}
+              loggedIn={!!user}
               onSave={async (def) => {
                 const id = await saveWorkflow({ id: activeWfId, ...def });
                 if (!activeWfId) setActiveWfId(id);
@@ -12598,7 +12601,7 @@ function App() {
               onRun={async (def) => {
                 let id = activeWfId;
                 if (!id) { id = await saveWorkflow(def); setActiveWfId(id); }
-                runWorkflow(id);
+                await runWorkflow(id);
               }}
             />
           </div>
