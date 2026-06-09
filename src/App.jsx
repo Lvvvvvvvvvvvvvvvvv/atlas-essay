@@ -12594,6 +12594,7 @@ function App() {
               workflow={activeWfId ? workflows.find(w => w.id === activeWfId) : null}
               saving={wfSaving} running={wfRunning} runStatus={wfRunStatus}
               loggedIn={!!user}
+              initialTopic={prompt || ''}
               onSave={async (def) => {
                 const id = await saveWorkflow({ id: activeWfId, ...def });
                 if (!activeWfId) setActiveWfId(id);
