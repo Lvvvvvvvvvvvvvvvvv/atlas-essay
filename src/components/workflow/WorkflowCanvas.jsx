@@ -676,7 +676,7 @@ function CanvasInner({ nodes, edges, onNodesChange, onEdgesChange, onConnect, on
     <ReactFlow nodes={nodes} edges={edges}
       onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
       onConnect={onConnect} onDrop={onDrop} onDragOver={onDragOver}
-      nodeTypes={NODE_TYPES} fitView deleteKeyCode="Delete"
+      nodeTypes={NODE_TYPES} fitView deleteKeyCode={['Backspace', 'Delete']}
       style={{ background:'#f5f3ee' }}>
       <Background color="#d4d1ca" gap={20} size={1}/>
       <Controls style={{ button:{ background:'#faf9f6', border:'1px solid #e0ddd6' } }}/>
@@ -804,7 +804,7 @@ function WorkflowCanvasInner({ workflow, onSave, onRun, running, runStatus, savi
         </div>
 
         {/* React Flow 画布 */}
-        <div style={{ flex:1, minHeight:0 }} onDragOver={onDragOver} onDrop={onDrop}>
+        <div style={{ flex:1, minHeight:0 }}>
           <CanvasInner nodes={nodes} edges={edges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
             onConnect={onConnect} onDrop={onDrop} onDragOver={onDragOver}/>
