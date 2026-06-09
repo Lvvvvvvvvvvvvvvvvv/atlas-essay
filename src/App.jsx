@@ -2605,7 +2605,7 @@ function useAINews() {
   return { items, loading };
 }
 
-function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, density = 'editorial', modelStore, toolbarStore, onNavigateSources, teamTemplates = [] }) {
+function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, density = 'editorial', modelStore, toolbarStore, onNavigateSources, teamTemplates = [], workflows = [], homeWfId, setHomeWfId, onRunWorkflow }) {
   const editorial = density === 'editorial';
   const headSize = editorial ? 'xxl' : 'xl';
   const customTpls = useCustomTemplates();
@@ -2678,7 +2678,7 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskS
         </div>
 
         {/* Prompt input */}
-        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} onBackground={onBackground} onWorkflow={onWorkflow} bgTaskStatus={bgTaskStatus} modelStore={modelStore} toolbarStore={toolbarStore} onNavigateSources={onNavigateSources}/>
+        <PromptComposer t={t} prompt={prompt} setPrompt={setPrompt} onStart={onStart} onBackground={onBackground} onWorkflow={onWorkflow} bgTaskStatus={bgTaskStatus} modelStore={modelStore} toolbarStore={toolbarStore} onNavigateSources={onNavigateSources} workflows={workflows} homeWfId={homeWfId} setHomeWfId={setHomeWfId} onRunWorkflow={onRunWorkflow}/>
 
         {/* AI news ticker */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 16px', border: `1px solid ${t.ink}`, background: t.cardOn, minWidth: 0 }}>
@@ -4449,7 +4449,7 @@ function allowDailyGen() {
   return true;
 }
 
-function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, modelStore, toolbarStore, onNavigateSources }) {
+function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, modelStore, toolbarStore, onNavigateSources, workflows = [], homeWfId, setHomeWfId, onRunWorkflow }) {
   const charCount = prompt.length;
   const placeholder = '比如，"梳理一下 2025 年 Q1 咖啡赛道的融资动态…"';
   const taRef = React.useRef(null);
@@ -4562,8 +4562,47 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
           onClick={() => setPrompt(SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)])}>
           ✦ Surprise me
         </Btn>
-        <StartWritingBtn t={t} disabled={!prompt.trim() || !canGenerate}
-          onStart={onStart} onWorkflow={canGenerate ? onWorkflow : null} onBackground={canGenerate ? onBackground : null} bgTaskStatus={bgTaskStatus}/>
+        {/* 工作流选择器（Phase 2）*/}
+        {workflows.length > 0 && (
+          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <select value={homeWfId || ''} onChange={e => setHomeWfId(e.target.value || null)}
+              style={{ fontSize:10, fontFamily:'monospace', padding:'2px 6px', border:`1px solid ${t.rule}`, borderRadius:3, background:homeWfId?t.accent:'transparent', color:homeWfId?'#fff':t.mute, cursor:'pointer', outline:'none' }}>
+              <option value="">工作流 —</option>
+              {workflows.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+            {homeWfId && <span style={{ fontSize:9, color:t.mute, letterSpacing:0.3 }}>已选定</span>}
+          </div>
+        )}
+        {/* 始终可见的操作按钮行 */}
+        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+          {canGenerate && onBackground && (
+            <button onClick={() => { if (prompt.trim()) onBackground(); }}
+              disabled={!prompt.trim() || bgTaskStatus==='queued' || bgTaskStatus==='running'}
+              title="后台异步生成，不跳转页面"
+              style={{ fontSize:10, fontFamily:'monospace', letterSpacing:0.6, padding:'5px 10px', border:`1px solid ${t.rule}`, borderRadius:3, background:'transparent', color: (!prompt.trim()||bgTaskStatus==='running')?t.mute:t.ink, cursor:'pointer', whiteSpace:'nowrap' }}>
+              {bgTaskStatus==='queued'?'排队…': bgTaskStatus==='running'?'生成中…': bgTaskStatus==='done'?'完成':'后台生成'}
+            </button>
+          )}
+          {canGenerate && onWorkflow && (
+            <button onClick={onWorkflow}
+              title="在工作流画布中配置并运行"
+              style={{ fontSize:10, fontFamily:'monospace', letterSpacing:0.6, padding:'5px 10px', border:`1px solid ${t.rule}`, borderRadius:3, background:'transparent', color:t.ink, cursor:'pointer', whiteSpace:'nowrap' }}>
+              工作流 ↗
+            </button>
+          )}
+          {homeWfId && canGenerate && onRunWorkflow && (
+            <button onClick={() => { if (prompt.trim()) onRunWorkflow(); }}
+              disabled={!prompt.trim() || bgTaskStatus==='queued' || bgTaskStatus==='running'}
+              style={{ fontSize:10, fontFamily:'monospace', letterSpacing:0.6, padding:'5px 12px', border:'none', borderRadius:3, background:t.accent, color:'#fff', cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
+              运行工作流 ↗
+            </button>
+          )}
+          <button onClick={() => !(!prompt.trim() || !canGenerate) && onStart()}
+            disabled={!prompt.trim() || !canGenerate}
+            style={{ fontSize:11, fontFamily:'monospace', letterSpacing:0.6, padding:'6px 14px', border:`1px solid ${!prompt.trim()||!canGenerate?t.rule:t.accent}`, borderRadius:3, background:!prompt.trim()||!canGenerate?'transparent':t.accent, color:!prompt.trim()||!canGenerate?t.mute:'#fff', cursor:!prompt.trim()||!canGenerate?'default':'pointer', fontWeight:500, whiteSpace:'nowrap' }}>
+            Start writing ↗
+          </button>
+        </div>
       </div>
       {!canGenerate && (
         <div style={{ padding: '8px 14px', borderTop: `1px solid ${t.rule}`, background: 'rgba(118,115,104,0.06)', fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.4 }}>
@@ -12383,18 +12422,53 @@ function App() {
   }, [prompt, modelStore]);
 
 
-  const goWorkflow = () => {
-    if (!prompt.trim()) return;
-    if (!allowDailyGen()) return;
-    setWfMode('linear');
-    setRoute('workflow');
-  };
+  // 工作流始终走画布模式
+  const goWorkflow = () => { setWfMode('canvas'); setRoute('workflow'); };
   const goWorkflowCanvas = () => { setWfMode('canvas'); setRoute('workflow'); };
 
   const { workflows, saving: wfSaving, running: wfRunning, runStatus: wfRunStatus,
           saveWorkflow, runWorkflow } = useWorkflow();
-  const [wfMode, setWfMode] = React.useState('linear');
+  const [wfMode, setWfMode]       = React.useState('linear');
   const [activeWfId, setActiveWfId] = React.useState(null);
+
+  // 主页选定的工作流（Phase 2：一键运行工作流）
+  const [homeWfId, setHomeWfId] = React.useState(null);
+
+  // 用选定的工作流在后台执行（注入主题后提交任务）
+  const goRunHomeWorkflow = React.useCallback(async () => {
+    const wf = workflows.find(w => w.id === homeWfId);
+    if (!wf || !prompt.trim()) return;
+    setBgTaskStatus('queued');
+    try {
+      const { supabase } = await import('./lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) { setBgTaskStatus('failed'); return; }
+      // 把当前主题注入工作流的 Input 节点
+      const definition = JSON.parse(JSON.stringify(wf.definition));
+      const inputNode  = definition.nodes?.find(n => n.type === 'input');
+      if (inputNode) inputNode.data.topic = prompt;
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'workflow', input: { workflowId: homeWfId, definition } }),
+      });
+      if (!res.ok) { setBgTaskStatus('failed'); return; }
+      const { taskId } = await res.json();
+      setBgTaskId(taskId);
+      setBgTaskStatus('running');
+      const poll = setInterval(async () => {
+        const r = await fetch(`/api/tasks/${taskId}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) return;
+        const task = await r.json();
+        setBgTaskStatus(task.status);
+        if (task.status === 'done' || task.status === 'failed') {
+          clearInterval(poll);
+          if (task.status === 'done') window.dispatchEvent(new Event('atlas-reports-updated'));
+        }
+      }, 3000);
+    } catch { setBgTaskStatus('failed'); }
+  }, [prompt, homeWfId, workflows]);
 
   const handleOutlineConfirm = (sections) => {
     const withIds = sections.map((s, i) => ({ ...s, id: `outline_${i}` }));
@@ -12477,7 +12551,10 @@ function App() {
             onStart={goRun} onBackground={goBackground} onWorkflow={goWorkflow} bgTaskStatus={bgTaskStatus}
             density={tweaks.density} modelStore={modelStore}
             toolbarStore={toolbarStore} onNavigateSources={() => setRoute('sources')}
-            teamTemplates={teamKnowledge.templates}/>
+            teamTemplates={teamKnowledge.templates}
+            workflows={workflows}
+            homeWfId={homeWfId} setHomeWfId={setHomeWfId}
+            onRunWorkflow={goRunHomeWorkflow}/>
         )}
         {route === 'team' && (
           <TeamPanel t={t} modelStore={modelStore} onBack={() => setRoute('home')}/>
