@@ -12566,11 +12566,19 @@ function App() {
             }}/>
         )}
         {route === 'workflow' && wfMode === 'linear' && (
-          <WorkflowView t={t} topic={prompt}
-            modelStore={modelStore}
-            toolbarConfig={{ language: toolbarStore.currentLanguage }}
-            onSaveReport={handleSaveReport}
-            onBack={(dest) => { setRoute(dest || 'home'); }}/>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+            <WorkflowView t={t} topic={prompt}
+              modelStore={modelStore}
+              toolbarConfig={{ language: toolbarStore.currentLanguage }}
+              onSaveReport={handleSaveReport}
+              onBack={(dest) => { setRoute(dest || 'home'); }}/>
+            <button onClick={() => setWfMode('canvas')}
+              style={{ position: 'absolute', top: 10, right: 16, fontSize: 11, padding: '3px 10px',
+                       border: '1px solid #ccc', borderRadius: 4, background: '#fff',
+                       color: '#767368', cursor: 'pointer', zIndex: 10 }}>
+              切换画布模式
+            </button>
+          </div>
         )}
         {route === 'workflow' && wfMode === 'canvas' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
