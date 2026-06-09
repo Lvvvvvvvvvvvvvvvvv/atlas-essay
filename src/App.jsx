@@ -4293,6 +4293,397 @@ function GenerationModePopover({ t, modelStore }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// DataPopover — 数据源 / 网页 / 附件 三合一
+// ══════════════════════════════════════════════════════════════════════════════
+function DataPopover({ t, store, onNavigateSources }) {
+  const [open, setOpen]   = React.useState(false);
+  const [tab, setTab]     = React.useState('sources');
+  const [urlDraft, setUrlDraft] = React.useState('');
+  const [catFilter, setCatFilter] = React.useState('all');
+
+  const allSources = typeof SOURCES !== 'undefined' ? SOURCES : [];
+  const allCats    = typeof SOURCE_CATEGORIES !== 'undefined' ? SOURCE_CATEGORIES : [];
+  const filtered   = catFilter === 'all' ? allSources : allSources.filter(s => s.type === catFilter);
+
+  const srcCount  = store?.selectedSources?.size || 0;
+  const urlCount  = store?.urlContexts?.length   || 0;
+  const fileCount = store?.attachments?.length   || 0;
+  const total     = srcCount + urlCount + fileCount;
+  const btnLabel  = total > 0 ? `数据 (${total})` : '数据';
+
+  const addUrl = () => {
+    const u = urlDraft.trim();
+    if (!u) return;
+    try { new URL(u.startsWith('http') ? u : 'https://' + u); } catch { return; }
+    store?.addUrl?.(u.startsWith('http') ? u : 'https://' + u);
+    setUrlDraft('');
+  };
+
+  const tabStyle = (k) => ({
+    flex: 1, padding: '6px 0', border: 'none', background: 'transparent',
+    fontSize: 10, fontFamily: t.fontMono, cursor: 'pointer', letterSpacing: 0.6,
+    color: tab === k ? t.ink : t.mute,
+    borderBottom: tab === k ? `2px solid ${t.ink}` : '2px solid transparent',
+    fontWeight: tab === k ? 700 : 400,
+  });
+
+  return (
+    <ToolPopover t={t} label={btnLabel}
+      open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={340}>
+
+      {/* 标签页 */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${t.rule}` }}>
+        <button style={tabStyle('sources')} onClick={() => setTab('sources')}>
+          数据源{srcCount > 0 ? ` (${srcCount})` : ''}
+        </button>
+        <button style={tabStyle('url')} onClick={() => setTab('url')}>
+          网页{urlCount > 0 ? ` (${urlCount})` : ''}
+        </button>
+        <button style={tabStyle('files')} onClick={() => setTab('files')}>
+          附件{fileCount > 0 ? ` (${fileCount})` : ''}
+        </button>
+      </div>
+
+      {/* 数据源 tab */}
+      {tab === 'sources' && (
+        <>
+          <div style={{ padding: '6px 10px', borderBottom: `1px solid ${t.rule}`, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {[{ k: 'all', cn: '全部' }, ...allCats].map(c => (
+              <button key={c.k} onClick={() => setCatFilter(c.k)} style={{
+                fontFamily: t.fontMono, fontSize: 8, letterSpacing: 0.8,
+                padding: '2px 7px', border: `1px solid ${catFilter === c.k ? t.ink : t.rule}`,
+                background: catFilter === c.k ? t.ink : 'transparent',
+                color: catFilter === c.k ? t.paper : t.mute, cursor: 'pointer',
+              }}>{c.cn}</button>
+            ))}
+          </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {filtered.map(s => {
+              const checked = store?.selectedSources?.has(s.name);
+              return (
+                <div key={s.name} onClick={() => store?.toggleSource?.(s.name)} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+                  cursor: 'pointer', background: checked ? t.paperAlt : 'transparent',
+                  borderBottom: `1px solid ${t.rule}`,
+                }}>
+                  <div style={{ width: 11, height: 11, flexShrink: 0, border: `1px solid ${checked ? t.accent : t.rule}`, background: checked ? t.accent : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {checked && <span style={{ color: t.paper, fontSize: 8, lineHeight: 1 }}>✓</span>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: t.fontCN, fontSize: 12, color: t.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                    <div style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginTop: 1 }}>{s.kind}</div>
+                  </div>
+                  {s.quality && (
+                    <span style={{ fontFamily: t.fontMono, fontSize: 8, padding: '1px 4px', flexShrink: 0,
+                      color: s.quality === 'A' ? '#2a8c5c' : s.quality === 'B' ? '#7a6a3a' : '#9b1c14',
+                      border: `1px solid ${s.quality === 'A' ? '#2a8c5c' : s.quality === 'B' ? '#c2a04a' : '#9b1c14'}` }}>
+                      {s.quality}
+                    </span>
+                  )}
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: s.status === 'ok' ? '#5B8A6A' : '#C4844A' }}/>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ padding: '8px 12px' }}>
+            <button onClick={() => { setOpen(false); onNavigateSources?.(); }} style={{
+              width: '100%', padding: '5px 0', background: 'transparent',
+              border: `1px solid ${t.rule}`, fontFamily: t.fontMono,
+              fontSize: 9, letterSpacing: 0.8, color: t.mute, cursor: 'pointer',
+            }}>管理全部数据源 →</button>
+          </div>
+        </>
+      )}
+
+      {/* 网页 tab */}
+      {tab === 'url' && (
+        <div style={{ padding: '10px 12px' }}>
+          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.6, marginBottom: 8 }}>
+            抓取网页正文注入上下文，每次生成最多 5 条
+          </div>
+          <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+            <input value={urlDraft} onChange={e => setUrlDraft(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addUrl()}
+              placeholder="https://…"
+              style={{ flex: 1, padding: '4px 7px', fontFamily: t.fontMono, fontSize: 11, border: `1px solid ${t.rule}`, background: t.cardOn, color: t.ink, outline: 'none' }}/>
+            <button onClick={addUrl} disabled={!urlDraft.trim()}
+              style={{ padding: '4px 10px', background: urlDraft.trim() ? t.ink : t.rule, border: 'none', fontFamily: t.fontMono, fontSize: 9, color: t.paper, cursor: urlDraft.trim() ? 'pointer' : 'not-allowed' }}>
+              添加
+            </button>
+          </div>
+          {(store?.urlContexts || []).map((u, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 0', borderTop: `1px solid ${t.rule}` }}>
+              <span style={{ flex: 1, fontFamily: t.fontMono, fontSize: 9, color: t.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.url || u}</span>
+              <button onClick={() => store?.removeUrl?.(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 13, lineHeight: 1 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 附件 tab */}
+      {tab === 'files' && (
+        <div style={{ padding: '10px 12px' }}>
+          <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.6, marginBottom: 8 }}>
+            上传 PDF / Word / TXT，内容将作为参考注入报告
+          </div>
+          <label style={{ display: 'block', padding: '10px', border: `1px dashed ${t.rule}`, textAlign: 'center', cursor: 'pointer' }}>
+            <input type="file" accept=".pdf,.docx,.txt,.md" multiple
+              style={{ display: 'none' }}
+              onChange={e => { Array.from(e.target.files || []).forEach(f => store?.addAttachment?.(f)); e.target.value = ''; }}/>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.6 }}>点击选择文件</span>
+          </label>
+          {(store?.attachments || []).map((f, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 0', borderTop: `1px solid ${t.rule}`, marginTop: 6 }}>
+              <span style={{ flex: 1, fontFamily: t.fontMono, fontSize: 9, color: t.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f}</span>
+              <button onClick={() => store?.removeAttachment?.(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 13, lineHeight: 1 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </ToolPopover>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GenerationConfigPopover — 语言 / 风格 / 长度 / 生成模式 四合一
+// ══════════════════════════════════════════════════════════════════════════════
+function GenerationConfigPopover({ t, store, modelStore }) {
+  const [open, setOpen]   = React.useState(false);
+  const [tab, setTab]     = React.useState('language');
+  const [addingLang, setAddingLang] = React.useState(false);
+  const [langDraft, setLangDraft]   = React.useState('');
+  const [addingTone, setAddingTone] = React.useState(false);
+  const [toneDraft, setToneDraft]   = React.useState('');
+  const langInputRef = React.useRef(null);
+  const toneInputRef = React.useRef(null);
+  React.useEffect(() => { if (addingLang && langInputRef.current) langInputRef.current.focus(); }, [addingLang]);
+  React.useEffect(() => { if (addingTone && toneInputRef.current) toneInputRef.current.focus(); }, [addingTone]);
+
+  const lenPreset   = LENGTH_PRESETS.find(p => p.id === store?.lengthId);
+  const lenLabel    = store?.lengthId === 'custom' ? `${store?.customLength || '?'}字` : `${(lenPreset?.chars || 2500).toLocaleString()}字`;
+  const langLabel   = store?.currentLanguage?.label || '简体中文';
+  const btnLabel    = `生成配置 · ${langLabel} · ${lenLabel}`;
+
+  const activeMode  = modelStore?.generationMode;
+  const modelId     = modelStore?.selected?.id;
+  const userTpls    = (modelStore?.modelParamTemplates || {})[modelId] || [];
+
+  const sectionHdr  = { fontFamily: t.fontMono, fontSize: 8, letterSpacing: 1.4, color: t.mute, padding: '7px 12px 4px', textTransform: 'uppercase', borderTop: `1px solid ${t.rule}` };
+  const tabStyle = (k) => ({
+    flex: 1, padding: '6px 0', border: 'none', background: 'transparent',
+    fontSize: 10, fontFamily: t.fontMono, cursor: 'pointer', letterSpacing: 0.6,
+    color: tab === k ? t.ink : t.mute,
+    borderBottom: tab === k ? `2px solid ${t.ink}` : '2px solid transparent',
+    fontWeight: tab === k ? 700 : 400,
+  });
+
+  return (
+    <ToolPopover t={t} label={btnLabel}
+      open={open} onOpen={() => setOpen(true)} onClose={() => { setOpen(false); setAddingLang(false); setAddingTone(false); setLangDraft(''); setToneDraft(''); }} width={300}>
+
+      {/* 标签页 */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${t.rule}` }}>
+        <button style={tabStyle('language')} onClick={() => setTab('language')}>语言</button>
+        <button style={tabStyle('style')}    onClick={() => setTab('style')}>风格</button>
+        <button style={tabStyle('length')}   onClick={() => setTab('length')}>长度</button>
+        <button style={tabStyle('mode')}     onClick={() => setTab('mode')}>生成模式</button>
+      </div>
+
+      {/* ── 语言 tab ── */}
+      {tab === 'language' && (
+        <>
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {(store?.allLanguages || []).map(lang => {
+              const active = lang.id === store?.languageId;
+              return (
+                <div key={lang.id} style={{ display: 'flex', alignItems: 'center', padding: '7px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
+                  <div onClick={() => { store?.setLanguageId?.(lang.id); }} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
+                    <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{lang.label}</span>
+                  </div>
+                  {lang.teamItem ? (
+                    <span style={{ fontFamily: t.fontMono, fontSize: 7.5, color: '#1d4ed8', border: '1px solid #1d4ed8', padding: '1px 4px', letterSpacing: 0.5 }}>TEAM</span>
+                  ) : lang.custom ? (
+                    <button onClick={e => { e.stopPropagation(); store?.removeLanguage?.(lang.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ padding: '7px 10px' }}>
+            {!addingLang ? (
+              <button onClick={() => setAddingLang(true)} style={{ width: '100%', padding: '4px 0', background: 'transparent', border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute, cursor: 'pointer' }}>＋ 新增语言</button>
+            ) : (
+              <div style={{ display: 'flex', gap: 5 }}>
+                <input ref={langInputRef} value={langDraft} onChange={e => setLangDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && langDraft.trim()) { store?.addLanguage?.(langDraft.trim()); setLangDraft(''); setAddingLang(false); }
+                    if (e.key === 'Escape') { setAddingLang(false); setLangDraft(''); }
+                  }}
+                  placeholder="如：日本語"
+                  style={{ flex: 1, padding: '4px 7px', fontFamily: t.fontCN, fontSize: 12, border: `1px solid ${t.ink}`, background: t.cardOn, color: t.ink, outline: 'none' }}/>
+                <button disabled={!langDraft.trim()}
+                  onClick={() => { if (langDraft.trim()) { store?.addLanguage?.(langDraft.trim()); setLangDraft(''); setAddingLang(false); } }}
+                  style={{ padding: '4px 10px', background: langDraft.trim() ? t.ink : t.rule, border: 'none', fontFamily: t.fontMono, fontSize: 9, color: t.paper, cursor: langDraft.trim() ? 'pointer' : 'not-allowed' }}>
+                  确认
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── 风格 tab ── */}
+      {tab === 'style' && (
+        <>
+          <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+            <div style={sectionHdr}>报告风格</div>
+            {(typeof BUILTIN_STYLES !== 'undefined' ? BUILTIN_STYLES : []).map(style => {
+              const active = style.id === store?.styleId;
+              return (
+                <div key={style.id} onClick={() => store?.setStyleId?.(style.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{style.cn}</div>
+                    <div style={{ fontFamily: t.fontCN, fontSize: 10, color: t.mute, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{style.instr?.slice(0, 22)}…</div>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={sectionHdr}>写作语气</div>
+            {(store?.allTones || []).map(tone => {
+              const active = tone.id === store?.toneId;
+              return (
+                <div key={tone.id} style={{ display: 'flex', alignItems: 'center', padding: '7px 12px', cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}` }}>
+                  <div onClick={() => store?.setToneId?.(tone.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
+                    <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{tone.cn}</span>
+                    {!tone.custom && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.mute, marginLeft: 'auto' }}>{tone.en}</span>}
+                  </div>
+                  {tone.custom && (
+                    <button onClick={e => { e.stopPropagation(); store?.removeTone?.(tone.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 12, padding: '0 2px', lineHeight: 1 }}>×</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ padding: '7px 10px', borderTop: `1px solid ${t.rule}` }}>
+            {!addingTone ? (
+              <button onClick={() => setAddingTone(true)} style={{ width: '100%', padding: '4px 0', background: 'transparent', border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute, cursor: 'pointer' }}>＋ 新增语气</button>
+            ) : (
+              <div style={{ display: 'flex', gap: 5 }}>
+                <input ref={toneInputRef} value={toneDraft} onChange={e => setToneDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && toneDraft.trim()) { store?.addTone?.(toneDraft.trim()); setToneDraft(''); setAddingTone(false); }
+                    if (e.key === 'Escape') { setAddingTone(false); setToneDraft(''); }
+                  }}
+                  placeholder="如：批判性"
+                  style={{ flex: 1, padding: '4px 7px', fontFamily: t.fontCN, fontSize: 12, border: `1px solid ${t.ink}`, background: t.cardOn, color: t.ink, outline: 'none' }}/>
+                <button disabled={!toneDraft.trim()}
+                  onClick={() => { if (toneDraft.trim()) { store?.addTone?.(toneDraft.trim()); setToneDraft(''); setAddingTone(false); } }}
+                  style={{ padding: '4px 10px', background: toneDraft.trim() ? t.ink : t.rule, border: 'none', fontFamily: t.fontMono, fontSize: 9, color: t.paper, cursor: toneDraft.trim() ? 'pointer' : 'not-allowed' }}>
+                  确认
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── 长度 tab ── */}
+      {tab === 'length' && (
+        <div style={{ padding: '6px 0' }}>
+          {(typeof LENGTH_PRESETS !== 'undefined' ? LENGTH_PRESETS : []).map(p => {
+            const active = store?.lengthId === p.id;
+            return (
+              <div key={p.id} onClick={() => store?.setLengthId?.(p.id)} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
+                cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}`,
+              }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
+                <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{p.cn}</span>
+                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 'auto' }}>{p.chars.toLocaleString()} 字</span>
+              </div>
+            );
+          })}
+          <div style={{ padding: '8px 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div onClick={() => store?.setLengthId?.('custom')} style={{
+                width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                border: `1px solid ${store?.lengthId === 'custom' ? t.ink : t.rule}`,
+                background: store?.lengthId === 'custom' ? t.ink : 'transparent', cursor: 'pointer',
+              }}/>
+              <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>自定义</span>
+              <input type="number" min={100} max={10000}
+                value={store?.customLength || ''}
+                onChange={e => { store?.setCustomLength?.(e.target.value); store?.setLengthId?.('custom'); }}
+                placeholder="100–10000"
+                style={{ flex: 1, padding: '3px 6px', fontFamily: t.fontMono, fontSize: 11, border: `1px solid ${t.rule}`, background: t.cardOn, color: t.ink, outline: 'none', minWidth: 0 }}/>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>字</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 生成模式 tab ── */}
+      {tab === 'mode' && (
+        <>
+          <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+            {(typeof GENERATION_MODES !== 'undefined' ? GENERATION_MODES : []).map(m => {
+              const active = activeMode === m.id;
+              const preset = (typeof getModelPreset !== 'undefined' ? getModelPreset(modelId, m.id) : null) || m;
+              return (
+                <div key={m.id} onClick={() => { modelStore?.setGenerationMode?.(m.id); }} style={{
+                  padding: '10px 14px', cursor: 'pointer', borderBottom: `1px solid ${t.rule}`,
+                  background: active ? t.faint : 'transparent',
+                  borderLeft: active ? `3px solid ${t.accent}` : '3px solid transparent',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
+                    <span style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: active ? 700 : 400, color: t.ink }}>{m.cn}</span>
+                    <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.8 }}>{m.en}</span>
+                    {active && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, marginLeft: 'auto' }}>✓ 当前</span>}
+                  </div>
+                  <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, lineHeight: 1.5 }}>{m.desc}</div>
+                  <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 4, opacity: 0.7 }}>
+                    temp {preset.temperature} · top_p {preset.topP}
+                  </div>
+                </div>
+              );
+            })}
+            {userTpls.length > 0 && (
+              <div style={{ borderTop: `1px solid ${t.rule}` }}>
+                <div style={{ padding: '5px 14px 3px', fontFamily: t.fontMono, fontSize: 8, color: t.mute, letterSpacing: 1, textTransform: 'uppercase' }}>
+                  {modelStore?.selected?.name} · 自定义模板
+                </div>
+                {userTpls.map(tpl => {
+                  const active = activeMode === tpl.id;
+                  return (
+                    <div key={tpl.id} onClick={() => modelStore?.setGenerationMode?.(tpl.id)} style={{
+                      padding: '8px 14px', cursor: 'pointer', borderBottom: `1px solid ${t.rule}`,
+                      background: active ? t.faint : 'transparent',
+                      borderLeft: active ? `3px solid ${t.accent}` : '3px solid transparent',
+                    }}>
+                      <div style={{ fontFamily: t.fontCN, fontSize: 12, fontWeight: active ? 700 : 400, color: t.ink }}>{tpl.name}</div>
+                      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, opacity: 0.7, marginTop: 2 }}>
+                        temp {Number(tpl.temperature).toFixed(2)} · top_p {Number(tpl.topP).toFixed(2)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div style={{ padding: '6px 12px', background: t.faint, borderTop: `1px solid ${t.rule}` }}>
+            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>手动调参后自动切换为「自定义」· 模板在设置中管理</span>
+          </div>
+        </>
+      )}
+    </ToolPopover>
+  );
+}
+
+
 // ── PromptComposer ──────────────────────────────────────────────────────
 
 // ── TemplateLockBadge ─────────────────────────────────────────────────────
@@ -4522,28 +4913,16 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
       }}>
         {toolbarStore ? (
           <>
-            <SourcesPopover t={t} store={toolbarStore} onNavigateSources={onNavigateSources}/>
-            <UrlContextPopover t={t} store={toolbarStore}/>
-            <AttachmentsPopover t={t} store={toolbarStore}/>
-            <div style={{ width: 1, alignSelf: 'stretch', background: t.rule, margin: '2px 4px' }}/>
-            <LanguagePopover t={t} store={toolbarStore}/>
-            <StylePopover t={t} store={toolbarStore}/>
-            <LengthPopover t={t} store={toolbarStore}/>
-            {modelStore && <GenerationModePopover t={t} modelStore={modelStore}/>}
+            <DataPopover t={t} store={toolbarStore} onNavigateSources={onNavigateSources}/>
+            <GenerationConfigPopover t={t} store={toolbarStore} modelStore={modelStore}/>
             {toolbarStore.activeTemplate && (
               <TemplateLockBadge t={t} store={toolbarStore}/>
             )}
           </>
         ) : (
           <>
-            <Tag t={t}>＋ 数据源 (3)</Tag>
-            <Tag t={t}>↗ 网页</Tag>
-            <Tag t={t}>＋ 附件</Tag>
-            <div style={{ width: 1, alignSelf: 'stretch', background: '#ddd', margin: '2px 4px' }}/>
-            <Tag t={t}>语言 · 简体中文</Tag>
-            <Tag t={t}>风格 · 商业可读</Tag>
-            <Tag t={t}>长度 · 2,500 字</Tag>
-            <Tag t={t}>◈ 均衡</Tag>
+            <Tag t={t}>数据</Tag>
+            <Tag t={t}>生成配置 · 简体中文 · 2,500字</Tag>
           </>
         )}
         {modelStore && <ModelSelector t={t} store={modelStore}/>}
