@@ -4922,22 +4922,6 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
         )}
         {modelStore && <ModelSelector t={t} store={modelStore}/>}
         <span style={{ flex: 1 }}/>
-        {/* 粗估 + 好评率（折叠到一行，静默展示） */}
-        {approval && canGenerate && (
-          <span title="该模型+模式的历史好评率" style={{ fontFamily: t.fontMono, fontSize: 9, color: approval.rate >= 60 ? '#2a8c5c' : approval.rate >= 30 ? t.mute : '#b04040', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
-            好评率 {approval.rate}%
-          </span>
-        )}
-        {est && canGenerate && (
-          <span title="粗估，仅用于防止意外超支，非账单级精确" style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
-            ~{est.tokens.toLocaleString()} tok · ≈${est.usd < 0.01 ? est.usd.toFixed(4) : est.usd.toFixed(3)}
-          </span>
-        )}
-        {/* 随机示例 — 极小文本按钮 */}
-        <button onClick={() => setPrompt(SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)])}
-          style={{ background:'none', border:'none', padding:'0 4px', fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:0.6, cursor:'pointer', whiteSpace:'nowrap', opacity:0.7 }}>
-          ✦ 随机示例
-        </button>
         {/* 后台运行 checkbox */}
         {canGenerate && onBackground && (
           <label style={{ display:'flex', alignItems:'center', gap:5, cursor:'pointer', userSelect:'none' }}>
@@ -4948,7 +4932,7 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
             </span>
           </label>
         )}
-        {/* Start writing — 主 CTA，大按钮 */}
+        {/* Start writing — 主 CTA */}
         <button
           onClick={() => {
             if (!prompt.trim() || !canGenerate) return;
@@ -4958,13 +4942,13 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
           style={{
             fontSize: 13, fontFamily: t.fontDisplay, fontWeight: 800, letterSpacing: 0.4,
             padding: '9px 22px',
-            border: `1.5px solid ${!prompt.trim()||!canGenerate ? t.rule : t.accent}`,
-            background: !prompt.trim()||!canGenerate ? 'transparent' : t.accentGradient || t.accent,
-            color: !prompt.trim()||!canGenerate ? t.mute : '#fff',
+            border: `1.5px solid ${!prompt.trim()||!canGenerate ? t.rule : t.ink}`,
+            background: !prompt.trim()||!canGenerate ? 'transparent' : t.ink,
+            color: !prompt.trim()||!canGenerate ? t.mute : t.paper,
             cursor: !prompt.trim()||!canGenerate ? 'default' : 'pointer',
             whiteSpace: 'nowrap', transition: 'all 0.15s',
           }}>
-          {bgMode ? '后台生成 ↗' : 'Start writing ↗'}
+          Start writing ↗
         </button>
       </div>
       {!canGenerate && (
