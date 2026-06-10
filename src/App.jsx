@@ -646,7 +646,7 @@ const NAV_ITEMS = [
   { k: 'sources',   en: 'SOURCES',  cn: '数据源' },
 ];
 
-function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, onNavClick }) {
+function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, onNavClick, onWorkflow }) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -707,7 +707,7 @@ function TopBar({ route, setRoute, t, runState = 'idle', issueNum = 241, tweaks,
           VOL.04 · № {issueNum}
         </span>
         <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 1 }}>{dateStr} · {timeStr}</span>
-        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode} researchMode={researchMode} setResearchMode={setResearchMode} setRoute={setRoute}/>
+        <UserMenu t={t} tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore} outlineMode={outlineMode} setOutlineMode={setOutlineMode} researchMode={researchMode} setResearchMode={setResearchMode} setRoute={setRoute} onWorkflow={onWorkflow}/>
       </div>
     </div>
   );
@@ -1679,7 +1679,7 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
   );
 }
 
-function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, setRoute }) {
+function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, setOutlineMode, researchMode, setResearchMode, setRoute, onWorkflow }) {
   const { user, team, role, signOut } = useAuth();
   const [open, setOpen] = React.useState(false);
   const [section, setSection] = React.useState(null);
@@ -1810,6 +1810,8 @@ function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, 
               <MRow label="创建团队" sub="与他人协作，共享密钥与知识库" arrow
                 onClick={() => { setOpen(false); setSection(null); setRoute?.('team'); }}/>
             )}
+            <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
+            <MRow label="工作流" sub="节点画布 · 可视化编排报告流程" arrow onClick={() => { setOpen(false); setSection(null); onWorkflow?.(); }}/>
             <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
             <MRow label="设置" sub="模型 · 导出 · 权限" arrow onClick={() => { setOpen(false); setSection(null); setSettingsOpen(true); }}/>
             <div style={{ height:1, background:t.rule, margin:'4px 0' }}/>
@@ -2607,7 +2609,7 @@ function useAINews() {
 
 function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskStatus, density = 'editorial', modelStore, toolbarStore, onNavigateSources, teamTemplates = [], workflows = [], homeWfId, setHomeWfId, onRunWorkflow }) {
   const editorial = density === 'editorial';
-  const headSize = editorial ? 'xxl' : 'xl';
+  const headSize = editorial ? 'xl' : 'lg';
   const customTpls = useCustomTemplates();
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [editingTemplate, setEditingTemplate] = React.useState(null);
@@ -2652,8 +2654,8 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskS
 
       {/* Cover area */}
       <div style={{
-        padding: editorial ? '48px 72px 32px' : '32px 56px 28px',
-        display: 'flex', flexDirection: 'column', gap: editorial ? 36 : 24, minHeight: 0,
+        padding: editorial ? '24px 72px 32px' : '16px 56px 24px',
+        display: 'flex', flexDirection: 'column', gap: editorial ? 24 : 18, minHeight: 0,
       }}>
         {/* Kicker row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -2670,7 +2672,7 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskS
           />
           <div style={{
             fontFamily: t.fontSerif, fontStyle: 'italic', fontWeight: 400,
-            fontSize: editorial ? 26 : 22, lineHeight: 1.35, color: t.mute,
+            fontSize: editorial ? 22 : 18, lineHeight: 1.35, color: t.mute,
             letterSpacing: -0.3, maxWidth: 720,
           }}>
             An essay engine. Drop a brief, get back a piece you can actually file.
@@ -4838,6 +4840,7 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
   const taRef = React.useRef(null);
   const { can } = usePermission();
   const canGenerate = can('generate');
+  const [bgMode, setBgMode] = React.useState(false);
 
   // G-2 · cost estimate (only meaningful in live mode with a selected model)
   const est = React.useMemo(() => {
@@ -4893,8 +4896,8 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         style={{
-          padding: '18px 22px', minHeight: 96, fontFamily: t.fontCN, fontSize: 16,
-          lineHeight: 1.55, color: t.ink, background: 'transparent',
+          padding: '20px 24px', minHeight: 148, fontFamily: t.fontCN, fontSize: 17,
+          lineHeight: 1.6, color: t.ink, background: 'transparent',
           border: 'none', outline: 'none', resize: 'none', width: '100%', boxSizing: 'border-box',
         }}
       />
@@ -4919,61 +4922,50 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
         )}
         {modelStore && <ModelSelector t={t} store={modelStore}/>}
         <span style={{ flex: 1 }}/>
+        {/* 粗估 + 好评率（折叠到一行，静默展示） */}
         {approval && canGenerate && (
-          <span title="该模型+模式的历史好评率（基于你的评分）" style={{ fontFamily: t.fontMono, fontSize: 9, color: approval.rate >= 60 ? '#2a8c5c' : approval.rate >= 30 ? t.mute : '#b04040', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
-            好评率 {approval.rate}%（{approval.n}篇）
+          <span title="该模型+模式的历史好评率" style={{ fontFamily: t.fontMono, fontSize: 9, color: approval.rate >= 60 ? '#2a8c5c' : approval.rate >= 30 ? t.mute : '#b04040', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
+            好评率 {approval.rate}%
           </span>
         )}
         {est && canGenerate && (
           <span title="粗估，仅用于防止意外超支，非账单级精确" style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
-            粗估 ~{est.tokens.toLocaleString()} tok · ≈${est.usd < 0.01 ? est.usd.toFixed(4) : est.usd.toFixed(3)}
+            ~{est.tokens.toLocaleString()} tok · ≈${est.usd < 0.01 ? est.usd.toFixed(4) : est.usd.toFixed(3)}
           </span>
         )}
-        <Btn t={t} size="sm"
-          onClick={() => setPrompt(SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)])}>
-          ✦ Surprise me
-        </Btn>
-        {/* 工作流选择器（Phase 2）*/}
-        {workflows.length > 0 && (
-          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-            <select value={homeWfId || ''} onChange={e => setHomeWfId(e.target.value || null)}
-              style={{ fontSize:10, fontFamily:'monospace', padding:'2px 6px', border:`1px solid ${t.rule}`, borderRadius:3, background:homeWfId?t.accent:'transparent', color:homeWfId?'#fff':t.mute, cursor:'pointer', outline:'none' }}>
-              <option value="">工作流 —</option>
-              {workflows.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-            {homeWfId && <span style={{ fontSize:9, color:t.mute, letterSpacing:0.3 }}>已选定</span>}
-          </div>
+        {/* 随机示例 — 极小文本按钮 */}
+        <button onClick={() => setPrompt(SAMPLE_PROMPTS[Math.floor(Math.random() * SAMPLE_PROMPTS.length)])}
+          style={{ background:'none', border:'none', padding:'0 4px', fontFamily:t.fontMono, fontSize:9, color:t.mute, letterSpacing:0.6, cursor:'pointer', whiteSpace:'nowrap', opacity:0.7 }}>
+          ✦ 随机示例
+        </button>
+        {/* 后台运行 checkbox */}
+        {canGenerate && onBackground && (
+          <label style={{ display:'flex', alignItems:'center', gap:5, cursor:'pointer', userSelect:'none' }}>
+            <input type="checkbox" checked={bgMode} onChange={e => setBgMode(e.target.checked)}
+              style={{ width:11, height:11, accentColor:t.ink, cursor:'pointer', margin:0 }}/>
+            <span style={{ fontFamily:t.fontMono, fontSize:9, color: bgMode ? t.ink : t.mute, letterSpacing:0.6, whiteSpace:'nowrap' }}>
+              {bgTaskStatus==='queued'?'排队中…': bgTaskStatus==='running'?'生成中…': bgTaskStatus==='done'?'✓ 已完成':'后台运行'}
+            </span>
+          </label>
         )}
-        {/* 始终可见的操作按钮行 */}
-        <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-          {canGenerate && onBackground && (
-            <button onClick={() => { if (prompt.trim()) onBackground(); }}
-              disabled={!prompt.trim() || bgTaskStatus==='queued' || bgTaskStatus==='running'}
-              title="后台异步生成，不跳转页面"
-              style={{ fontSize:10, fontFamily:'monospace', letterSpacing:0.6, padding:'5px 10px', border:`1px solid ${t.rule}`, borderRadius:3, background:'transparent', color: (!prompt.trim()||bgTaskStatus==='running')?t.mute:t.ink, cursor:'pointer', whiteSpace:'nowrap' }}>
-              {bgTaskStatus==='queued'?'排队…': bgTaskStatus==='running'?'生成中…': bgTaskStatus==='done'?'完成':'后台生成'}
-            </button>
-          )}
-          {canGenerate && onWorkflow && (
-            <button onClick={onWorkflow}
-              title="在工作流画布中配置并运行"
-              style={{ fontSize:10, fontFamily:'monospace', letterSpacing:0.6, padding:'5px 10px', border:`1px solid ${t.rule}`, borderRadius:3, background:'transparent', color:t.ink, cursor:'pointer', whiteSpace:'nowrap' }}>
-              工作流 ↗
-            </button>
-          )}
-          {homeWfId && canGenerate && onRunWorkflow && (
-            <button onClick={() => { if (prompt.trim()) onRunWorkflow(); }}
-              disabled={!prompt.trim() || bgTaskStatus==='queued' || bgTaskStatus==='running'}
-              style={{ fontSize:10, fontFamily:'monospace', letterSpacing:0.6, padding:'5px 12px', border:'none', borderRadius:3, background:t.accent, color:'#fff', cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
-              运行工作流 ↗
-            </button>
-          )}
-          <button onClick={() => !(!prompt.trim() || !canGenerate) && onStart()}
-            disabled={!prompt.trim() || !canGenerate}
-            style={{ fontSize:11, fontFamily:'monospace', letterSpacing:0.6, padding:'6px 14px', border:`1px solid ${!prompt.trim()||!canGenerate?t.rule:t.accent}`, borderRadius:3, background:!prompt.trim()||!canGenerate?'transparent':t.accent, color:!prompt.trim()||!canGenerate?t.mute:'#fff', cursor:!prompt.trim()||!canGenerate?'default':'pointer', fontWeight:500, whiteSpace:'nowrap' }}>
-            Start writing ↗
-          </button>
-        </div>
+        {/* Start writing — 主 CTA，大按钮 */}
+        <button
+          onClick={() => {
+            if (!prompt.trim() || !canGenerate) return;
+            if (bgMode && onBackground) { onBackground(); } else { onStart(); }
+          }}
+          disabled={!prompt.trim() || !canGenerate || bgTaskStatus==='queued' || bgTaskStatus==='running'}
+          style={{
+            fontSize: 13, fontFamily: t.fontDisplay, fontWeight: 800, letterSpacing: 0.4,
+            padding: '9px 22px',
+            border: `1.5px solid ${!prompt.trim()||!canGenerate ? t.rule : t.accent}`,
+            background: !prompt.trim()||!canGenerate ? 'transparent' : t.accentGradient || t.accent,
+            color: !prompt.trim()||!canGenerate ? t.mute : '#fff',
+            cursor: !prompt.trim()||!canGenerate ? 'default' : 'pointer',
+            whiteSpace: 'nowrap', transition: 'all 0.15s',
+          }}>
+          {bgMode ? '后台生成 ↗' : 'Start writing ↗'}
+        </button>
       </div>
       {!canGenerate && (
         <div style={{ padding: '8px 14px', borderTop: `1px solid ${t.rule}`, background: 'rgba(118,115,104,0.06)', fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.4 }}>
@@ -12912,6 +12904,7 @@ function App() {
     }}>
       <TopBar t={t} route={route} setRoute={setRoute}
         onNavClick={(k) => { if (k === 'workflow') { setWfMode('canvas'); setRoute('workflow'); } else setRoute(k); }}
+        onWorkflow={() => { setWfMode('canvas'); setRoute('workflow'); }}
         runState={route === 'running' && !runDone ? 'running' : 'idle'}
         tweaks={tweaks} setTweak={setTweak} modelStore={modelStore} toolbarStore={toolbarStore}
         outlineMode={outlineMode} setOutlineMode={setOutlineMode}
