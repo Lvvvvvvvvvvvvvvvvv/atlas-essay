@@ -4384,7 +4384,7 @@ function DataPopover({ t, store, onNavigateSources }) {
       {tab === 'sources' && (
         <>
           <div style={{ padding: '6px 10px', borderBottom: `1px solid ${t.rule}`, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {[{ k: 'all', cn: '全部' }, ...allCats].map(c => (
+            {allCats.map(c => (
               <button key={c.k} onClick={() => setCatFilter(c.k)} style={{
                 fontFamily: t.fontMono, fontSize: 8, letterSpacing: 0.8,
                 padding: '2px 7px', border: `1px solid ${catFilter === c.k ? t.ink : t.rule}`,
