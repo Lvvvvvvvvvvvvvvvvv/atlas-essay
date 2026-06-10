@@ -1427,7 +1427,10 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
                           <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginTop: 2 }}>{m.provider} · {m.id}</div>
                         </div>
                         {modelStore.selected?.id === m.id && <span style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, letterSpacing: 0.5, flexShrink: 0 }}>使用中</span>}
-                        {m.builtin && m.needsKey && (
+                        {m.builtin && m.sharedKey && (
+                          <span style={{ fontFamily: t.fontMono, fontSize: 8, color: '#2a8c5c', flexShrink: 0 }}>内置 Key · 登录即用</span>
+                        )}
+                        {m.builtin && m.needsKey && !m.sharedKey && (
                           <span style={{ fontFamily: t.fontMono, fontSize: 8, color: modelStore.builtinKeys?.[m.id] ? '#2a8c5c' : t.mute, flexShrink: 0 }}>
                             {modelStore.builtinKeys?.[m.id] ? '已配置 Key' : '需配置 Key'}
                           </span>
@@ -2806,10 +2809,11 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskS
 
 // ── Model Selector ─────────────────────────────────────────────────────
 
+const _HAS_SHARED_KEY = import.meta.env.VITE_HAS_SHARED_KEY === 'true';
 const BUILTIN_MODELS = [
-  { id: 'claude-opus-4-7',           name: 'Opus 4.7',    provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
-  { id: 'claude-sonnet-4-6',         name: 'Sonnet 4.6',  provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
-  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5',   provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
+  { id: 'claude-opus-4-7',           name: 'Opus 4.7',    provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1', sharedKey: _HAS_SHARED_KEY },
+  { id: 'claude-sonnet-4-6',         name: 'Sonnet 4.6',  provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1', sharedKey: _HAS_SHARED_KEY },
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5',   provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1', sharedKey: _HAS_SHARED_KEY },
   { id: 'mimo-v2.5-pro',             name: 'MiMo V2.5 Pro', provider: 'Xiaomi', builtin: true, apiUrl: 'https://api.xiaomimimo.com/v1', needsKey: true },
 ];
 const EFFORT_OPTIONS = ['Low', 'Medium', 'High', 'Max'];
@@ -6091,7 +6095,10 @@ ${otherSections}
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: sectionMaxTokens, temperature: 0.5 }),
       });
-      if (!resp.ok) { const e = await resp.text(); throw new Error(`API ${resp.status}: ${e.slice(0, 200)}`); }
+      if (!resp.ok) {
+        if (resp.status === 401) throw new Error('请先登录后方可使用内置模型');
+        const e = await resp.text(); throw new Error(`API ${resp.status}: ${e.slice(0, 200)}`);
+      }
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
@@ -7415,7 +7422,10 @@ ${existingText}
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }], stream: true, max_tokens: 2000, temperature: 0.5 }),
       });
-      if (!resp.ok) throw new Error(`API ${resp.status}`);
+      if (!resp.ok) {
+        if (resp.status === 401) throw new Error('请先登录后方可使用内置模型');
+        throw new Error(`API ${resp.status}`);
+      }
       await readStream(resp);
     } else {
       const resp = await fetch(`${apiUrl}/chat/completions`, {
