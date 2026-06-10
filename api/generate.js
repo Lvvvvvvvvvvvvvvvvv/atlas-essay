@@ -48,13 +48,18 @@ export default async function handler(req, res) {
     }
   }
 
-  if (!keyRow) return res.status(404).json({ error: 'No server-side API key found for this provider' });
-
-  let apiKey;
-  try { apiKey = decrypt(keyRow.key_enc); }
-  catch { return res.status(500).json({ error: 'Failed to decrypt API key' }); }
-
-  const apiUrl = (keyRow.api_url || 'https://api.anthropic.com/v1').replace(/\/$/, '');
+  // 3. Fall back to system shared key (env SHARED_API_KEY)
+  let apiKey, apiUrl;
+  if (keyRow) {
+    try { apiKey = decrypt(keyRow.key_enc); }
+    catch { return res.status(500).json({ error: 'Failed to decrypt API key' }); }
+    apiUrl = (keyRow.api_url || 'https://api.anthropic.com/v1').replace(/\/$/, '');
+  } else if (process.env.SHARED_API_KEY) {
+    apiKey = process.env.SHARED_API_KEY;
+    apiUrl = (process.env.SHARED_API_URL || 'https://api.anthropic.com/v1').replace(/\/$/, '');
+  } else {
+    return res.status(404).json({ error: 'No server-side API key found for this provider' });
+  }
 
   // Proxy the request (streaming for report generation, JSON for tool-decision rounds)
   try {
