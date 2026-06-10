@@ -3460,11 +3460,10 @@ function _hashStr(s) {
 }
 const PROMPT_VERSION = _hashStr(BASE_SYSTEM_PROMPT);
 
-const LENGTH_PRESETS = [
-  { id: 'brief',    cn: '简报', chars: 800 },
-  { id: 'standard', cn: '标准', chars: 1500 },
-  { id: 'deep',     cn: '深度', chars: 2500 },
-  { id: 'long',     cn: '长文', chars: 4000 },
+const DEPTH_PRESETS = [
+  { id: 'brief',    cn: '简报', desc: '要点提炼', hint: '800–1500 字',  minChars: 800  },
+  { id: 'standard', cn: '标准', desc: '均衡覆盖', hint: '2500–4000 字', minChars: 2500 },
+  { id: 'full',     cn: '完整', desc: '深度展开', hint: '5000+ 字',     minChars: 5000 },
 ];
 
 const GENERATION_MODES = [
@@ -3493,8 +3492,7 @@ function useToolbarStore() {
   const [customTones, setCustomTones] = React.useState(
     () => { try { return JSON.parse(localStorage.getItem('atlas_custom_tones') || '[]'); } catch { return []; } }
   );
-  const [lengthId, setLengthId] = React.useState('deep');
-  const [customLength, setCustomLength] = React.useState('');
+  const [depthId, setDepthId] = React.useState('standard');
   const [languageId, setLanguageIdRaw] = React.useState(
     () => localStorage.getItem('atlas_language') || 'zh-cn'
   );
@@ -3508,9 +3506,7 @@ function useToolbarStore() {
 
   const allTones = [...BUILTIN_TONES, ...customTones];
   const currentTone = allTones.find(to => to.id === toneId) || allTones[0];
-  const effectiveLength = lengthId === 'custom'
-    ? (parseInt(customLength) || 2500)
-    : (LENGTH_PRESETS.find(p => p.id === lengthId)?.chars || 2500);
+  const effectiveLength = DEPTH_PRESETS.find(p => p.id === depthId)?.minChars || 2500;
   const [teamLanguages, setTeamLanguages] = React.useState([]);
   const allLanguages = [...BUILTIN_LANGUAGES, ...customLanguages, ...teamLanguages];
   const currentLanguage = allLanguages.find(l => l.id === languageId) || allLanguages[0];
@@ -3614,7 +3610,7 @@ function useToolbarStore() {
     urlContexts, addUrlContext, removeUrlContext,
     searchContexts, addSearchContext, removeSearchContext, clearSearchContexts,
     toneId, setToneId, allTones, currentTone, addTone, removeTone,
-    lengthId, setLengthId, customLength, setCustomLength, effectiveLength,
+    depthId, setDepthId, effectiveLength,
     languageId, setLanguageId, allLanguages, currentLanguage, addLanguage, removeLanguage, setTeamLanguages,
     styleId, setStyleId, currentStyle,
     activeTemplate, setActiveTemplate, clearActiveTemplate,
@@ -4188,23 +4184,20 @@ function StylePopover({ t, store }) {
   );
 }
 
-// ── LengthPopover ─────────────────────────────────────────────────────────
-function LengthPopover({ t, store }) {
+// ── DepthPopover ─────────────────────────────────────────────────────────
+function DepthPopover({ t, store }) {
   const [open, setOpen] = React.useState(false);
-  const preset = LENGTH_PRESETS.find(p => p.id === store.lengthId);
-  const displayLen = store.lengthId === 'custom'
-    ? `${store.customLength || '?'} 字`
-    : `${(preset?.chars || 2500).toLocaleString()} 字`;
+  const preset = DEPTH_PRESETS.find(p => p.id === store.depthId) || DEPTH_PRESETS[1];
 
   return (
-    <ToolPopover t={t} label={`长度 · ${displayLen}`}
+    <ToolPopover t={t} label={`深度 · ${preset.cn}`}
       open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={220}>
       <div style={{ padding: '6px 0' }}>
-        {LENGTH_PRESETS.map(p => {
-          const active = store.lengthId === p.id;
+        {DEPTH_PRESETS.map(p => {
+          const active = store.depthId === p.id;
           return (
-            <div key={p.id} onClick={() => store.setLengthId(p.id)} style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px',
+            <div key={p.id} onClick={() => store.setDepthId(p.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
               cursor: 'pointer', background: active ? t.paperAlt : 'transparent',
               borderBottom: `1px solid ${t.rule}`,
             }}>
@@ -4213,34 +4206,14 @@ function LengthPopover({ t, store }) {
                 border: `1px solid ${active ? t.ink : t.rule}`,
                 background: active ? t.ink : 'transparent',
               }}/>
-              <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{p.cn}</span>
-              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 'auto' }}>
-                {p.chars.toLocaleString()} 字
-              </span>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{p.cn}</span>
+                <span style={{ fontFamily: t.fontCN, fontSize: 10, color: t.mute, marginLeft: 6 }}>{p.desc}</span>
+              </div>
+              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute }}>{p.hint}</span>
             </div>
           );
         })}
-        <div style={{ padding: '8px 12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <div onClick={() => store.setLengthId('custom')} style={{
-              width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-              border: `1px solid ${store.lengthId === 'custom' ? t.ink : t.rule}`,
-              background: store.lengthId === 'custom' ? t.ink : 'transparent',
-              cursor: 'pointer',
-            }}/>
-            <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>自定义</span>
-            <input type="number" min={100} max={10000}
-              value={store.customLength}
-              onChange={e => { store.setCustomLength(e.target.value); store.setLengthId('custom'); }}
-              placeholder="100–10000"
-              style={{
-                flex: 1, padding: '3px 6px', fontFamily: t.fontMono, fontSize: 11,
-                border: `1px solid ${t.rule}`, background: t.cardOn, color: t.ink, outline: 'none', minWidth: 0,
-              }}
-            />
-            <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>字</span>
-          </div>
-        </div>
       </div>
     </ToolPopover>
   );
@@ -4495,11 +4468,10 @@ function GenerationConfigPopover({ t, store, modelStore }) {
   React.useEffect(() => { if (addingLang && langInputRef.current) langInputRef.current.focus(); }, [addingLang]);
   React.useEffect(() => { if (addingTone && toneInputRef.current) toneInputRef.current.focus(); }, [addingTone]);
 
-  const lenPreset   = LENGTH_PRESETS.find(p => p.id === store?.lengthId);
-  const lenLabel    = store?.lengthId === 'custom' ? `${store?.customLength || '?'}字` : `${(lenPreset?.chars || 2500).toLocaleString()}字`;
+  const depthPreset = DEPTH_PRESETS.find(p => p.id === store?.depthId) || DEPTH_PRESETS[1];
   const langLabel   = store?.currentLanguage?.label || '简体中文';
   const langShort = { '简体中文':'中文','繁体中文':'繁中','English':'EN','日本語':'日語' }[langLabel] || langLabel.slice(0,2);
-  const btnLabel  = `◈ ${langShort} · ${lenLabel} ▾`;
+  const btnLabel  = `◈ ${langShort} · ${depthPreset.cn} ▾`;
 
   const activeMode  = modelStore?.generationMode;
   const modelId     = modelStore?.selected?.id;
@@ -4522,7 +4494,6 @@ function GenerationConfigPopover({ t, store, modelStore }) {
       <div style={{ display: 'flex', borderBottom: `1px solid ${t.rule}` }}>
         <button style={tabStyle('language')} onClick={() => setTab('language')}>语言</button>
         <button style={tabStyle('style')}    onClick={() => setTab('style')}>风格</button>
-        <button style={tabStyle('length')}   onClick={() => setTab('length')}>长度</button>
         <button style={tabStyle('mode')}     onClick={() => setTab('mode')}>生成模式</button>
       </div>
 
@@ -4624,43 +4595,28 @@ function GenerationConfigPopover({ t, store, modelStore }) {
               </div>
             )}
           </div>
+          {/* ── 报告深度 ── */}
+          <div style={sectionHdr}>报告深度</div>
+          <div style={{ padding: '4px 0 6px' }}>
+            {DEPTH_PRESETS.map(p => {
+              const active = store?.depthId === p.id;
+              return (
+                <div key={p.id} onClick={() => store?.setDepthId?.(p.id)} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+                  cursor: 'pointer', background: active ? t.paperAlt : 'transparent',
+                  borderBottom: `1px solid ${t.rule}`,
+                }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
+                  <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, fontWeight: active ? 600 : 400 }}>{p.cn}</span>
+                  <span style={{ fontFamily: t.fontCN, fontSize: 10, color: t.mute }}>{p.desc}</span>
+                  <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 'auto' }}>{p.hint}</span>
+                </div>
+              );
+            })}
+          </div>
         </>
       )}
 
-      {/* ── 长度 tab ── */}
-      {tab === 'length' && (
-        <div style={{ padding: '6px 0' }}>
-          {(typeof LENGTH_PRESETS !== 'undefined' ? LENGTH_PRESETS : []).map(p => {
-            const active = store?.lengthId === p.id;
-            return (
-              <div key={p.id} onClick={() => store?.setLengthId?.(p.id)} style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-                cursor: 'pointer', background: active ? t.paperAlt : 'transparent', borderBottom: `1px solid ${t.rule}`,
-              }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, border: `1px solid ${active ? t.ink : t.rule}`, background: active ? t.ink : 'transparent' }}/>
-                <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>{p.cn}</span>
-                <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 'auto' }}>{p.chars.toLocaleString()} 字</span>
-              </div>
-            );
-          })}
-          <div style={{ padding: '8px 12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <div onClick={() => store?.setLengthId?.('custom')} style={{
-                width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                border: `1px solid ${store?.lengthId === 'custom' ? t.ink : t.rule}`,
-                background: store?.lengthId === 'custom' ? t.ink : 'transparent', cursor: 'pointer',
-              }}/>
-              <span style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink }}>自定义</span>
-              <input type="number" min={100} max={10000}
-                value={store?.customLength || ''}
-                onChange={e => { store?.setCustomLength?.(e.target.value); store?.setLengthId?.('custom'); }}
-                placeholder="100–10000"
-                style={{ flex: 1, padding: '3px 6px', fontFamily: t.fontMono, fontSize: 11, border: `1px solid ${t.rule}`, background: t.cardOn, color: t.ink, outline: 'none', minWidth: 0 }}/>
-              <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, flexShrink: 0 }}>字</span>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── 生成模式 tab ── */}
       {tab === 'mode' && (
@@ -5416,14 +5372,14 @@ function validateReport(text, { effectiveLength, templateSections } = {}) {
 
   // 2. Section count
   const minSections = (templateSections?.length) ||
-    ((effectiveLength || 2500) < 1000 ? 3 : (effectiveLength || 2500) < 2000 ? 5 : (effectiveLength || 2500) < 3000 ? 6 : 8);
+    ((effectiveLength || 2500) < 1200 ? 3 : (effectiveLength || 2500) < 3000 ? 5 : 7);
   const sectionCount = (trimmed.match(/^## /gm) || []).length;
   if (sectionCount > 0 && sectionCount < minSections) {
     warnings.push(`章节数不足（检测到 ${sectionCount} 章，建议 ≥ ${minSections}）`);
   }
 
   // 3. Char count vs target
-  const minChars = Math.round((effectiveLength || 2500) * 0.7);
+  const minChars = Math.round((effectiveLength || 2500) * 0.65);
   const charCount = trimmed.replace(/\s+/g, '').length;
   if (charCount > 0 && charCount < minChars) {
     warnings.push(`字数偏少（${charCount.toLocaleString()} 字，建议 ≥ ${minChars.toLocaleString()}）`);
@@ -8091,7 +8047,7 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }
             <div style={{ width: 1, alignSelf: 'stretch', background: t.rule, margin: '2px 4px' }}/>
             <LanguagePopover t={t} store={toolbarStore}/>
             <StylePopover t={t} store={toolbarStore}/>
-            <LengthPopover t={t} store={toolbarStore}/>
+            <DepthPopover t={t} store={toolbarStore}/>
           </>
         ) : (
           <>
@@ -8101,7 +8057,7 @@ function FollowUpComposer({ t, reportData, rSections, onFollowUp, toolbarStore }
             <div style={{ width: 1, alignSelf: 'stretch', background: '#ddd', margin: '2px 4px' }}/>
             <Tag t={t}>语言 · 简体中文</Tag>
             <Tag t={t}>风格 · 商业可读</Tag>
-            <Tag t={t}>长度 · 深度</Tag>
+            <Tag t={t}>深度 · 标准</Tag>
             <Tag t={t}>◈ 均衡</Tag>
           </>
         )}
