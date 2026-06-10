@@ -7574,7 +7574,15 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
     setRefineOpen(null);
     if (onSaveReport && reportData) onSaveReport({ ...reportData, sections: updated });
   };
-  const rRefs        = reportData?.refs     || REPORT_REFS;
+  const rRefsRaw     = reportData?.refs || [];
+  // If no structured refs parsed, fall back to counting §N markers in section text
+  const rRefs = rRefsRaw.length > 0 ? rRefsRaw : (() => {
+    if (!rSections?.length) return REPORT_REFS;
+    const allText = rSections.flatMap(s => s.blocks || []).map(b => b.text || '').join(' ');
+    const markers = [...new Set((allText.match(/§\d+/g) || []))].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+    if (!markers.length) return [];
+    return markers.map(m => ({ n: m, src: '参考资料', title: '', url: '', date: '' }));
+  })();
   const rAttachments = reportData?.attachments || [];
 
   // Teaser: first lede block sentence from first section
@@ -7589,7 +7597,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
   // Metrics: use stored for static; derive from meta for AI reports
   const metricsArr = rMetrics.length > 0 ? rMetrics : [
     { value: rMeta.words  || '—', en: 'WORDS',  cn: '字数',  accent: false },
-    { value: String(rMeta.sources || '—'), en: 'REFS', cn: '引用', accent: false },
+    { value: String(rRefs.length || rMeta.sources || '—'), en: 'REFS', cn: '引用', accent: false },
     { value: rMeta.reading || '—', en: 'READ',  cn: '阅读',  accent: false },
     { value: rMeta.tokens  ? rMeta.tokens.toLocaleString() : '—', en: 'TOKENS', cn: 'Tokens', accent: rMeta.tokens > 0 },
   ];
@@ -7868,9 +7876,9 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
                     : <span style={{ fontFamily: t.fontCN, fontWeight: 800, fontSize: editorial ? 18 : 16, letterSpacing: 0.5, color: t.ink }}>{sectionTitle}</span>
                   }
                   {s.cn && !editMode && <span style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 500, color: t.mute }}>· {s.cn}</span>}
-                  {!editMode && !isStatic && modelStore?.selected && (hoveredSec === s.id || refineOpen === s.id) && (
+                  {!editMode && !isStatic && modelStore?.selected && (
                     <button onClick={() => setRefineOpen(v => v === s.id ? null : s.id)}
-                      style={{ marginLeft: 'auto', padding: '2px 9px', fontFamily: t.fontMono, fontSize: 8, letterSpacing: 1, border: `1px solid ${refineOpen === s.id ? t.ink : t.rule}`, background: refineOpen === s.id ? t.ink : 'transparent', color: refineOpen === s.id ? t.paper : t.mute, cursor: 'pointer' }}>
+                      style={{ marginLeft: 'auto', padding: '2px 9px', fontFamily: t.fontMono, fontSize: 8, letterSpacing: 1, border: `1px solid ${refineOpen === s.id ? t.ink : t.rule}`, background: refineOpen === s.id ? t.ink : 'transparent', color: refineOpen === s.id ? t.paper : t.mute, cursor: 'pointer', opacity: (hoveredSec === s.id || refineOpen === s.id) ? 1 : 0, pointerEvents: (hoveredSec === s.id || refineOpen === s.id) ? 'auto' : 'none', transition: 'opacity 0.15s' }}>
                       ✦ 精修
                     </button>
                   )}
@@ -8041,29 +8049,53 @@ function ColumnChart({ t, data }) {
   const items = data.data || [];
   if (!items.length) return null;
   const maxVal = Math.max(...items.map(d => d.value), 0.001);
-  const VW = 500, VH = 210, pL = 44, pR = 16, pT = 20, pB = 48;
+  const nonZero = items.filter(d => d.value > 0).map(d => d.value);
+  const minNonZero = nonZero.length ? Math.min(...nonZero) : maxVal;
+  const useLog = nonZero.length > 1 && maxVal / minNonZero > 50;
+  const VW = 500, VH = 210, pL = 52, pR = 16, pT = 20, pB = 48;
   const cW = VW - pL - pR, cH = VH - pT - pB;
   const n = items.length;
   const slotW = cW / n;
   const barW = Math.min(slotW * 0.62, 52);
-  const gridVals = [0.25, 0.5, 0.75, 1].map(f => ({ y: pT + cH * (1 - f), v: Math.round(maxVal * f) }));
+
+  const logMin = useLog ? Math.log10(minNonZero * 0.3) : 0;
+  const logMax = useLog ? Math.log10(maxVal * 1.4) : 1;
+  const toH = (v) => {
+    if (!v || v <= 0) return 0;
+    if (useLog) return Math.max(3, ((Math.log10(v) - logMin) / (logMax - logMin)) * cH);
+    return (v / maxVal) * cH;
+  };
+  const niceLabel = (v) => v >= 1e9 ? (v/1e9).toFixed(1)+'B' : v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'K' : v.toLocaleString();
+  const gridVals = useLog
+    ? (() => {
+        const ticks = [];
+        for (let e = Math.ceil(logMin); e <= Math.floor(logMax); e++) {
+          const v = Math.pow(10, e);
+          const y = pT + cH - ((e - logMin) / (logMax - logMin)) * cH;
+          if (y >= pT && y <= pT + cH) ticks.push({ y, v });
+        }
+        return ticks;
+      })()
+    : [0.25, 0.5, 0.75, 1].map(f => ({ y: pT + cH * (1 - f), v: Math.round(maxVal * f) }));
+
   return (
     <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: 'block' }}>
+      {useLog && <text x={pL - 4} y={pT - 5} textAnchor="end" fill={t.mute} fontSize={7} fontFamily="IBM Plex Mono,monospace">log</text>}
       {gridVals.map(({ y, v }) => (
         <g key={y}>
-          <line x1={pL} y1={y} x2={VW - pR} y2={y} stroke={t.rule} strokeWidth={0.5}/>
-          <text x={pL - 4} y={y + 3.5} textAnchor="end" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{v.toLocaleString()}</text>
+          <line x1={pL} y1={y} x2={VW - pR} y2={y} stroke={t.rule} strokeWidth={0.5} strokeDasharray={useLog ? "3,3" : undefined}/>
+          <text x={pL - 4} y={y + 3.5} textAnchor="end" fill={t.mute} fontSize={8} fontFamily="IBM Plex Mono,monospace">{niceLabel(v)}</text>
         </g>
       ))}
       {items.map((item, i) => {
-        const bh = (item.value / maxVal) * cH;
+        const bh = toH(item.value);
         const x = pL + i * slotW + (slotW - barW) / 2;
         const y = pT + cH - bh;
         const color = CHART_PALETTE[i % CHART_PALETTE.length];
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW} height={bh} fill={color} opacity={0.88}/>
-            {bh > 14 && <text x={x + barW / 2} y={y - 4} textAnchor="middle" fill={t.ink} fontSize={8} fontFamily="IBM Plex Mono,monospace" fontWeight={700}>{item.value.toLocaleString()}</text>}
+            {bh > 14 && <text x={x + barW / 2} y={y - 4} textAnchor="middle" fill={t.ink} fontSize={8} fontFamily="IBM Plex Mono,monospace" fontWeight={700}>{niceLabel(item.value)}</text>}
             <text x={x + barW / 2} y={pT + cH + 14} textAnchor="middle" fill={t.inkSoft} fontSize={9} fontFamily={t.fontCN}>{item.label.length > 6 ? item.label.slice(0, 5) + '…' : item.label}</text>
           </g>
         );
@@ -8328,15 +8360,15 @@ function ReportBlock({ block, t, editMode, onChange }) {
 
   if (block.kind === 'lede') {
     if (editMode) return <EditableText editMode value={block.text} onChange={onChange}
-      style={{ fontWeight: 700, fontSize: 19, lineHeight: 1.55 }}/>;
-    return <p style={{ margin: 0, fontWeight: 700, fontSize: 19, lineHeight: 1.55, color: t.ink }}>{renderFootnotes(block.text, t)}</p>;
+      style={{ fontWeight: 600, fontSize: 17, lineHeight: 1.7 }}/>;
+    return <p style={{ margin: 0, fontWeight: 600, fontSize: 17, lineHeight: 1.7, color: t.ink }}>{renderFootnotes(block.text, t)}</p>;
   }
   if (block.kind === 'quote') {
     if (editMode) return <EditableText editMode value={block.text} onChange={onChange} style={{ fontStyle: 'italic' }}/>;
     return <PullQuote t={t} attribution={block.by}>{block.text}</PullQuote>;
   }
   if (editMode) return <EditableText editMode value={block.text} onChange={onChange}/>;
-  return <p style={{ margin: 0 }}>{renderFootnotes(block.text, t)}</p>;
+  return <p style={{ margin: 0, fontWeight: 400, textIndent: '2em', lineHeight: 1.9 }}>{renderFootnotes(block.text, t)}</p>;
 }
 
 function renderMd(text, t) {
@@ -10002,6 +10034,11 @@ function _dlBlob(blob, name) {
   setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(u); }, 120);
 }
 function _esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _escBody(s) {
+  return _esc(s)
+    .replace(/§(\d+)/g, '<sup style="font-size:8px;font-family:monospace;vertical-align:super;line-height:0">§$1</sup>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+}
 function _slug(s) { return String(s||'report').slice(0,40).replace(/[^\w一-鿿]+/g,'-').replace(/^-|-$/g,'').toLowerCase() || 'report'; }
 
 function _loadScript(src) {
@@ -10159,9 +10196,9 @@ function _buildInlineBodyHTML(d, {includeCover=true}={}) {
         <span style="font-size:15px;font-weight:800">${_esc(label)}</span>
       </div>`;
     for (const b of s.blocks||[]) {
-      if (b.kind==='lede')  html += `<p style="font-weight:700;font-size:15px;line-height:1.65;margin:0 0 11px">${_esc(b.text)}</p>`;
-      else if (b.kind==='p') html += `<p style="margin:0 0 9px;font-size:13.5px;line-height:1.85">${_esc(b.text)}</p>`;
-      else if (b.kind==='quote') html += `<blockquote style="margin:10px 0 10px 16px;padding-left:10px;border-left:3px solid #0f0f0f;font-style:italic;color:#555;font-size:13px">${_esc(b.text)}${b.by?`<div style="font-style:normal;font-size:11px;color:#888;margin-top:3px">— ${_esc(b.by)}</div>`:''}</blockquote>`;
+      if (b.kind==='lede')  html += `<p style="font-weight:700;font-size:15px;line-height:1.65;margin:0 0 11px">${_escBody(b.text)}</p>`;
+      else if (b.kind==='p') html += `<p style="margin:0 0 9px;font-size:13.5px;line-height:1.85">${_escBody(b.text)}</p>`;
+      else if (b.kind==='quote') html += `<blockquote style="margin:10px 0 10px 16px;padding-left:10px;border-left:3px solid #0f0f0f;font-style:italic;color:#555;font-size:13px">${_escBody(b.text)}${b.by?`<div style="font-style:normal;font-size:11px;color:#888;margin-top:3px">— ${_esc(b.by)}</div>`:''}</blockquote>`;
       else if (b.kind==='chart') html += _buildInlineChartHTML(b.data);
     }
     html += '</div>';
