@@ -3483,16 +3483,42 @@ function ToolPopover({ t, label, open, onOpen, onClose, children, width = 280 })
 
 // ── ActionPopover — 统一深色框样式，与 ModelSelector 视觉一致 ─────────────────
 function ActionPopover({ t, label, open, onOpen, onClose, children, width = 300, alignRight = false }) {
-  const ref = React.useRef(null);
+  const wrapRef = React.useRef(null);
+  const btnRef  = React.useRef(null);
+  const [rect, setRect] = React.useState(null);
+
+  // Recalculate button position whenever popover opens
+  React.useEffect(() => {
+    if (open && btnRef.current) {
+      setRect(btnRef.current.getBoundingClientRect());
+    }
+  }, [open]);
+
+  // Close on outside click
   React.useEffect(() => {
     if (!open) return;
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const h = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) onClose(); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [open, onClose]);
+
+  // Fixed-position panel style (bypasses parent overflow:hidden)
+  const panelStyle = rect ? {
+    position: 'fixed',
+    bottom: window.innerHeight - rect.top + 6,
+    ...(alignRight ? { right: window.innerWidth - rect.right } : { left: rect.left }),
+    zIndex: 9000,
+    width,
+    background: t.cardOn,
+    border: `1.5px solid ${t.ink}`,
+    boxShadow: `4px 4px 0 ${t.ink}`,
+    maxHeight: Math.min(rect.top - 16, window.innerHeight * 0.85),
+    overflowY: 'auto',
+  } : null;
+
   return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
-      <button onClick={open ? onClose : onOpen} style={{
+    <div ref={wrapRef} style={{ position: 'relative', display: 'inline-flex' }}>
+      <button ref={btnRef} onClick={open ? onClose : onOpen} style={{
         display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
         fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2,
         padding: '3px 8px', lineHeight: 1, cursor: 'pointer',
@@ -3501,14 +3527,8 @@ function ActionPopover({ t, label, open, onOpen, onClose, children, width = 300,
         color: open ? t.paper : t.ink,
         transition: 'background 0.1s, color 0.1s',
       }}>{label}</button>
-      {open && (
-        <div style={{
-          position: 'absolute', bottom: 'calc(100% + 6px)',
-          [alignRight ? 'right' : 'left']: 0, zIndex: 300,
-          width, background: t.cardOn, border: `1.5px solid ${t.ink}`,
-          boxShadow: `4px 4px 0 ${t.ink}`,
-          maxHeight: 'calc(100vh - 80px)', overflowY: 'auto',
-        }}>
+      {open && panelStyle && (
+        <div style={panelStyle}>
           {children}
         </div>
       )}
