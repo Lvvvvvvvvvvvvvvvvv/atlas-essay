@@ -3495,6 +3495,8 @@ function useToolbarStore() {
     () => { try { return JSON.parse(localStorage.getItem('atlas_custom_tones') || '[]'); } catch { return []; } }
   );
   const [depthId, setDepthId] = React.useState('standard');
+  const [webSearchEnabled, setWebSearchEnabled] = React.useState(false);
+  const [deepResearchEnabled, setDeepResearchEnabled] = React.useState(false);
   const [languageId, setLanguageIdRaw] = React.useState(
     () => localStorage.getItem('atlas_language') || 'zh-cn'
   );
@@ -3613,6 +3615,8 @@ function useToolbarStore() {
     searchContexts, addSearchContext, removeSearchContext, clearSearchContexts,
     toneId, setToneId, allTones, currentTone, addTone, removeTone,
     depthId, setDepthId, effectiveLength,
+    webSearchEnabled, setWebSearchEnabled,
+    deepResearchEnabled, setDeepResearchEnabled,
     languageId, setLanguageId, allLanguages, currentLanguage, addLanguage, removeLanguage, setTeamLanguages,
     styleId, setStyleId, currentStyle,
     activeTemplate, setActiveTemplate, clearActiveTemplate,
@@ -4316,11 +4320,12 @@ function DataPopover({ t, store, onNavigateSources }) {
   const allCats    = typeof SOURCE_CATEGORIES !== 'undefined' ? SOURCE_CATEGORIES : [];
   const filtered   = catFilter === 'all' ? allSources : allSources.filter(s => s.type === catFilter);
 
-  const srcCount  = store?.selectedSources?.size || 0;
-  const urlCount  = store?.urlContexts?.length   || 0;
-  const fileCount = store?.attachments?.length   || 0;
-  const total     = srcCount + urlCount + fileCount;
-  const btnLabel  = `◈ 数据${total > 0 ? ` (${total})` : ''} ▾`;
+  const srcCount    = store?.selectedSources?.size || 0;
+  const urlCount    = store?.urlContexts?.length   || 0;
+  const fileCount   = store?.attachments?.length   || 0;
+  const webOn       = store?.webSearchEnabled || false;
+  const total       = srcCount + urlCount + fileCount + (webOn ? 1 : 0);
+  const btnLabel    = `◈ 数据${total > 0 ? ` (${total})` : ''} ▾`;
 
   const addUrl = () => {
     const u = urlDraft.trim();
@@ -4352,6 +4357,9 @@ function DataPopover({ t, store, onNavigateSources }) {
         </button>
         <button style={tabStyle('files')} onClick={() => setTab('files')}>
           附件{fileCount > 0 ? ` (${fileCount})` : ''}
+        </button>
+        <button style={tabStyle('search')} onClick={() => setTab('search')}>
+          联网{webOn ? ' ✓' : ''}
         </button>
       </div>
 
@@ -4449,6 +4457,42 @@ function DataPopover({ t, store, onNavigateSources }) {
               <button onClick={() => store?.removeAttachment?.(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.mute, fontSize: 13, lineHeight: 1 }}>×</button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── 联网 tab ── */}
+      {tab === 'search' && (
+        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* 联网搜索 */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, fontWeight: 600, marginBottom: 3 }}>联网搜索</div>
+              <div style={{ fontFamily: t.fontCN, fontSize: 10, color: t.mute, lineHeight: 1.5 }}>生成前自动搜索 Tavily，注入实时摘要作为参考资料</div>
+            </div>
+            <button onClick={() => store?.setWebSearchEnabled?.(!store?.webSearchEnabled)}
+              style={{ flexShrink: 0, width: 38, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+                background: store?.webSearchEnabled ? t.ink : t.rule }}>
+              <div style={{ position: 'absolute', top: 3, left: store?.webSearchEnabled ? 20 : 3, width: 14, height: 14, borderRadius: '50%', background: t.paper, transition: 'left 0.2s' }}/>
+            </button>
+          </div>
+          <div style={{ height: 1, background: t.rule }}/>
+          {/* 深度研究 */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: t.fontCN, fontSize: 13, color: t.ink, fontWeight: 600, marginBottom: 3 }}>深度研究</div>
+              <div style={{ fontFamily: t.fontCN, fontSize: 10, color: t.mute, lineHeight: 1.5 }}>多轮搜索 + 模型自主整合，更全面但耗时更长（+30–60s）</div>
+            </div>
+            <button onClick={() => store?.setDeepResearchEnabled?.(!store?.deepResearchEnabled)}
+              style={{ flexShrink: 0, width: 38, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+                background: store?.deepResearchEnabled ? t.ink : t.rule }}>
+              <div style={{ position: 'absolute', top: 3, left: store?.deepResearchEnabled ? 20 : 3, width: 14, height: 14, borderRadius: '50%', background: t.paper, transition: 'left 0.2s' }}/>
+            </button>
+          </div>
+          {store?.deepResearchEnabled && (
+            <div style={{ padding: '7px 10px', background: t.faint, borderLeft: `3px solid ${t.ink}`, fontFamily: t.fontCN, fontSize: 10, color: t.mute, lineHeight: 1.6 }}>
+              深度研究会在生成前使用 web_search + fetch_url 工具自主收集资料，需配置 API Key。如已配置 MCP Server，也会一并调用。
+            </div>
+          )}
         </div>
       )}
     </ActionPopover>
@@ -4932,24 +4976,15 @@ function PromptComposer({ t, prompt, setPrompt, onStart, onBackground, onWorkflo
             </span>
           </label>
         )}
-        {/* Start writing — 主 CTA */}
-        <button
+        {/* Start writing — 主 CTA，Btn 风格（outlined ink） */}
+        <Btn t={t} size="lg"
+          disabled={!prompt.trim() || !canGenerate || bgTaskStatus==='queued' || bgTaskStatus==='running'}
           onClick={() => {
             if (!prompt.trim() || !canGenerate) return;
             if (bgMode && onBackground) { onBackground(); } else { onStart(); }
-          }}
-          disabled={!prompt.trim() || !canGenerate || bgTaskStatus==='queued' || bgTaskStatus==='running'}
-          style={{
-            fontSize: 13, fontFamily: t.fontDisplay, fontWeight: 800, letterSpacing: 0.4,
-            padding: '9px 22px',
-            border: `1.5px solid ${!prompt.trim()||!canGenerate ? t.rule : t.ink}`,
-            background: !prompt.trim()||!canGenerate ? 'transparent' : t.ink,
-            color: !prompt.trim()||!canGenerate ? t.mute : t.paper,
-            cursor: !prompt.trim()||!canGenerate ? 'default' : 'pointer',
-            whiteSpace: 'nowrap', transition: 'all 0.15s',
           }}>
           Start writing ↗
-        </button>
+        </Btn>
       </div>
       {!canGenerate && (
         <div style={{ padding: '8px 14px', borderTop: `1px solid ${t.rule}`, background: 'rgba(118,115,104,0.06)', fontFamily: t.fontMono, fontSize: 10, color: t.mute, letterSpacing: 0.4 }}>
@@ -5519,7 +5554,26 @@ function deriveProfileStats(reports) {
 }
 
 async function streamReport({ model, prompt, toolbarConfig, onChunk, onDone, onError, onStatus }) {
-  const { tone, language, style, length, selectedSources, attachments, urlContexts, searchContexts, gatheredContext, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections } = toolbarConfig || {};
+  const { tone, language, style, length, selectedSources, attachments, urlContexts, searchContexts: rawSearchContexts, gatheredContext, temperature, systemPromptExtra, topP, frequencyPenalty, presencePenalty, maxTokensOverride, templateSections, webSearchEnabled } = toolbarConfig || {};
+
+  // Auto web search: if enabled and no manual search contexts, call Tavily before building context
+  let searchContexts = rawSearchContexts || [];
+  if (webSearchEnabled && searchContexts.length === 0) {
+    onStatus?.({ phase: 'searching' });
+    try {
+      const { supabase } = await import('./lib/supabase.js');
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ query: prompt.slice(0, 300), maxResults: 6 }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        searchContexts = data.results || [];
+      }
+    } catch { /* degrade silently */ }
+  }
   const toneCN = tone?.cn || '分析性';
   const langInstr = language?.instr || '使用简体中文写作';
   const styleInstr = style?.instr || BUILTIN_STYLES[0].instr;
@@ -7412,7 +7466,8 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
       prompt: effectivePrompt,
       toolbarConfig: effectiveConfig,
       onStatus: ({ phase, total, done }) => {
-        if (phase === 'fetching') { setLiveStatus('fetching'); setLiveFetchProgress({ done: done || 0, total: total || 0 }); }
+        if (phase === 'searching') { setLiveStatus('searching'); }
+        else if (phase === 'fetching') { setLiveStatus('fetching'); setLiveFetchProgress({ done: done || 0, total: total || 0 }); }
         else if (phase === 'connecting') { setLiveStatus('connecting'); }
       },
       onChunk: (chunk) => {
@@ -7713,6 +7768,7 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
               {researchStatus === 'running' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>◈ 自主研究中… 已调用 {researchLog.length} 个工具</span>}
               {researchStatus === 'done' && researchLog.length > 0 && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>✓ 研究完成 · 调用 {researchLog.length} 个工具</span>}
               {researchStatus === 'done' && researchLog.length === 0 && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>✓ 研究完成 · 模型未调用工具</span>}
+              {liveStatus === 'searching' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>↗ 联网搜索中…</span>}
               {liveStatus === 'fetching' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>↗ 正在抓取网页内容… ({liveFetchProgress.done}/{liveFetchProgress.total})</span>}
               {liveStatus === 'connecting' && researchStatus !== 'running' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.mute }}>正在连接…</span>}
               {retryStatus === 'retrying' && <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent }}>◈ 检测到截断，正在自动补全…</span>}
@@ -12935,7 +12991,7 @@ function App() {
             onDone={() => setRoute('report')}
             onTimelineComplete={() => setRunDone(true)}
             marginaliaOn={tweaks.marginalia} density={tweaks.density}
-            researchMode={researchMode}
+            researchMode={researchMode || toolbarStore.deepResearchEnabled}
             modelStore={modelStore} toolbarConfig={{
               tone: toolbarStore.currentTone,
               language: toolbarStore.currentLanguage,
@@ -12945,6 +13001,7 @@ function App() {
               attachments: toolbarStore.attachments,
               urlContexts: toolbarStore.urlContexts,
               searchContexts: toolbarStore.searchContexts,
+              webSearchEnabled: toolbarStore.webSearchEnabled,
               temperature: modelStore.temperature,
               systemPromptExtra: [modelStore.systemPromptExtra, ...teamKnowledge.promptExtras].filter(Boolean).join('\n\n'),
               topP: modelStore.topP,
