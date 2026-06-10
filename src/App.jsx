@@ -6606,8 +6606,9 @@ function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, d
             .replace(/^(请|帮我|调研|分析|写一篇|生成|撰写|输出)\s*/,'')
             .replace(/[「」【】『』《》""'']/g,' ').trim();
           const titleEn = aiTitle || firstSectionTitle || promptFallback.slice(0, 52) || 'AI 分析报告';
-          const subtitleRaw = prompt.replace(/^[^\n,，。.]{0,80}[,，。.\n]/, '').trim().split('\n')[0].trim();
-          const subtitle = subtitleRaw.slice(0, 80) || prompt.slice(0, 80);
+          const firstLedeText = (sections?.[0]?.blocks?.find(b => b.kind === 'lede')?.text || '').replace(/\*\*/g, '').trim();
+          const firstSentence = firstLedeText.match(/^[^。！？.!?]{6,}[。！？.!?]/)?.[0] || '';
+          const subtitle = (firstSentence || firstLedeText).slice(0, 120);
           const rawWarnings = validateReport(text, {
             effectiveLength: toolbarConfig?.length,
             templateSections: toolbarConfig?.templateSections,
@@ -7619,8 +7620,8 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
 
   const editorial = density === 'editorial';
   const bodyCols = editorial
-    ? (marginaliaOn ? '180px 1fr 600px 220px 1fr' : '180px 1fr 720px 1fr')
-    : (marginaliaOn ? '160px 1fr 540px 200px 1fr' : '160px 1fr 660px 1fr');
+    ? (marginaliaOn ? '180px 1fr 720px 190px 1fr' : '180px 1fr 900px 1fr')
+    : (marginaliaOn ? '160px 1fr 640px 185px 1fr' : '160px 1fr 760px 1fr');
 
   const scrollTo = (id) => {
     const el = containerRef.current?.querySelector(`[data-sec="${id}"]`);
@@ -7800,20 +7801,20 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
             ) : (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontFamily: t.fontCN, fontWeight: 900, fontSize: editorial ? 52 : 40, lineHeight: 1.05, letterSpacing: -1, color: t.ink }}>
-                  {(rMeta.subtitle || rMeta.title?.cn || rMeta.titleEn || rMeta.title?.en || '').slice(0, 60)}
+                  {(rMeta.titleEn || rMeta.title?.en || rMeta.title?.cn || '').slice(0, 60)}
                 </div>
               </div>
             )}
 
-            {/* Row 4 · Subtitle / Chinese secondary title */}
+            {/* Row 4 · Abstract / secondary */}
             {isStatic ? (
               <div style={{ fontFamily: t.fontCN, fontWeight: 700, fontSize: editorial ? 18 : 15, lineHeight: 1.5, color: t.inkSoft, marginBottom: 24 }}>
                 2025 Q1 国内咖啡赛道融资速记——从 Manner 的新一轮，到下沉市场的快速展店。
               </div>
             ) : (
-              (rMeta.titleEn || rMeta.title?.en) && (
-                <div style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: editorial ? 16 : 14, lineHeight: 1.5, color: t.mute, marginBottom: 22, letterSpacing: 0.5 }}>
-                  {(rMeta.titleEn || rMeta.title?.en || '').slice(0, 80)}
+              rMeta.subtitle && (
+                <div style={{ fontFamily: t.fontCN, fontWeight: 600, fontSize: editorial ? 16 : 14, lineHeight: 1.6, color: t.inkSoft, marginBottom: 22 }}>
+                  {rMeta.subtitle.slice(0, 120)}
                 </div>
               )
             )}
@@ -10196,8 +10197,8 @@ function _buildInlineBodyHTML(d, {includeCover=true}={}) {
         <span style="font-size:15px;font-weight:800">${_esc(label)}</span>
       </div>`;
     for (const b of s.blocks||[]) {
-      if (b.kind==='lede')  html += `<p style="font-weight:700;font-size:15px;line-height:1.65;margin:0 0 11px">${_escBody(b.text)}</p>`;
-      else if (b.kind==='p') html += `<p style="margin:0 0 9px;font-size:13.5px;line-height:1.85">${_escBody(b.text)}</p>`;
+      if (b.kind==='lede')  html += `<p style="font-weight:600;font-size:16px;line-height:1.7;margin:0 0 11px">${_escBody(b.text)}</p>`;
+      else if (b.kind==='p') html += `<p style="font-weight:400;font-size:13.5px;line-height:1.9;text-indent:2em;margin:0 0 9px">${_escBody(b.text)}</p>`;
       else if (b.kind==='quote') html += `<blockquote style="margin:10px 0 10px 16px;padding-left:10px;border-left:3px solid #0f0f0f;font-style:italic;color:#555;font-size:13px">${_escBody(b.text)}${b.by?`<div style="font-style:normal;font-size:11px;color:#888;margin-top:3px">— ${_esc(b.by)}</div>`:''}</blockquote>`;
       else if (b.kind==='chart') html += _buildInlineChartHTML(b.data);
     }
