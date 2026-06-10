@@ -957,6 +957,260 @@ const PRESET_MCP_SERVERS = [
   { name: 'Context7', url: 'https://mcp.context7.com/mcp', desc: '查询开源库最新文档 · 免鉴权' },
 ];
 
+// ── Skills ─────────────────────────────────────────────────────────────────
+// Skill = GitHub manifest.json 格式的远程 MCP Server 预封装包
+const PRESET_SKILLS = [
+  {
+    manifestUrl: 'https://raw.githubusercontent.com/superradcompany-library/exa/main/manifest.json',
+    desc: '实时网页搜索 + 公司研究，需 Exa API Key（免费 · 1000次/月）',
+  },
+];
+
+function getSkills() {
+  try { return JSON.parse(localStorage.getItem('atlas_skills') || '[]'); } catch { return []; }
+}
+function saveSkills(skills) {
+  try { localStorage.setItem('atlas_skills', JSON.stringify(skills)); } catch {}
+}
+
+// Replace ${user_config.xxx} placeholders in URL template with actual values
+function resolveSkillServerUrl(urlTemplate, userConfigValues = {}) {
+  return (urlTemplate || '').replace(/\$\{user_config\.([^}]+)\}/g, (_, key) => userConfigValues[key] || '');
+}
+
+// Convert any GitHub URL variant to raw manifest.json URL
+function toRawManifestUrl(input) {
+  const url = (input || '').trim();
+  if (!url) return '';
+  // Already raw githubusercontent
+  if (url.includes('raw.githubusercontent.com')) return url;
+  // GitHub repo/blob/tree URL
+  const m = url.match(/https?:\/\/github\.com\/([^\/]+\/[^\/]+)(\/(?:tree|blob)\/([^\/]+))?/);
+  if (m) {
+    const repo   = m[1].split('/').slice(0, 2).join('/');
+    const branch = m[3] || 'main';
+    return `https://raw.githubusercontent.com/${repo}/${branch}/manifest.json`;
+  }
+  return url;
+}
+
+function SkillsConfig({ t, secHdr, inp }) {
+  const [skills, setSkills]         = React.useState(getSkills);
+  const [importUrl, setImportUrl]   = React.useState('');
+  const [phase, setPhase]           = React.useState('idle'); // idle | fetching | preview | error
+  const [errMsg, setErrMsg]         = React.useState('');
+  const [preview, setPreview]       = React.useState(null);  // parsed manifest
+  const [cfgVals, setCfgVals]       = React.useState({});    // user_config field values
+  const [showKeys, setShowKeys]     = React.useState({});    // sensitive field visibility
+
+  const persist = (next) => { setSkills(next); saveSkills(next); };
+
+  const handleImport = async () => {
+    const rawUrl = toRawManifestUrl(importUrl);
+    if (!rawUrl) { setErrMsg('请输入有效的 GitHub URL'); setPhase('error'); return; }
+    setPhase('fetching'); setErrMsg('');
+    try {
+      const resp = await fetch(rawUrl);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const manifest = await resp.json();
+      if (!manifest.name || !manifest.server?.mcp_config?.url) throw new Error('manifest.json 格式无效，缺少 name 或 server.mcp_config.url');
+      // Extract tool schemas from static_responses if available
+      const toolSchemas = manifest._meta?.['store.tool.mcpb']?.static_responses?.['tools/list']?.tools
+        || manifest.tools?.map(t => ({ name: t.name, description: t.description, input_schema: { type:'object', properties:{} } }))
+        || [];
+      setPreview({ manifest, rawUrl, toolSchemas });
+      // Init configValues with empty strings for all user_config fields
+      const initCfg = {};
+      for (const key of Object.keys(manifest.user_config || {})) initCfg[key] = '';
+      setCfgVals(initCfg);
+      setPhase('preview');
+    } catch (e) {
+      setErrMsg(String(e.message || e).slice(0, 120));
+      setPhase('error');
+    }
+  };
+
+  const handleInstall = () => {
+    if (!preview) return;
+    const { manifest, rawUrl, toolSchemas } = preview;
+    // Validate required fields
+    for (const [key, schema] of Object.entries(manifest.user_config || {})) {
+      if (schema.required && !cfgVals[key]?.trim()) {
+        setErrMsg(`必填字段未填写：${schema.title || key}`); setPhase('error'); return;
+      }
+    }
+    const skill = {
+      id:               `skill_${Date.now()}`,
+      name:             manifest.name,
+      displayName:      manifest.display_name || manifest.name,
+      description:      manifest.description || '',
+      serverUrlTemplate: manifest.server.mcp_config.url,
+      userConfigSchema: manifest.user_config || {},
+      userConfigValues: { ...cfgVals },
+      toolSchemas,
+      tools:            manifest.tools || [],
+      enabled:          true,
+      source:           rawUrl,
+      installedAt:      Date.now(),
+    };
+    persist([...skills, skill]);
+    setPreview(null); setCfgVals({}); setImportUrl(''); setPhase('idle');
+  };
+
+  const toggle = (id) => persist(skills.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
+  const remove = (id) => persist(skills.filter(s => s.id !== id));
+  const updateCfg = (id, key, val) => persist(skills.map(s => s.id === id ? { ...s, userConfigValues: { ...s.userConfigValues, [key]: val } } : s));
+
+  const btn = { padding: '5px 12px', fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, border: `1px solid ${t.ink}`, background: 'transparent', color: t.ink, cursor: 'pointer' };
+
+  return (
+    <div>
+      <div style={secHdr}>技能库 · Skills</div>
+      <div style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginBottom: 10, lineHeight: 1.6 }}>
+        粘贴 GitHub 仓库或 manifest.json 的 URL，系统自动解析并安装为可调用工具。启用后，深度研究模式会自动使用这些技能。
+      </div>
+
+      {/* 已安装 Skills */}
+      {skills.map(s => {
+        const [editingCfg, setEditingCfg] = React.useState(false);
+        const resolvedUrl = resolveSkillServerUrl(s.serverUrlTemplate, s.userConfigValues || {});
+        const missingKeys = Object.entries(s.userConfigSchema || {}).filter(([k, schema]) => schema.required && !s.userConfigValues?.[k]?.trim()).map(([k]) => k);
+        return (
+          <div key={s.id} style={{ border: `1px solid ${s.enabled && missingKeys.length === 0 ? t.ink : t.rule}`, marginBottom: 8, padding: '10px 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: t.fontCN, fontSize: 13, fontWeight: 600, color: t.ink }}>{s.displayName || s.name}</div>
+                <div style={{ fontFamily: t.fontCN, fontSize: 10, color: t.mute, marginTop: 1 }}>{s.description.slice(0, 60)}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                  {(s.tools || []).map(tool => (
+                    <span key={tool.name} style={{ fontFamily: t.fontMono, fontSize: 8, color: s.enabled ? t.accent : t.mute, border: `1px solid ${s.enabled ? t.accent : t.rule}`, padding: '1px 5px', letterSpacing: 0.4 }}>
+                      {tool.name}
+                    </span>
+                  ))}
+                  {missingKeys.length > 0 && (
+                    <span style={{ fontFamily: t.fontMono, fontSize: 8, color: '#b04040', border: '1px solid #b04040', padding: '1px 5px' }}>需配置 {missingKeys.join(', ')}</span>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end', flexShrink: 0 }}>
+                <button onClick={() => toggle(s.id)}
+                  style={{ width: 38, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+                    background: s.enabled && missingKeys.length === 0 ? t.ink : t.rule }}>
+                  <div style={{ position: 'absolute', top: 3, left: s.enabled && missingKeys.length === 0 ? 20 : 3, width: 14, height: 14, borderRadius: '50%', background: t.paper, transition: 'left 0.2s' }}/>
+                </button>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button onClick={() => setEditingCfg(e => !e)} style={{ ...btn, fontSize: 8, padding: '3px 8px' }}>配置</button>
+                  <button onClick={() => remove(s.id)} style={{ ...btn, fontSize: 8, padding: '3px 8px', borderColor: '#e5251d', color: '#e5251d' }}>删除</button>
+                </div>
+              </div>
+            </div>
+            {editingCfg && Object.keys(s.userConfigSchema || {}).length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${t.rule}` }}>
+                {Object.entries(s.userConfigSchema).map(([key, schema]) => (
+                  <div key={key} style={{ marginBottom: 7 }}>
+                    <label style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, display: 'block', marginBottom: 3, letterSpacing: 0.8 }}>{(schema.title || key).toUpperCase()}</label>
+                    <input
+                      type={schema.sensitive && !showKeys[`${s.id}_${key}`] ? 'password' : 'text'}
+                      value={s.userConfigValues?.[key] || ''}
+                      onChange={e => updateCfg(s.id, key, e.target.value)}
+                      placeholder={schema.description || ''}
+                      style={{ ...inp, fontSize: 11 }}/>
+                    {schema.sensitive && (
+                      <button onClick={() => setShowKeys(prev => ({ ...prev, [`${s.id}_${key}`]: !prev[`${s.id}_${key}`] }))}
+                        style={{ background: 'none', border: 'none', fontFamily: t.fontMono, fontSize: 8, color: t.mute, cursor: 'pointer', padding: '2px 0' }}>
+                        {showKeys[`${s.id}_${key}`] ? '隐藏' : '显示'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* 推荐预设 */}
+      {PRESET_SKILLS.some(p => !skills.some(s => s.source === p.manifestUrl)) && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontFamily: t.fontMono, fontSize: 8.5, color: t.mute, letterSpacing: 1, marginBottom: 6 }}>推荐（点击安装）</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {PRESET_SKILLS.filter(p => !skills.some(s => s.source === p.manifestUrl)).map(p => (
+              <button key={p.manifestUrl} onClick={() => { setImportUrl(p.manifestUrl); setPhase('idle'); }}
+                title={p.desc}
+                style={{ ...btn, fontSize: 9 }}>
+                ＋ Exa Research
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 导入框 */}
+      {phase !== 'preview' && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+          <input value={importUrl} onChange={e => setImportUrl(e.target.value)}
+            placeholder="粘贴 GitHub 仓库 URL 或 manifest.json 地址"
+            style={{ ...inp, flex: 1 }}
+            onKeyDown={e => { if (e.key === 'Enter' && importUrl.trim()) handleImport(); }}/>
+          <button onClick={handleImport} disabled={!importUrl.trim() || phase === 'fetching'}
+            style={{ ...btn, background: importUrl.trim() && phase !== 'fetching' ? t.ink : 'transparent', color: importUrl.trim() && phase !== 'fetching' ? t.paper : t.mute, flexShrink: 0 }}>
+            {phase === 'fetching' ? '解析中…' : '解析'}
+          </button>
+        </div>
+      )}
+      {phase === 'error' && (
+        <div style={{ padding: '6px 10px', marginTop: 6, border: '1px solid #e5251d', fontFamily: t.fontMono, fontSize: 9, color: '#e5251d' }}>{errMsg}</div>
+      )}
+
+      {/* 预览 & 安装 */}
+      {phase === 'preview' && preview && (
+        <div style={{ border: `1.5px solid ${t.ink}`, padding: '14px 16px', marginTop: 6 }}>
+          <div style={{ fontFamily: t.fontCN, fontSize: 14, fontWeight: 700, color: t.ink, marginBottom: 3 }}>
+            {preview.manifest.display_name || preview.manifest.name}
+          </div>
+          <div style={{ fontFamily: t.fontCN, fontSize: 11, color: t.mute, marginBottom: 10, lineHeight: 1.5 }}>
+            {preview.manifest.description || ''}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+            {(preview.manifest.tools || []).map(tool => (
+              <span key={tool.name} style={{ fontFamily: t.fontMono, fontSize: 8, color: t.accent, border: `1px solid ${t.accent}`, padding: '2px 6px' }}>
+                {tool.name}
+              </span>
+            ))}
+          </div>
+          {/* user_config fields */}
+          {Object.entries(preview.manifest.user_config || {}).map(([key, schema]) => (
+            <div key={key} style={{ marginBottom: 8 }}>
+              <label style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, display: 'block', marginBottom: 3, letterSpacing: 0.8 }}>
+                {(schema.title || key).toUpperCase()}{schema.required ? ' *' : ''}
+              </label>
+              <input
+                type={schema.sensitive && !showKeys[`preview_${key}`] ? 'password' : 'text'}
+                value={cfgVals[key] || ''}
+                onChange={e => setCfgVals(prev => ({ ...prev, [key]: e.target.value }))}
+                placeholder={schema.description || `输入 ${schema.title || key}`}
+                style={{ ...inp }}/>
+              {schema.sensitive && (
+                <button onClick={() => setShowKeys(prev => ({ ...prev, [`preview_${key}`]: !prev[`preview_${key}`] }))}
+                  style={{ background: 'none', border: 'none', fontFamily: t.fontMono, fontSize: 8, color: t.mute, cursor: 'pointer', padding: '2px 0' }}>
+                  {showKeys[`preview_${key}`] ? '隐藏' : '显示'}
+                </button>
+              )}
+            </div>
+          ))}
+          {errMsg && phase === 'error' && (
+            <div style={{ padding: '5px 8px', border: '1px solid #e5251d', fontFamily: t.fontMono, fontSize: 9, color: '#e5251d', marginBottom: 8 }}>{errMsg}</div>
+          )}
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button onClick={handleInstall} style={{ ...btn, background: t.ink, color: t.paper }}>安装</button>
+            <button onClick={() => { setPhase('idle'); setPreview(null); setCfgVals({}); setErrMsg(''); }} style={btn}>取消</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function McpServersConfig({ t, secHdr }) {
   const [servers, setServers] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('atlas_mcp_servers') || '[]'); } catch { return []; }
@@ -1266,6 +1520,7 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
   const TABS = [
     { k: 'model',      label: '模型',  sub: '参数 & 管理' },
     { k: 'prompt',     label: '提示词', sub: 'System Prompt' },
+    { k: 'skills',     label: '技能库', sub: 'Skills · MCP'  },
     { k: 'memory',     label: '记忆',  sub: '画像 & 实体'  },
     { k: 'export',     label: '导出',  sub: '多格式导出'  },
     { k: 'clear',      label: '清除',  sub: '本地数据'    },
@@ -1557,6 +1812,10 @@ function SettingsModal({ t, modelStore, toolbarStore, outlineMode, setOutlineMod
                 </div>
                 <LanguageManager t={t} inp={inp} secHdr={secHdr} toolbarStore={toolbarStore}/>
               </React.Fragment>
+            )}
+
+            {tab === 'skills' && (
+              <SkillsConfig t={t} secHdr={secHdr} inp={inp}/>
             )}
 
             {tab === 'memory' && (
@@ -5118,7 +5377,16 @@ async function resolveModelCall(model) {
 // ── MCP (remote HTTP) tool discovery & execution ─────────────────────────────
 // Servers configured in localStorage: [{ id, name, url, token }]
 function getMcpServers() {
-  try { return JSON.parse(localStorage.getItem('atlas_mcp_servers') || '[]'); } catch { return []; }
+  const manual = (() => { try { return JSON.parse(localStorage.getItem('atlas_mcp_servers') || '[]'); } catch { return []; } })();
+  const skillServers = getSkills()
+    .filter(s => s.enabled)
+    .map(s => {
+      const resolvedUrl = resolveSkillServerUrl(s.serverUrlTemplate, s.userConfigValues || {});
+      if (!resolvedUrl) return null;
+      return { id: s.id, name: s.displayName || s.name, url: resolvedUrl, token: '' };
+    })
+    .filter(Boolean);
+  return [...manual, ...skillServers];
 }
 
 // ── MCP OAuth 2.1 (remote HTTP servers) ──────────────────────────────────────
