@@ -3507,6 +3507,7 @@ function ActionPopover({ t, label, open, onOpen, onClose, children, width = 300,
           [alignRight ? 'right' : 'left']: 0, zIndex: 300,
           width, background: t.cardOn, border: `1.5px solid ${t.ink}`,
           boxShadow: `4px 4px 0 ${t.ink}`,
+          maxHeight: 'calc(100vh - 80px)', overflowY: 'auto',
         }}>
           {children}
         </div>
@@ -4411,7 +4412,7 @@ function GenerationConfigPopover({ t, store, modelStore }) {
       {/* ── 风格 tab ── */}
       {tab === 'style' && (
         <>
-          <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+          <div>
             <div style={sectionHdr}>报告风格</div>
             {(typeof BUILTIN_STYLES !== 'undefined' ? BUILTIN_STYLES : []).map(style => {
               const active = style.id === store?.styleId;
@@ -4441,30 +4442,28 @@ function GenerationConfigPopover({ t, store, modelStore }) {
                 </div>
               );
             })}
-          </div>
-          <div style={{ padding: '7px 10px', borderTop: `1px solid ${t.rule}` }}>
-            {!addingTone ? (
-              <button onClick={() => setAddingTone(true)} style={{ width: '100%', padding: '4px 0', background: 'transparent', border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute, cursor: 'pointer' }}>＋ 新增语气</button>
-            ) : (
-              <div style={{ display: 'flex', gap: 5 }}>
-                <input ref={toneInputRef} value={toneDraft} onChange={e => setToneDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && toneDraft.trim()) { store?.addTone?.(toneDraft.trim()); setToneDraft(''); setAddingTone(false); }
-                    if (e.key === 'Escape') { setAddingTone(false); setToneDraft(''); }
-                  }}
-                  placeholder="如：批判性"
-                  style={{ flex: 1, padding: '4px 7px', fontFamily: t.fontCN, fontSize: 12, border: `1px solid ${t.ink}`, background: t.cardOn, color: t.ink, outline: 'none' }}/>
-                <button disabled={!toneDraft.trim()}
-                  onClick={() => { if (toneDraft.trim()) { store?.addTone?.(toneDraft.trim()); setToneDraft(''); setAddingTone(false); } }}
-                  style={{ padding: '4px 10px', background: toneDraft.trim() ? t.ink : t.rule, border: 'none', fontFamily: t.fontMono, fontSize: 9, color: t.paper, cursor: toneDraft.trim() ? 'pointer' : 'not-allowed' }}>
-                  确认
-                </button>
-              </div>
-            )}
-          </div>
-          {/* ── 报告深度 ── */}
-          <div style={sectionHdr}>报告深度</div>
-          <div style={{ padding: '4px 0 6px' }}>
+            <div style={{ padding: '7px 10px', borderTop: `1px solid ${t.rule}` }}>
+              {!addingTone ? (
+                <button onClick={() => setAddingTone(true)} style={{ width: '100%', padding: '4px 0', background: 'transparent', border: `1px solid ${t.rule}`, fontFamily: t.fontMono, fontSize: 9, letterSpacing: 0.8, color: t.mute, cursor: 'pointer' }}>＋ 新增语气</button>
+              ) : (
+                <div style={{ display: 'flex', gap: 5 }}>
+                  <input ref={toneInputRef} value={toneDraft} onChange={e => setToneDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && toneDraft.trim()) { store?.addTone?.(toneDraft.trim()); setToneDraft(''); setAddingTone(false); }
+                      if (e.key === 'Escape') { setAddingTone(false); setToneDraft(''); }
+                    }}
+                    placeholder="如：批判性"
+                    style={{ flex: 1, padding: '4px 7px', fontFamily: t.fontCN, fontSize: 12, border: `1px solid ${t.ink}`, background: t.cardOn, color: t.ink, outline: 'none' }}/>
+                  <button disabled={!toneDraft.trim()}
+                    onClick={() => { if (toneDraft.trim()) { store?.addTone?.(toneDraft.trim()); setToneDraft(''); setAddingTone(false); } }}
+                    style={{ padding: '4px 10px', background: toneDraft.trim() ? t.ink : t.rule, border: 'none', fontFamily: t.fontMono, fontSize: 9, color: t.paper, cursor: toneDraft.trim() ? 'pointer' : 'not-allowed' }}>
+                    确认
+                  </button>
+                </div>
+              )}
+            </div>
+            {/* ── 报告深度 ── */}
+            <div style={sectionHdr}>报告深度</div>
             {DEPTH_PRESETS.map(p => {
               const active = store?.depthId === p.id;
               return (
