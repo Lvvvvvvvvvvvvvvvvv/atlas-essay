@@ -8369,7 +8369,7 @@ function ReportBlock({ block, t, editMode, onChange }) {
     return <PullQuote t={t} attribution={block.by}>{block.text}</PullQuote>;
   }
   if (editMode) return <EditableText editMode value={block.text} onChange={onChange}/>;
-  return <p style={{ margin: 0, fontWeight: 400, textIndent: '2em', lineHeight: 1.9 }}>{renderFootnotes(block.text, t)}</p>;
+  return <p style={{ margin: 0, fontWeight: 400, fontSize: 15, color: t.ink, textIndent: '2em', lineHeight: 1.9 }}>{renderFootnotes(block.text, t)}</p>;
 }
 
 function renderMd(text, t) {
