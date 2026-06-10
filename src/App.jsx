@@ -3657,6 +3657,41 @@ function ToolPopover({ t, label, open, onOpen, onClose, children, width = 280 })
   );
 }
 
+
+// ── ActionPopover — 统一深色框样式，与 ModelSelector 视觉一致 ─────────────────
+function ActionPopover({ t, label, open, onOpen, onClose, children, width = 300, alignRight = false }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open, onClose]);
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
+      <button onClick={open ? onClose : onOpen} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+        fontFamily: t.fontMono, fontSize: 9, letterSpacing: 1.2,
+        padding: '3px 8px', lineHeight: 1, cursor: 'pointer',
+        border: `1px solid ${t.ink}`,
+        background: open ? t.ink : 'transparent',
+        color: open ? t.paper : t.ink,
+        transition: 'background 0.1s, color 0.1s',
+      }}>{label}</button>
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)',
+          [alignRight ? 'right' : 'left']: 0, zIndex: 300,
+          width, background: t.cardOn, border: `1.5px solid ${t.ink}`,
+          boxShadow: `4px 4px 0 ${t.ink}`,
+        }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── SourcesPopover ────────────────────────────────────────────────────────
 function SourcesPopover({ t, store, onNavigateSources }) {
   const [open, setOpen] = React.useState(false);
@@ -4310,7 +4345,7 @@ function DataPopover({ t, store, onNavigateSources }) {
   const urlCount  = store?.urlContexts?.length   || 0;
   const fileCount = store?.attachments?.length   || 0;
   const total     = srcCount + urlCount + fileCount;
-  const btnLabel  = total > 0 ? `数据 (${total})` : '数据';
+  const btnLabel  = `◈ 数据${total > 0 ? ` (${total})` : ''} ▾`;
 
   const addUrl = () => {
     const u = urlDraft.trim();
@@ -4329,7 +4364,7 @@ function DataPopover({ t, store, onNavigateSources }) {
   });
 
   return (
-    <ToolPopover t={t} label={btnLabel}
+    <ActionPopover t={t} label={btnLabel}
       open={open} onOpen={() => setOpen(true)} onClose={() => setOpen(false)} width={340}>
 
       {/* 标签页 */}
@@ -4441,7 +4476,7 @@ function DataPopover({ t, store, onNavigateSources }) {
           ))}
         </div>
       )}
-    </ToolPopover>
+    </ActionPopover>
   );
 }
 
@@ -4463,7 +4498,8 @@ function GenerationConfigPopover({ t, store, modelStore }) {
   const lenPreset   = LENGTH_PRESETS.find(p => p.id === store?.lengthId);
   const lenLabel    = store?.lengthId === 'custom' ? `${store?.customLength || '?'}字` : `${(lenPreset?.chars || 2500).toLocaleString()}字`;
   const langLabel   = store?.currentLanguage?.label || '简体中文';
-  const btnLabel    = `生成配置 · ${langLabel} · ${lenLabel}`;
+  const langShort = { '简体中文':'中文','繁体中文':'繁中','English':'EN','日本語':'日語' }[langLabel] || langLabel.slice(0,2);
+  const btnLabel  = `◈ ${langShort} · ${lenLabel} ▾`;
 
   const activeMode  = modelStore?.generationMode;
   const modelId     = modelStore?.selected?.id;
@@ -4479,7 +4515,7 @@ function GenerationConfigPopover({ t, store, modelStore }) {
   });
 
   return (
-    <ToolPopover t={t} label={btnLabel}
+    <ActionPopover t={t} label={btnLabel}
       open={open} onOpen={() => setOpen(true)} onClose={() => { setOpen(false); setAddingLang(false); setAddingTone(false); setLangDraft(''); setToneDraft(''); }} width={300}>
 
       {/* 标签页 */}
@@ -4679,7 +4715,7 @@ function GenerationConfigPopover({ t, store, modelStore }) {
           </div>
         </>
       )}
-    </ToolPopover>
+    </ActionPopover>
   );
 }
 
