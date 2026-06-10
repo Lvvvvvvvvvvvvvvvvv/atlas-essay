@@ -61,7 +61,7 @@ export async function resolveModelCall(model) {
   let sessionToken = null;
   if (useServerKey) {
     try {
-      const { supabase } = await import('./lib/supabase.js');
+      const { supabase } = await import('./supabase.js');
       const { data: { session } } = await supabase.auth.getSession();
       sessionToken = session?.access_token || null;
     } catch {}
@@ -98,7 +98,7 @@ async function _pkce() {
   return { verifier, challenge };
 }
 async function _sessionToken() {
-  const { supabase } = await import('./lib/supabase.js');
+  const { supabase } = await import('./supabase.js');
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token || '';
 }
@@ -221,7 +221,7 @@ export async function executeResearchTool(name, args, onStatus, mcpToolMap) {
       const query = (args?.query || '').trim();
       if (!query) return '（空查询）';
       onStatus?.({ phase: 'research', action: 'search', detail: query });
-      const { supabase } = await import('./lib/supabase.js');
+      const { supabase } = await import('./supabase.js');
       const { data: { session } } = await supabase.auth.getSession();
       const resp = await fetch('/api/search', {
         method: 'POST',
@@ -517,7 +517,7 @@ export async function streamReport({ model, prompt, toolbarConfig, onChunk, onDo
   if (webSearchEnabled && searchContexts.length === 0) {
     onStatus?.({ phase: 'searching' });
     try {
-      const { supabase } = await import('./lib/supabase.js');
+      const { supabase } = await import('./supabase.js');
       const { data: { session } } = await supabase.auth.getSession();
       const resp = await fetch('/api/search', {
         method: 'POST',
@@ -658,7 +658,7 @@ ${systemPromptExtra ? `\n<custom>\n${systemPromptExtra}\n</custom>` : ''}${build
   let sessionToken = null;
   if (useServerKey) {
     try {
-      const { supabase } = await import('./lib/supabase.js');
+      const { supabase } = await import('./supabase.js');
       const { data: { session } } = await supabase.auth.getSession();
       sessionToken = session?.access_token || null;
     } catch {}
