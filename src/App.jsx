@@ -2809,12 +2809,14 @@ function Home({ t, prompt, setPrompt, onStart, onBackground, onWorkflow, bgTaskS
 
 // ── Model Selector ─────────────────────────────────────────────────────
 
+// Shared server-side key (env SHARED_API_KEY on Vercel) is a Xiaomi MiMo key —
+// when present, MiMo works for any logged-in user without configuring anything.
 const _HAS_SHARED_KEY = import.meta.env.VITE_HAS_SHARED_KEY === 'true';
 const BUILTIN_MODELS = [
-  { id: 'claude-opus-4-7',           name: 'Opus 4.7',    provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1', sharedKey: _HAS_SHARED_KEY },
-  { id: 'claude-sonnet-4-6',         name: 'Sonnet 4.6',  provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1', sharedKey: _HAS_SHARED_KEY },
-  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5',   provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1', sharedKey: _HAS_SHARED_KEY },
-  { id: 'mimo-v2.5-pro',             name: 'MiMo V2.5 Pro', provider: 'Xiaomi', builtin: true, apiUrl: 'https://api.xiaomimimo.com/v1', needsKey: true },
+  { id: 'mimo-v2.5-pro',             name: 'MiMo V2.5 Pro', provider: 'Xiaomi', builtin: true, apiUrl: 'https://api.xiaomimimo.com/v1', needsKey: !_HAS_SHARED_KEY, sharedKey: _HAS_SHARED_KEY },
+  { id: 'claude-opus-4-7',           name: 'Opus 4.7',    provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
+  { id: 'claude-sonnet-4-6',         name: 'Sonnet 4.6',  provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5',   provider: 'Anthropic', builtin: true, apiUrl: 'https://api.anthropic.com/v1' },
 ];
 const EFFORT_OPTIONS = ['Low', 'Medium', 'High', 'Max'];
 
@@ -2881,7 +2883,8 @@ function useModelStore() {
       : m),
     ...customModels,
   ];
-  const selected = allModels.find(m => m.id === selectedId) || allModels[1];
+  // Default: prefer a shared-key model (works for everyone), else first usable builtin
+  const selected = allModels.find(m => m.id === selectedId) || allModels.find(m => m.sharedKey) || allModels[1];
 
   const selectModel = (id) => {
     setSelectedId(id);
