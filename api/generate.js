@@ -88,6 +88,9 @@ export default async function handler(req, res) {
         ...(presence_penalty  != null ? { presence_penalty }  : {}),
         ...(tools ? { tools } : {}),
         ...(tool_choice ? { tool_choice } : {}),
+        // MiMo is a reasoning model: thinking tokens can exhaust max_tokens and
+        // leave content empty — turn thinking off (TokenPony-documented switch).
+        ...(provider === 'Xiaomi' ? { chat_template_kwargs: { enable_thinking: false } } : {}),
       }),
     });
 
