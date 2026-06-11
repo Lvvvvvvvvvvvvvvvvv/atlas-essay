@@ -48,15 +48,24 @@ export default async function handler(req, res) {
     }
   }
 
+  // Normalize a base URL: trim whitespace/trailing slash, drop an accidental
+  // /chat/completions suffix, and append /v1 when no version segment is present.
+  const normalizeApiUrl = (raw) => {
+    let u = (raw || 'https://api.anthropic.com/v1').trim().replace(/\/+$/, '');
+    u = u.replace(/\/chat\/completions$/, '');
+    if (!/\/v\d+[a-z]*$/.test(u)) u += '/v1';
+    return u;
+  };
+
   // 3. Fall back to system shared key (env SHARED_API_KEY)
   let apiKey, apiUrl;
   if (keyRow) {
     try { apiKey = decrypt(keyRow.key_enc); }
     catch { return res.status(500).json({ error: 'Failed to decrypt API key' }); }
-    apiUrl = (keyRow.api_url || 'https://api.anthropic.com/v1').replace(/\/$/, '');
+    apiUrl = normalizeApiUrl(keyRow.api_url);
   } else if (process.env.SHARED_API_KEY) {
-    apiKey = process.env.SHARED_API_KEY;
-    apiUrl = (process.env.SHARED_API_URL || 'https://api.anthropic.com/v1').replace(/\/$/, '');
+    apiKey = (process.env.SHARED_API_KEY || '').trim();
+    apiUrl = normalizeApiUrl(process.env.SHARED_API_URL);
   } else {
     return res.status(404).json({ error: 'No server-side API key found for this provider' });
   }
