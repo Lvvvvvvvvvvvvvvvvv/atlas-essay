@@ -6,7 +6,7 @@ import WorkflowCanvas from './components/workflow/WorkflowCanvas.jsx';
 import { useWorkflow } from './hooks/useWorkflow.jsx';
 import { essayTokens } from './lib/tokens.js';
 import { BUILTIN_TONES, BUILTIN_LANGUAGES, BUILTIN_STYLES, BASE_SYSTEM_PROMPT, PROMPT_VERSION, DEPTH_PRESETS, GENERATION_MODES, MODEL_PARAM_PRESETS, getModelPreset } from './lib/constants.js';
-import { streamReport, runAgenticResearch, getMcpServers, getMcpTokens, saveMcpToken, removeMcpToken, startMcpOAuth, completeMcpOAuth, fetchUrlContents } from './lib/streamReport.js';
+import { streamReport, runAgenticResearch, getMcpServers, getMcpTokens, saveMcpToken, removeMcpToken, startMcpOAuth, completeMcpOAuth, fetchUrlContents, validateReport } from './lib/streamReport.js';
 import { extractRefsFromText, extractTitleFromText, parseMarkdownReport } from './lib/reportParser.js';
 
 
