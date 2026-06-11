@@ -1710,7 +1710,7 @@ function UserMenu({ t, tweaks, setTweak, modelStore, toolbarStore, outlineMode, 
               </div>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontFamily:t.fontDisplay, fontWeight:800, fontSize:13, color:t.ink }}>{profile.displayName || 'Atlas User'}</div>
-                <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{profile.email || 'lvhaocheng0726@gmail.com'}</div>
+                <div style={{ fontFamily:t.fontMono, fontSize:9, color:t.mute, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{profile.email || user?.email || ''}</div>
               </div>
             </div>
           </div>
@@ -6518,7 +6518,8 @@ function WorkflowView({ t, topic, modelStore, toolbarConfig, onSaveReport, onBac
 // ── Component -----------------------------------------------------------
 function Running({ t, prompt, onDone, onTimelineComplete, marginaliaOn = true, density = 'editorial', modelStore, toolbarConfig, onSaveReport, researchMode = false }) {
   const selectedModel = modelStore?.selected;
-  const isLiveMode = !!(selectedModel?.apiKey);
+  // Live when the model has a client key OR can use the server-key path (provider set → /api/generate)
+  const isLiveMode = !!(selectedModel?.apiKey || selectedModel?.provider);
 
   // effectivePrompt: just the raw user prompt (toolbar config is passed to streamReport directly)
   const effectivePrompt = prompt;
@@ -7592,7 +7593,7 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
     const allText = rSections.flatMap(s => s.blocks || []).map(b => b.text || '').join(' ');
     const markers = [...new Set((allText.match(/§\d+/g) || []))].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
     if (!markers.length) return [];
-    return markers.map(m => ({ n: m, src: '参考资料', title: '', url: '', date: '' }));
+    return markers.map(m => ({ n: m, src: '参考资料', title: '来源标注见正文', url: '', date: '' }));
   })();
   const rAttachments = reportData?.attachments || [];
 
@@ -7974,8 +7975,8 @@ function Report({ t, onExport, marginaliaOn = true, density = 'editorial', repor
                     <span style={{ fontFamily: t.fontMono, fontSize: 10, color: t.accent, fontWeight: 700 }}>{r.n}</span>
                     <span style={{ fontFamily: t.fontDisplay, fontWeight: 700, fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' }}>{r.src}</span>
                   </div>
-                  <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, lineHeight: 1.45, marginLeft: 24 }}>{r.title}</span>
-                  <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 24 }}>{r.url} · {r.date}</span>
+                  {r.title && <span style={{ fontFamily: t.fontCN, fontSize: 12, color: t.inkSoft, lineHeight: 1.45, marginLeft: 24 }}>{r.title}</span>}
+                  {(r.url || r.date) && <span style={{ fontFamily: t.fontMono, fontSize: 9, color: t.mute, marginLeft: 24 }}>{[r.url, r.date].filter(Boolean).join(' · ')}</span>}
                 </div>
               ))}
             </div>
