@@ -324,7 +324,7 @@ export async function runAgenticResearch({ model, prompt, onStatus }) {
   return { context, log };
 }
 
-function validateReport(text, { effectiveLength, templateSections } = {}) {
+export function validateReport(text, { effectiveLength, templateSections } = {}) {
   const warnings = [];
   const clean = text
     .replace(/^\[TITLE:[^\]]*\]\s*/m, '')
