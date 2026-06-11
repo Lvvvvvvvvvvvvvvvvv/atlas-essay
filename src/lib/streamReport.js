@@ -332,8 +332,10 @@ export function validateReport(text, { effectiveLength, templateSections } = {})
   const trimmed = clean.trim();
   if (!trimmed) return warnings;
 
-  // 1. Starts with a heading
-  if (!/^#{1,3}\s/.test(trimmed)) {
+  // 1. Starts with a heading — a [TITLE:] marker counts: some models (e.g. MiMo)
+  // emit the title marker and open with a lede paragraph instead of an md heading.
+  const hasTitleMarker = /^\[TITLE:[^\]]*\]/m.test(text);
+  if (!hasTitleMarker && !/^#{1,3}\s/.test(trimmed)) {
     warnings.push('报告未以标题开头，格式可能异常');
   }
 
