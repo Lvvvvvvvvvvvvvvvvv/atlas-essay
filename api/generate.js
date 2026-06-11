@@ -52,7 +52,11 @@ export default async function handler(req, res) {
   // /chat/completions suffix, and append /v1 when no version segment is present.
   const normalizeApiUrl = (raw) => {
     let u = (raw || 'https://api.anthropic.com/v1').trim().replace(/\/+$/, '');
-    u = u.replace(/\/chat\/completions$/, '');
+    u = u.replace(/\/chat\/completions$/, '').replace(/\/messages$/, '');
+    // Some providers (e.g. Xiaomi token-plan) hand out an /anthropic-suffixed URL
+    // for Anthropic-format clients; this proxy speaks OpenAI format, which the
+    // same hosts serve at the root — strip the suffix.
+    if (!/api\.anthropic\.com/.test(u)) u = u.replace(/\/anthropic(\/v\d+[a-z]*)?$/, '');
     if (!/\/v\d+[a-z]*$/.test(u)) u += '/v1';
     return u;
   };
