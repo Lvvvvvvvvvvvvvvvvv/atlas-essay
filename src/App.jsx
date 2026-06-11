@@ -2825,7 +2825,7 @@ function useModelStore() {
     try { return JSON.parse(localStorage.getItem('atlas_custom_models') || '[]'); } catch { return []; }
   });
   const [selectedId, setSelectedId] = React.useState(
-    () => localStorage.getItem('atlas_selected_model') || 'claude-sonnet-4-6'
+    () => localStorage.getItem('atlas_selected_model') || ''
   );
   // API keys + custom URLs for builtin models (keyed by model id)
   const [builtinKeys, setBuiltinKeys] = React.useState(() => {
