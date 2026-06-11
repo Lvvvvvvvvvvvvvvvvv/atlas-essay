@@ -89,7 +89,7 @@ export default async function handler(req, res) {
 
     if (!upstream.ok) {
       const err = await upstream.text();
-      return res.status(upstream.status).json({ error: err.slice(0, 300) });
+      return res.status(upstream.status).json({ error: err.slice(0, 300), upstream_url: `${apiUrl}/chat/completions` });
     }
 
     // Non-streaming (tool-decision round): pass the JSON body straight through
