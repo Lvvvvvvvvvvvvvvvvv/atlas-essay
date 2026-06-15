@@ -8,9 +8,9 @@
 [![Vite](https://img.shields.io/badge/Vite-5-646cff)](https://vitejs.dev)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**AI 驱动的报告生成平台 — 全栈、Serverless、单文件前端。**
+**AI 驱动的报告生成平台 — 全栈、Harness、垂类行业模版。**
 
-> **在线体验：** https://atlas-essay.vercel.app/ — 注册登录后即可用内置模型直接生成报告，无需配置任何 API Key。
+> **在线体验：** https://atlas-essay.vercel.app/ — 注册登录后即可用内置模型（共享Mimo）直接生成报告（行业趋势、竞品调研等5类垂直领域报告）。
 
 ![Atlas Report Agent preview](docs/preview.png)
 
@@ -18,7 +18,7 @@
 
 ## 简介
 
-Atlas Report Agent 是一个面向垂类数据分析场景的 AI 报告生成平台。用户输入一句话需求，系统调用大语言模型流式生成结构化长篇报告——含标题、章节目录、正文、带来源的引用列表，并支持多格式导出、云端同步与团队协作。
+Atlas Report Agent 是一个面向垂类报告场景的 AI 报告生成平台。用户输入一句话需求，系统调用大语言模型流式生成结构化长篇报告——含标题、章节目录、正文、带来源的引用列表，并支持多格式导出、云端同步与团队协作。
 
 产品形态上做了一个少见的取舍：**前端构建产物是一个完全自包含的单 HTML 文件**（所有 JS/CSS 内联，gzip 后约 320KB），加载即用、无静态资源依赖；而账号体系、密钥托管、后台任务等需要可信执行环境的能力全部下沉到 Serverless 函数层。两者组合出「分发像静态页一样轻，能力像全栈应用一样全」的体验。
 
